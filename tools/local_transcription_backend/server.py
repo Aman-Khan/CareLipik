@@ -2,6 +2,7 @@
 """Local-only CareLipik proxy for Saaras transcription and clinical term review."""
 
 import cgi
+import errno
 import json
 import os
 import re
@@ -1051,12 +1052,21 @@ def main() -> None:
         if gemini_api_key
         else None
     )
-    server = create_server(
-        DEFAULT_HOST,
-        port,
-        SarvamBatchClient(api_key),
-        clinical_client,
-    )
+    try:
+        server = create_server(
+            DEFAULT_HOST,
+            port,
+            SarvamBatchClient(api_key),
+            clinical_client,
+        )
+    except OSError as error:
+        if error.errno == errno.EADDRINUSE:
+            raise SystemExit(
+                f"Port {port} is already in use. Run "
+                "./tools/local_transcription_backend/status.sh and use the existing healthy "
+                "backend, or stop it before restarting."
+            ) from error
+        raise
     print(f"CareLipik local transcription backend listening on http://{DEFAULT_HOST}:{port}")
     print("Only synthetic test recordings should be used.")
     if clinical_client is None:

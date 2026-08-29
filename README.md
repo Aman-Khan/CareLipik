@@ -130,6 +130,30 @@ The Android app never contains Sarvam or Gemini credentials. A local development
 from macOS Keychain. Audio upload files are removed after submission, clinical transcript bodies
 are not logged, and API responses are marked `no-store`.
 
+### Complete one-time checklist
+
+Requirements are macOS, Android Studio with SDK Platform-Tools, USB debugging enabled on the
+phone, internet access, Python 3 from `/usr/bin/python3`, a Sarvam API key, and a Gemini API key.
+The backend uses only Python's standard library; there is no `pip install` or virtual environment.
+
+From the repository root:
+
+```sh
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+export PATH="$PATH:$HOME/Library/Android/sdk/platform-tools"
+./tools/local_transcription_backend/store_sarvam_key.sh
+./tools/local_transcription_backend/store_gemini_key.sh
+./tools/local_transcription_backend/status.sh
+```
+
+Create the keys in the Sarvam developer dashboard and Google AI Studio respectively. The Sarvam
+key enables Saaras batch transcription and provider diarization. The Gemini key enables online
+medical-term candidates and structured clinical-note generation. Provider accounts must have an
+active project, billing/quota where required, and access to the configured model. CareLipik defaults
+to `gemini-2.5-flash`; override it only for local testing with `GEMINI_MODEL=model-name` when running
+the backend. Never paste either key into a shell command, Gradle property, Android resource, source
+file, screenshot, or chat.
+
 ### 1. Store provider keys securely
 
 ```sh
@@ -152,10 +176,19 @@ Run the relevant script again when a key needs to be replaced.
 ./tools/local_transcription_backend/run.sh
 ```
 
+`run.sh` now detects an existing healthy instance and reuses it instead of producing an
+`Address already in use` traceback. It also explains when another application owns port 8787 and
+records a managed PID so the backend can be stopped safely. Keep this terminal open. Use
+`Control-C` for a normal stop, or from another terminal run:
+
+```sh
+./tools/local_transcription_backend/stop.sh
+```
+
 Keep this terminal open until transcription completes. In another terminal, verify it:
 
 ```sh
-curl http://127.0.0.1:8787/health
+./tools/local_transcription_backend/status.sh
 ```
 
 Expected response:
@@ -165,7 +198,10 @@ Expected response:
 ```
 
 Both Gemini capability fields are `false` when the Gemini key is absent; Saaras transcription can
-still work. This health response confirms the Mac server but does not prove Android can reach it.
+still work. Health confirms that keys were loaded into the local server; it cannot validate
+provider quota, billing, internet access, or whether a key has expired. Those are validated only
+when the corresponding provider request is made. `status.sh` also reports Keychain presence, ADB
+devices, and reverse-port mappings without printing either secret.
 
 ### 3. Make ADB available
 
@@ -215,6 +251,28 @@ emulator, or restarting ADB.
 
 ```sh
 ./gradlew installDebug
+```
+
+For every new USB/device session, the reliable startup sequence is:
+
+```sh
+./tools/local_transcription_backend/run.sh
+./tools/local_transcription_backend/connect_android.sh
+./tools/local_transcription_backend/status.sh
+```
+
+Run the backend in one terminal and the remaining commands in another because `run.sh` remains in
+the foreground. The app must be built with this non-secret entry in untracked `local.properties`:
+
+```properties
+carelipik.transcriptionBackendUrl=http://127.0.0.1:8787
+```
+
+`connect_android.sh` finds Android Studio's bundled `adb`, checks authorization, handles the common
+single-device case, and recreates `adb reverse`. With multiple devices, pass the required serial:
+
+```sh
+./tools/local_transcription_backend/connect_android.sh DEVICE_SERIAL
 ```
 
 On the recording screen:

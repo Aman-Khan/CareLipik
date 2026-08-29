@@ -5,7 +5,7 @@ sealed interface TranscriptionResult {
     data class Failure(val message: String) : TranscriptionResult
 }
 
-/** Boundary for an offline speech-to-text implementation. */
+/** Boundary for a speech-to-text implementation, whether it runs locally or remotely. */
 interface AudioTranscriptionEngine {
     val option: TranscriptionEngineOption
 

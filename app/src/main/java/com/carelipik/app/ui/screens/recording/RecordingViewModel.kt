@@ -91,6 +91,10 @@ class RecordingViewModel(
         if (_uiState.value.isPlaying) recorder.stopPlayback() else recorder.play()
     }
 
+    fun stopPlayback() {
+        recorder.stopPlayback()
+    }
+
     fun recordedAudioPath(): String? = recorder.recordedAudio.value?.localPath
 
     fun setTranscriptionLanguage(language: TranscriptionLanguage) {
@@ -114,6 +118,10 @@ class RecordingViewModel(
     }
 
     fun transcriptionEngine(): TranscriptionEngineOption = _uiState.value.transcriptionEngine
+
+    fun setOnlineProcessingConsent(hasConsent: Boolean) {
+        _uiState.update { it.copy(hasOnlineProcessingConsent = hasConsent) }
+    }
 
     private fun startTimer() {
         timerJob?.cancel()

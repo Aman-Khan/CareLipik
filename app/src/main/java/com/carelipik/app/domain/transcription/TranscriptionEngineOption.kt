@@ -12,6 +12,15 @@ enum class TranscriptionEngineOption(
         isOffline = true,
         supportedLanguages = setOf(TranscriptionLanguage.English)
     ),
+    SaarasHindiHinglish(
+        displayName = "Hindi & Hinglish (Saaras)",
+        description = "Online Indian-language ASR with two-speaker separation",
+        isOffline = false,
+        supportedLanguages = setOf(
+            TranscriptionLanguage.Hindi,
+            TranscriptionLanguage.Hinglish
+        )
+    ),
     WhisperMultilingual(
         displayName = "Multilingual (Whisper Small)",
         description = "Offline baseline for English, Hindi, and mixed speech",
@@ -22,7 +31,11 @@ enum class TranscriptionEngineOption(
     fun supports(language: TranscriptionLanguage): Boolean = language in supportedLanguages
 
     companion object {
-        fun defaultFor(language: TranscriptionLanguage): TranscriptionEngineOption =
-            if (language == TranscriptionLanguage.English) MedAsrEnglish else WhisperMultilingual
+        fun defaultFor(language: TranscriptionLanguage): TranscriptionEngineOption = when (language) {
+            TranscriptionLanguage.English -> MedAsrEnglish
+            TranscriptionLanguage.Hindi,
+            TranscriptionLanguage.Hinglish -> SaarasHindiHinglish
+            TranscriptionLanguage.Auto -> WhisperMultilingual
+        }
     }
 }

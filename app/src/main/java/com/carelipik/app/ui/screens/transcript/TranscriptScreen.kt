@@ -51,11 +51,12 @@ fun TranscriptScreen(
         )
         TranscriptNotice(
             languageName = uiState.language.displayName,
-            engineName = uiState.engine.displayName
+            engineName = uiState.engine.displayName,
+            isOffline = uiState.engine.isOffline
         )
         when (uiState.status) {
             TranscriptStatus.Idle,
-            TranscriptStatus.Processing -> ProcessingTranscript()
+            TranscriptStatus.Processing -> ProcessingTranscript(uiState.engine.isOffline)
             TranscriptStatus.Error -> ErrorTranscript(
                 message = uiState.errorMessage ?: "Transcription could not be completed.",
                 onRetry = onRetry
@@ -81,7 +82,11 @@ fun TranscriptScreen(
 }
 
 @Composable
-private fun TranscriptNotice(languageName: String, engineName: String) {
+private fun TranscriptNotice(
+    languageName: String,
+    engineName: String,
+    isOffline: Boolean
+) {
     Card(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.tertiaryContainer
@@ -92,7 +97,10 @@ private fun TranscriptNotice(languageName: String, engineName: String) {
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Text("Offline multilingual transcription", style = MaterialTheme.typography.titleSmall)
+            Text(
+                if (isOffline) "On-device transcription" else "Secure online transcription",
+                style = MaterialTheme.typography.titleSmall
+            )
             Text(
                 "Selected mode: $languageName",
                 style = MaterialTheme.typography.labelLarge,
@@ -104,7 +112,14 @@ private fun TranscriptNotice(languageName: String, engineName: String) {
                 color = MaterialTheme.colorScheme.onTertiaryContainer
             )
             Text(
-                "This text was generated from your recording on this device. English, Hindi, and Hinglish are supported on a best-effort basis. Verify every word and add speaker labels before continuing.",
+                if (isOffline) {
+                    "This text was generated on this device. Verify every word and add or " +
+                        "correct speaker labels before continuing."
+                } else {
+                    "The recording was sent to CareLipik's configured transcription service. " +
+                        "Speaker numbers show different voices, not confirmed doctor or patient " +
+                        "roles. Verify every word and role before continuing."
+                },
                 style = MaterialTheme.typography.bodyMedium
             )
         }
@@ -112,7 +127,7 @@ private fun TranscriptNotice(languageName: String, engineName: String) {
 }
 
 @Composable
-private fun ProcessingTranscript() {
+private fun ProcessingTranscript(isOffline: Boolean) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -121,7 +136,11 @@ private fun ProcessingTranscript() {
         CircularProgressIndicator()
         Text("Preparing transcript…", style = MaterialTheme.typography.titleMedium)
         Text(
-            "Processing stays on this device.",
+            if (isOffline) {
+                "Processing stays on this device."
+            } else {
+                "Securely uploading and separating speakers. This can take a few minutes."
+            },
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }

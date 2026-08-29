@@ -1,13 +1,20 @@
 package com.carelipik.app.data.transcription
 
 import android.content.Context
+import com.carelipik.app.BuildConfig
 import com.carelipik.app.domain.transcription.AudioTranscriptionEngine
 import com.carelipik.app.domain.transcription.TranscriptionEngineOption
 import com.carelipik.app.domain.transcription.TranscriptionEngineResolver
 
-class LocalTranscriptionEngineResolver(context: Context) : TranscriptionEngineResolver {
+class CareLipikTranscriptionEngineResolver(context: Context) : TranscriptionEngineResolver {
     private val engines: Map<TranscriptionEngineOption, AudioTranscriptionEngine> = listOf(
         SherpaMedAsrTranscriptionEngine(context.applicationContext),
+        SaarasTranscriptionEngine(
+            HttpRemoteTranscriptionGateway(
+                backendBaseUrl = BuildConfig.TRANSCRIPTION_BACKEND_URL,
+                allowInsecureLocalhost = BuildConfig.DEBUG
+            )
+        ),
         SherpaWhisperTranscriptionEngine(context.applicationContext)
     ).associateBy(AudioTranscriptionEngine::option)
 

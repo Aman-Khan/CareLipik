@@ -17,11 +17,14 @@ data class RecordingUiState(
     val hasSavedAudio: Boolean = false,
     val isPlaying: Boolean = false,
     val transcriptionLanguage: TranscriptionLanguage = TranscriptionLanguage.English,
-    val transcriptionEngine: TranscriptionEngineOption = TranscriptionEngineOption.MedAsrEnglish
+    val transcriptionEngine: TranscriptionEngineOption = TranscriptionEngineOption.MedAsrEnglish,
+    val hasOnlineProcessingConsent: Boolean = false
 ) {
     val formattedDuration: String
         get() = "%02d:%02d".format(elapsedSeconds / 60, elapsedSeconds % 60)
 
     val canContinue: Boolean
-        get() = status == RecordingStatus.Completed && hasSavedAudio
+        get() = status == RecordingStatus.Completed &&
+            hasSavedAudio &&
+            (transcriptionEngine.isOffline || hasOnlineProcessingConsent)
 }

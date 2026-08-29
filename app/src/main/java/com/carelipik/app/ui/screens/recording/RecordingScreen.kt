@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -18,12 +19,18 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.semantics.contentDescription
@@ -58,6 +66,7 @@ fun RecordingScreen(
     onTogglePlayback: () -> Unit,
     onTranscriptionLanguageChanged: (TranscriptionLanguage) -> Unit,
     onTranscriptionEngineChanged: (TranscriptionEngineOption) -> Unit,
+    onOnlineProcessingConsentChanged: (Boolean) -> Unit,
     onBack: () -> Unit,
     onContinue: () -> Unit,
     modifier: Modifier = Modifier
@@ -100,7 +109,11 @@ fun RecordingScreen(
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer
+                containerColor = if (uiState.status == RecordingStatus.Completed) {
+                    MaterialTheme.colorScheme.tertiaryContainer
+                } else {
+                    MaterialTheme.colorScheme.primaryContainer
+                }
             )
         ) {
             Column(
@@ -113,12 +126,18 @@ fun RecordingScreen(
                     shape = CircleShape,
                     color = when (uiState.status) {
                         RecordingStatus.Recording -> MaterialTheme.colorScheme.error
+                        RecordingStatus.Completed -> MaterialTheme.colorScheme.tertiary
                         else -> MaterialTheme.colorScheme.primary
                     }
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
-                            text = if (uiState.status == RecordingStatus.Recording) "REC" else "MIC",
+                            text = when (uiState.status) {
+                                RecordingStatus.Recording -> "REC"
+                                RecordingStatus.Paused -> "II"
+                                RecordingStatus.Completed -> "OK"
+                                RecordingStatus.Ready -> "MIC"
+                            },
                             color = MaterialTheme.colorScheme.onPrimary,
                             style = MaterialTheme.typography.labelLarge
                         )
@@ -150,8 +169,7 @@ fun RecordingScreen(
             onStart = startWithPermission,
             onPause = onPause,
             onResume = onResume,
-            onStop = onStop,
-            onDiscard = onDiscard
+            onStop = onStop
         )
         if (permissionDenied) {
             Text(
@@ -161,79 +179,54 @@ fun RecordingScreen(
             )
         }
         if (uiState.status == RecordingStatus.Completed && uiState.hasSavedAudio) {
-            OutlinedButton(onClick = onTogglePlayback, modifier = Modifier.fillMaxWidth()) {
-                Text(if (uiState.isPlaying) "Stop playback" else "Play recording")
-            }
-            TranscriptionLanguageSelector(
-                selectedLanguage = uiState.transcriptionLanguage,
-                onLanguageChanged = onTranscriptionLanguageChanged
+            CompletedRecordingActions(
+                isPlaying = uiState.isPlaying,
+                onTogglePlayback = onTogglePlayback,
+                onDiscard = onDiscard
             )
-            TranscriptionEngineSelector(
+            TranscriptionSetupPanel(
                 selectedLanguage = uiState.transcriptionLanguage,
                 selectedEngine = uiState.transcriptionEngine,
-                onEngineChanged = onTranscriptionEngineChanged
+                hasOnlineProcessingConsent = uiState.hasOnlineProcessingConsent,
+                onLanguageChanged = onTranscriptionLanguageChanged,
+                onEngineChanged = onTranscriptionEngineChanged,
+                onOnlineProcessingConsentChanged = onOnlineProcessingConsentChanged
             )
-        }
-        if (uiState.canContinue) {
-            Button(onClick = onContinue, modifier = Modifier.fillMaxWidth()) {
-                Text("Continue to transcript")
-            }
+            TranscriptContinueSection(
+                uiState = uiState,
+                onContinue = onContinue
+            )
         }
     }
 }
 
 @Composable
-private fun TranscriptionEngineSelector(
+private fun CompletedRecordingActions(
+    isPlaying: Boolean,
+    onTogglePlayback: () -> Unit,
+    onDiscard: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Button(onClick = onTogglePlayback, modifier = Modifier.weight(1f)) {
+            Text(if (isPlaying) "Stop audio" else "Listen")
+        }
+        OutlinedButton(onClick = onDiscard, modifier = Modifier.weight(1f)) {
+            Text("Record again")
+        }
+    }
+}
+
+@Composable
+private fun TranscriptionSetupPanel(
     selectedLanguage: TranscriptionLanguage,
     selectedEngine: TranscriptionEngineOption,
-    onEngineChanged: (TranscriptionEngineOption) -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer
-        )
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = "Transcription engine",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = "Choose an engine so the same recording can be tested with different models.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer
-            )
-            TranscriptionEngineOption.entries
-                .filter { it.supports(selectedLanguage) }
-                .forEach { engine ->
-                    FilterChip(
-                        selected = selectedEngine == engine,
-                        onClick = { onEngineChanged(engine) },
-                        label = {
-                            Column {
-                                Text(engine.displayName)
-                                Text(
-                                    text = engine.description,
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-        }
-    }
-}
-
-@Composable
-private fun TranscriptionLanguageSelector(
-    selectedLanguage: TranscriptionLanguage,
-    onLanguageChanged: (TranscriptionLanguage) -> Unit
+    hasOnlineProcessingConsent: Boolean,
+    onLanguageChanged: (TranscriptionLanguage) -> Unit,
+    onEngineChanged: (TranscriptionEngineOption) -> Unit,
+    onOnlineProcessingConsentChanged: (Boolean) -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -242,29 +235,334 @@ private fun TranscriptionLanguageSelector(
         )
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.fillMaxWidth().padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text(
-                text = "Conversation language",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "Prepare transcript",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "Choose the conversation language first. We will recommend the best engine.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            SectionLabel(number = "1", title = "Conversation language")
+            LanguageSelectionControl(
+                selectedLanguage = selectedLanguage,
+                onLanguageChanged = onLanguageChanged
             )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            SectionLabel(number = "2", title = "Transcription engine")
             Text(
-                text = "Choose Hindi / Hinglish when either person speaks Hindi, even if English words are mixed in.",
+                text = "MedASR is available for English, Saaras for Hindi and Hinglish, " +
+                    "and Whisper remains the offline fallback.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            TranscriptionLanguage.entries.forEach { language ->
-                FilterChip(
-                    selected = selectedLanguage == language,
-                    onClick = { onLanguageChanged(language) },
-                    label = { Text(language.displayName) },
-                    modifier = Modifier.fillMaxWidth()
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                TranscriptionEngineOption.entries.forEach { engine ->
+                    EngineOptionCard(
+                        engine = engine,
+                        selectedLanguage = selectedLanguage,
+                        isSelected = selectedEngine == engine,
+                        isRecommended = TranscriptionEngineOption.defaultFor(selectedLanguage) ==
+                            engine,
+                        onSelected = { onEngineChanged(engine) }
+                    )
+                }
+            }
+            if (!selectedEngine.isOffline) {
+                OnlineProcessingConsentCard(
+                    hasConsent = hasOnlineProcessingConsent,
+                    onConsentChanged = onOnlineProcessingConsentChanged
                 )
             }
         }
     }
+}
+
+@Composable
+private fun SectionLabel(number: String, title: String) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.primary
+        ) {
+            Box(modifier = Modifier.size(28.dp), contentAlignment = Alignment.Center) {
+                Text(
+                    text = number,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+@Composable
+private fun LanguageSelectionControl(
+    selectedLanguage: TranscriptionLanguage,
+    onLanguageChanged: (TranscriptionLanguage) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        val languages = TranscriptionLanguage.entries
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            languages.forEachIndexed { index, language ->
+                SegmentedButton(
+                    selected = selectedLanguage == language,
+                    onClick = { onLanguageChanged(language) },
+                    shape = SegmentedButtonDefaults.itemShape(
+                        index = index,
+                        count = languages.size
+                    ),
+                    label = {
+                        Text(
+                            text = languageSegmentLabel(language),
+                            maxLines = 1,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                )
+            }
+        }
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            color = MaterialTheme.colorScheme.primaryContainer
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(
+                    text = selectedLanguage.displayName,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Text(
+                    text = languageSupportingText(selectedLanguage),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EngineOptionCard(
+    engine: TranscriptionEngineOption,
+    selectedLanguage: TranscriptionLanguage,
+    isSelected: Boolean,
+    isRecommended: Boolean,
+    onSelected: () -> Unit
+) {
+    val isSupported = engine.supports(selectedLanguage)
+    Surface(
+        onClick = onSelected,
+        enabled = isSupported,
+        modifier = Modifier.fillMaxWidth().alpha(if (isSupported) 1f else 0.58f),
+        shape = RoundedCornerShape(16.dp),
+        color = if (isSelected) {
+            MaterialTheme.colorScheme.secondaryContainer
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        border = BorderStroke(
+            width = if (isSelected) 2.dp else 1.dp,
+            color = if (isSelected) {
+                MaterialTheme.colorScheme.secondary
+            } else {
+                MaterialTheme.colorScheme.outlineVariant
+            }
+        )
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            RadioButton(
+                selected = isSelected,
+                onClick = null,
+                enabled = isSupported
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = engine.displayName,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    MetaPill(if (engine.isOffline) "On device" else "Online")
+                    if (isRecommended) MetaPill("Recommended", emphasized = true)
+                    if (!isSupported) MetaPill("Unavailable")
+                }
+                Text(
+                    text = if (isSupported) {
+                        engine.description
+                    } else {
+                        engineUnavailableMessage(engine)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MetaPill(text: String, emphasized: Boolean = false) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = if (emphasized) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant
+        }
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = if (emphasized) {
+                MaterialTheme.colorScheme.onPrimaryContainer
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
+        )
+    }
+}
+
+@Composable
+private fun OnlineProcessingConsentCard(
+    hasConsent: Boolean,
+    onConsentChanged: (Boolean) -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.tertiaryContainer
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Patient consent required",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "Online transcription securely sends this recording to CareLipik's " +
+                    "configured service. Choose Whisper if audio must stay on this device.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onTertiaryContainer
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = hasConsent,
+                    onCheckedChange = onConsentChanged
+                )
+                Text(
+                    text = "Patient agreed to online audio processing",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TranscriptContinueSection(
+    uiState: RecordingUiState,
+    onContinue: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = "${uiState.transcriptionLanguage.displayName} · " +
+                uiState.transcriptionEngine.displayName,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Button(
+            onClick = onContinue,
+            enabled = uiState.canContinue,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                if (uiState.transcriptionEngine.isOffline) {
+                    "Create transcript on device"
+                } else {
+                    "Transcribe securely online"
+                }
+            )
+        }
+        Text(
+            text = when {
+                !uiState.transcriptionEngine.isOffline &&
+                    !uiState.hasOnlineProcessingConsent ->
+                    "Confirm patient consent above to continue."
+                uiState.transcriptionEngine.isOffline ->
+                    "The recording and transcription stay on this device."
+                else -> "The recording is sent only after you continue."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = if (
+                !uiState.transcriptionEngine.isOffline &&
+                !uiState.hasOnlineProcessingConsent
+            ) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
+        )
+    }
+}
+
+private fun languageSegmentLabel(language: TranscriptionLanguage): String = when (language) {
+    TranscriptionLanguage.Auto -> "Auto"
+    TranscriptionLanguage.English -> "English"
+    TranscriptionLanguage.Hindi -> "Hindi"
+    TranscriptionLanguage.Hinglish -> "Hinglish"
+}
+
+private fun languageSupportingText(language: TranscriptionLanguage): String = when (language) {
+    TranscriptionLanguage.Auto -> "Whisper detects the language without uploading audio."
+    TranscriptionLanguage.English -> "Best for English consultations; MedASR is recommended."
+    TranscriptionLanguage.Hindi -> "Best for conversations spoken mostly in Hindi."
+    TranscriptionLanguage.Hinglish -> "Best when Hindi and English are naturally mixed."
+}
+
+private fun engineUnavailableMessage(engine: TranscriptionEngineOption): String = when (engine) {
+    TranscriptionEngineOption.MedAsrEnglish -> "Choose English to use MedASR."
+    TranscriptionEngineOption.SaarasHindiHinglish -> "Choose Hindi or Hinglish to use Saaras."
+    TranscriptionEngineOption.WhisperMultilingual -> "Unavailable for this language."
 }
 
 @Composable
@@ -318,8 +616,7 @@ private fun RecordingActions(
     onStart: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
-    onStop: () -> Unit,
-    onDiscard: () -> Unit
+    onStop: () -> Unit
 ) {
     when (status) {
         RecordingStatus.Ready -> Button(onClick = onStart, modifier = Modifier.fillMaxWidth()) {
@@ -339,12 +636,7 @@ private fun RecordingActions(
             OutlinedButton(onClick = onResume, modifier = Modifier.weight(1f)) { Text("Resume") }
             Button(onClick = onStop, modifier = Modifier.weight(1f)) { Text("Finish") }
         }
-        RecordingStatus.Completed -> OutlinedButton(
-            onClick = onDiscard,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Discard and record again")
-        }
+        RecordingStatus.Completed -> Unit
     }
 }
 

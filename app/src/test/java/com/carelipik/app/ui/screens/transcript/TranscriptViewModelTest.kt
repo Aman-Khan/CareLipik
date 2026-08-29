@@ -63,10 +63,10 @@ class TranscriptViewModelTest {
 
         viewModel.transcribe(
             "/private/recording.wav",
-            TranscriptionLanguage.HindiHinglish
+            TranscriptionLanguage.Hinglish
         )
 
-        assertEquals(TranscriptionLanguage.HindiHinglish, engine.receivedLanguage)
+        assertEquals(TranscriptionLanguage.Hinglish, engine.receivedLanguage)
     }
 
     private class StubEngine(

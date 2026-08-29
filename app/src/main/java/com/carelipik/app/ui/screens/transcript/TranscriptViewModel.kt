@@ -5,7 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import android.content.Context
 import com.carelipik.app.data.transcription.FakeAudioTranscriptionEngine
-import com.carelipik.app.data.transcription.LocalTranscriptionEngineResolver
+import com.carelipik.app.data.transcription.CareLipikTranscriptionEngineResolver
 import com.carelipik.app.domain.transcription.TranscriptionEngineOption
 import com.carelipik.app.domain.transcription.TranscriptionEngineResolver
 import com.carelipik.app.domain.transcription.TranscriptionResult
@@ -49,7 +49,8 @@ class TranscriptViewModel(
         val engine = engineResolver.resolve(engineOption)
         if (processAsynchronously) {
             viewModelScope.launch {
-                val result = withContext(Dispatchers.Default) {
+                val dispatcher = if (engine.option.isOffline) Dispatchers.Default else Dispatchers.IO
+                val result = withContext(dispatcher) {
                     engine.transcribe(audioPath, language)
                 }
                 applyResult(result)
@@ -86,7 +87,9 @@ class TranscriptViewModel(
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             require(modelClass.isAssignableFrom(TranscriptViewModel::class.java))
-            return TranscriptViewModel(LocalTranscriptionEngineResolver(applicationContext)) as T
+            return TranscriptViewModel(
+                CareLipikTranscriptionEngineResolver(applicationContext)
+            ) as T
         }
     }
 

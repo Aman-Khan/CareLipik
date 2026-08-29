@@ -121,9 +121,15 @@ fun CareLipikApp(
                 onTogglePlayback = activeRecordingViewModel::togglePlayback,
                 onTranscriptionLanguageChanged = activeRecordingViewModel::setTranscriptionLanguage,
                 onTranscriptionEngineChanged = activeRecordingViewModel::setTranscriptionEngine,
-                onBack = navigator::navigateBack,
+                onOnlineProcessingConsentChanged =
+                    activeRecordingViewModel::setOnlineProcessingConsent,
+                onBack = {
+                    activeRecordingViewModel.stopPlayback()
+                    navigator.navigateBack()
+                },
                 onContinue = {
                     activeRecordingViewModel.recordedAudioPath()?.let { audioPath ->
+                        activeRecordingViewModel.stopPlayback()
                         activeTranscriptViewModel.transcribe(
                             audioPath,
                             activeRecordingViewModel.transcriptionLanguage(),

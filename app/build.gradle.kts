@@ -1,7 +1,22 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
 }
+
+val careLipikLocalProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.isFile) {
+        localPropertiesFile.inputStream().use(::load)
+    }
+}
+val transcriptionBackendUrl = providers
+    .gradleProperty("carelipik.transcriptionBackendUrl")
+    .orElse(careLipikLocalProperties.getProperty("carelipik.transcriptionBackendUrl", ""))
+    .get()
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
 
 android {
     namespace = "com.carelipik.app"
@@ -15,6 +30,12 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
+
+        buildConfigField(
+            "String",
+            "TRANSCRIPTION_BACKEND_URL",
+            "\"$transcriptionBackendUrl\""
+        )
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -32,6 +53,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     androidResources {
         noCompress += listOf("onnx", "txt")

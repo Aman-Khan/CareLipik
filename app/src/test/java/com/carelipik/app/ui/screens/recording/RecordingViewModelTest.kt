@@ -68,16 +68,43 @@ class RecordingViewModelTest {
     fun languageSelection_isKeptForTranscription() {
         val viewModel = RecordingViewModel(TrackingRecorder(), useAutomaticTimer = false)
 
-        viewModel.setTranscriptionLanguage(TranscriptionLanguage.HindiHinglish)
+        viewModel.setTranscriptionLanguage(TranscriptionLanguage.Hinglish)
 
         assertEquals(
-            TranscriptionLanguage.HindiHinglish,
+            TranscriptionLanguage.Hinglish,
             viewModel.transcriptionLanguage()
         )
         assertEquals(
-            TranscriptionEngineOption.WhisperMultilingual,
+            TranscriptionEngineOption.SaarasHindiHinglish,
             viewModel.transcriptionEngine()
         )
+    }
+
+    @Test
+    fun onlineEngine_requiresPatientConsentBeforeContinue() {
+        val viewModel = RecordingViewModel(TrackingRecorder(), useAutomaticTimer = false)
+
+        viewModel.startRecording()
+        viewModel.stopRecording()
+        viewModel.setTranscriptionLanguage(TranscriptionLanguage.Hindi)
+
+        assertFalse(viewModel.uiState.value.canContinue)
+
+        viewModel.setOnlineProcessingConsent(true)
+
+        assertTrue(viewModel.uiState.value.canContinue)
+    }
+
+    @Test
+    fun offlineFallback_doesNotRequireOnlineConsent() {
+        val viewModel = RecordingViewModel(TrackingRecorder(), useAutomaticTimer = false)
+
+        viewModel.startRecording()
+        viewModel.stopRecording()
+        viewModel.setTranscriptionLanguage(TranscriptionLanguage.Hindi)
+        viewModel.setTranscriptionEngine(TranscriptionEngineOption.WhisperMultilingual)
+
+        assertTrue(viewModel.uiState.value.canContinue)
     }
 
     @Test
@@ -90,6 +117,29 @@ class RecordingViewModelTest {
             TranscriptionEngineOption.WhisperMultilingual,
             viewModel.transcriptionEngine()
         )
+    }
+
+    @Test
+    fun switchingBackToEnglish_restoresMedAsrAsRecommendedEngine() {
+        val viewModel = RecordingViewModel(TrackingRecorder(), useAutomaticTimer = false)
+
+        viewModel.setTranscriptionLanguage(TranscriptionLanguage.Hinglish)
+        viewModel.setTranscriptionLanguage(TranscriptionLanguage.English)
+
+        assertEquals(
+            TranscriptionEngineOption.MedAsrEnglish,
+            viewModel.transcriptionEngine()
+        )
+    }
+
+    @Test
+    fun stopPlayback_stopsAudioBeforeLeavingRecordingScreen() {
+        val recorder = TrackingRecorder()
+        val viewModel = RecordingViewModel(recorder, useAutomaticTimer = false)
+
+        viewModel.stopPlayback()
+
+        assertEquals("stopPlayback", recorder.calls.last())
     }
 
     private class TrackingRecorder : ConsultationRecorder {

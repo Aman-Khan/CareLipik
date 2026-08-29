@@ -8,24 +8,48 @@ import androidx.compose.runtime.Composable
 
 private val DarkColorScheme = darkColorScheme(
     primary = Teal80,
+    onPrimary = CareBackgroundDark,
+    primaryContainer = CarePrimaryContainerDark,
+    onPrimaryContainer = CareOnPrimaryContainerDark,
     secondary = Slate80,
-    tertiary = Coral80
+    onSecondary = CareBackgroundDark,
+    secondaryContainer = CareSecondaryContainerDark,
+    onSecondaryContainer = CareOnSecondaryContainerDark,
+    tertiary = Coral80,
+    onTertiary = CareBackgroundDark,
+    tertiaryContainer = CareTertiaryContainerDark,
+    onTertiaryContainer = CareOnTertiaryContainerDark,
+    background = CareBackgroundDark,
+    onBackground = CareOnSurfaceDark,
+    surface = CareSurfaceDark,
+    onSurface = CareOnSurfaceDark,
+    surfaceVariant = CareSurfaceVariantDark,
+    onSurfaceVariant = CareOnSurfaceVariantDark,
+    outline = CareOutlineDark,
+    outlineVariant = CareOutlineVariantDark
 )
 
 private val LightColorScheme = lightColorScheme(
     primary = Teal40,
+    onPrimary = CareSurfaceLight,
+    primaryContainer = CarePrimaryContainerLight,
+    onPrimaryContainer = CareOnPrimaryContainerLight,
     secondary = Slate40,
-    tertiary = Coral40
-
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
+    onSecondary = CareSurfaceLight,
+    secondaryContainer = CareSecondaryContainerLight,
+    onSecondaryContainer = CareOnSecondaryContainerLight,
+    tertiary = Coral40,
+    onTertiary = CareSurfaceLight,
+    tertiaryContainer = CareTertiaryContainerLight,
+    onTertiaryContainer = CareOnTertiaryContainerLight,
+    background = CareBackgroundLight,
+    onBackground = CareOnSurfaceLight,
+    surface = CareSurfaceLight,
+    onSurface = CareOnSurfaceLight,
+    surfaceVariant = CareSurfaceVariantLight,
+    onSurfaceVariant = CareOnSurfaceVariantLight,
+    outline = CareOutlineLight,
+    outlineVariant = CareOutlineVariantLight
 )
 
 @Composable

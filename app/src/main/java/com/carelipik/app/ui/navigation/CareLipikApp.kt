@@ -233,20 +233,23 @@ fun CareLipikApp(
             )
             ConsultationDestination.Export -> ConsultationExportScreen(
                 uiState = consultationExportUiState,
+                onFormatSelected = activeConsultationExportViewModel::selectFormat,
                 onGenerate = activeConsultationExportViewModel::generate,
                 onShare = {
-                    consultationExportUiState.pdf?.let { pdf ->
+                    consultationExportUiState.exportedFile?.let { exportedFile ->
                         val uri = FileProvider.getUriForFile(
                             context,
                             "${context.packageName}.fileprovider",
-                            File(pdf.localPath)
+                            File(exportedFile.localPath)
                         )
                         val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                            type = "application/pdf"
+                            type = exportedFile.mimeType
                             putExtra(Intent.EXTRA_STREAM, uri)
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
-                        context.startActivity(Intent.createChooser(shareIntent, "Share clinical note"))
+                        context.startActivity(
+                            Intent.createChooser(shareIntent, "Share clinical note")
+                        )
                     }
                 },
                 onBack = navigator::navigateBack,

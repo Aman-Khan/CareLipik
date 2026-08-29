@@ -17,7 +17,8 @@ development recordings, screenshots, fixtures, or tests.
 - Offline doctor-voice enrollment and confidence-gated Doctor/Patient role matching.
 - Manual correction of transcript text, medical terms, and speaker roles.
 - AES-GCM encrypted, app-private consultation history after final doctor approval.
-- On-demand A4 PDF export immediately after approval or from encrypted history.
+- On-demand approved-note export immediately after approval or from encrypted history as A4 PDF,
+  structured JSON, an HL7 FHIR R4 document Bundle, or plain text.
 - Temporary consultation audio in the Android cache by default.
 - No cloud database, embedded provider key, or LLM.
 
@@ -269,8 +270,8 @@ backend URL changed.
 - Enrollment audio and consultation history stay in app-private storage.
 - Approved consultation records are encrypted with AES-GCM using an Android Keystore key.
 - Consultation audio is kept in app-private cache and discarded after successful approval.
-- Export PDFs are generated on demand in app-private cache, use ID-based filenames, exclude audio,
-  and are shared through a temporary read-only content URI.
+- Exports are generated on demand in app-private cache, use ID-based filenames, exclude audio,
+  expire after 24 hours, and are shared through a temporary read-only content URI.
 - Voice enrollment and consultation history are excluded from cloud backup and device transfer.
 - Online transcription requires explicit consent.
 - Development recordings must never contain real patient information.
@@ -289,6 +290,22 @@ gradle/libs.versions.toml             Dependency and plugin versions
 
 For the provider contract, security boundary, and detailed transcription behavior, see
 [`docs/hindi-hinglish-transcription.md`](docs/hindi-hinglish-transcription.md).
+
+## Approved clinical-note exports
+
+The export screen is available only after final doctor approval, including when reopening an
+approved item from encrypted history. It offers:
+
+- **Clinical note PDF**: human-readable A4 output for saving or printing.
+- **Structured JSON**: CareLipik's versioned application-interchange schema.
+- **HL7 FHIR R4 bundle**: a base R4 document Bundle whose first resource is a Composition and
+  which also includes Patient, Device, and DocumentReference resources.
+- **Plain-text EHR note**: labelled sections designed for copying into an EHR.
+
+FHIR support is base R4 interoperability output, not certification for a national, hospital, or
+vendor-specific profile. Validate it against the receiving system's implementation guide and
+terminology requirements before production import. No export contains consultation audio. Export
+files remain temporary until the user explicitly shares or saves them outside CareLipik.
 
 ## Development rules
 

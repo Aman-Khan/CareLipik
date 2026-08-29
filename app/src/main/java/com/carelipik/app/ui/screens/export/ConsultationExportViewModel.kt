@@ -4,10 +4,11 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.carelipik.app.data.export.AndroidConsultationPdfExporter
-import com.carelipik.app.domain.export.ConsultationPdf
-import com.carelipik.app.domain.export.ConsultationPdfExportResult
-import com.carelipik.app.domain.export.ConsultationPdfExporter
+import com.carelipik.app.data.export.AndroidConsultationStandardExporter
+import com.carelipik.app.domain.export.ConsultationExportFormat
+import com.carelipik.app.domain.export.ConsultationExportResult
+import com.carelipik.app.domain.export.ConsultationStandardExporter
+import com.carelipik.app.domain.export.ExportedConsultationFile
 import com.carelipik.app.domain.model.ApprovedConsultation
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,7 +27,8 @@ enum class ConsultationExportStatus {
 data class ConsultationExportUiState(
     val status: ConsultationExportStatus = ConsultationExportStatus.Empty,
     val consultation: ApprovedConsultation? = null,
-    val pdf: ConsultationPdf? = null,
+    val selectedFormat: ConsultationExportFormat = ConsultationExportFormat.ClinicalPdf,
+    val exportedFile: ExportedConsultationFile? = null,
     val errorMessage: String? = null
 ) {
     val canGenerate: Boolean
@@ -37,7 +39,7 @@ data class ConsultationExportUiState(
 }
 
 class ConsultationExportViewModel(
-    private val exporter: ConsultationPdfExporter,
+    private val exporter: ConsultationStandardExporter,
     private val processAsynchronously: Boolean = true
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(ConsultationExportUiState())
@@ -50,24 +52,35 @@ class ConsultationExportViewModel(
         )
     }
 
+    fun selectFormat(format: ConsultationExportFormat) {
+        if (_uiState.value.status == ConsultationExportStatus.Generating) return
+        _uiState.value = _uiState.value.copy(
+            status = ConsultationExportStatus.ReadyToGenerate,
+            selectedFormat = format,
+            exportedFile = null,
+            errorMessage = null
+        )
+    }
+
     fun generate() {
         val consultation = _uiState.value.consultation ?: return
         if (_uiState.value.status == ConsultationExportStatus.Generating) return
         _uiState.value = _uiState.value.copy(
             status = ConsultationExportStatus.Generating,
-            pdf = null,
+            exportedFile = null,
             errorMessage = null
         )
         val operation: suspend () -> Unit = {
-            _uiState.value = when (val result = exporter.export(consultation)) {
-                is ConsultationPdfExportResult.Success -> _uiState.value.copy(
+            val format = _uiState.value.selectedFormat
+            _uiState.value = when (val result = exporter.export(consultation, format)) {
+                is ConsultationExportResult.Success -> _uiState.value.copy(
                     status = ConsultationExportStatus.Generated,
-                    pdf = result.pdf,
+                    exportedFile = result.file,
                     errorMessage = null
                 )
-                is ConsultationPdfExportResult.Failure -> _uiState.value.copy(
+                is ConsultationExportResult.Failure -> _uiState.value.copy(
                     status = ConsultationExportStatus.Error,
-                    pdf = null,
+                    exportedFile = null,
                     errorMessage = result.message
                 )
             }
@@ -84,7 +97,7 @@ class ConsultationExportViewModel(
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             require(modelClass.isAssignableFrom(ConsultationExportViewModel::class.java))
             return ConsultationExportViewModel(
-                AndroidConsultationPdfExporter(applicationContext)
+                AndroidConsultationStandardExporter(applicationContext)
             ) as T
         }
     }

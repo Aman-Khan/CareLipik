@@ -23,10 +23,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.carelipik.app.ui.components.ConsultationScreenHeader
+import com.carelipik.app.domain.export.ConsultationExportFormat
 
 @Composable
 fun ConsultationExportScreen(
     uiState: ConsultationExportUiState,
+    onFormatSelected: (ConsultationExportFormat) -> Unit,
     onGenerate: () -> Unit,
     onShare: () -> Unit,
     onBack: () -> Unit,
@@ -43,7 +45,7 @@ fun ConsultationExportScreen(
     ) {
         ConsultationScreenHeader(
             title = "Export approved note",
-            subtitle = "Create a temporary PDF only when you need to save or share it.",
+            subtitle = "Create a temporary file only when you need to save or share it.",
             currentStep = 7,
             totalSteps = 7,
             onBack = onBack,
@@ -66,6 +68,11 @@ fun ConsultationExportScreen(
                 }
             }
         }
+        ExportFormatOptions(
+            selected = uiState.selectedFormat,
+            enabled = uiState.status != ConsultationExportStatus.Generating,
+            onSelected = onFormatSelected
+        )
         when (uiState.status) {
             ConsultationExportStatus.Empty -> Text(
                 "No approved consultation is available for export.",
@@ -77,15 +84,16 @@ fun ConsultationExportScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 CircularProgressIndicator()
-                Text("Creating PDF privately on this device...")
+                Text("Creating ${uiState.selectedFormat.displayName} privately on this device...")
             }
-            ConsultationExportStatus.Generated -> GeneratedPdfCard(
-                displayName = uiState.pdf?.displayName.orEmpty(),
-                sizeBytes = uiState.pdf?.sizeBytes ?: 0L,
+            ConsultationExportStatus.Generated -> GeneratedExportCard(
+                displayName = uiState.exportedFile?.displayName.orEmpty(),
+                sizeBytes = uiState.exportedFile?.sizeBytes ?: 0L,
+                formatName = uiState.exportedFile?.format?.displayName.orEmpty(),
                 onShare = onShare
             )
             ConsultationExportStatus.Error -> Text(
-                uiState.errorMessage ?: "The PDF could not be created.",
+                uiState.errorMessage ?: "The export could not be created.",
                 color = MaterialTheme.colorScheme.error
             )
             ConsultationExportStatus.ReadyToGenerate -> Unit
@@ -94,9 +102,15 @@ fun ConsultationExportScreen(
             Button(
                 onClick = onGenerate,
                 enabled = uiState.canGenerate,
-                modifier = Modifier.fillMaxWidth().testTag("generate_consultation_pdf")
+                modifier = Modifier.fillMaxWidth().testTag("generate_consultation_export")
             ) {
-                Text(if (uiState.status == ConsultationExportStatus.Error) "Try again" else "Create PDF")
+                Text(
+                    if (uiState.status == ConsultationExportStatus.Error) {
+                        "Try again"
+                    } else {
+                        "Create ${uiState.selectedFormat.displayName}"
+                    }
+                )
             }
         }
         OutlinedButton(
@@ -123,7 +137,7 @@ private fun PrivacyCard() {
         ) {
             Text("Share carefully", fontWeight = FontWeight.Bold)
             Text(
-                "The PDF contains sensitive clinical information. CareLipik creates it in " +
+                "Exports contain sensitive clinical information. CareLipik creates them in " +
                     "private cache and never includes consultation audio."
             )
         }
@@ -131,7 +145,45 @@ private fun PrivacyCard() {
 }
 
 @Composable
-private fun GeneratedPdfCard(displayName: String, sizeBytes: Long, onShare: () -> Unit) {
+private fun ExportFormatOptions(
+    selected: ConsultationExportFormat,
+    enabled: Boolean,
+    onSelected: (ConsultationExportFormat) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("Export format", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        ConsultationExportFormat.entries.forEach { format ->
+            Card(
+                onClick = { onSelected(format) },
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth().testTag("export_format_${format.name}"),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (selected == format) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    }
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(format.displayName, fontWeight = FontWeight.Bold)
+                    Text(format.description, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GeneratedExportCard(
+    displayName: String,
+    sizeBytes: Long,
+    formatName: String,
+    onShare: () -> Unit
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -142,14 +194,14 @@ private fun GeneratedPdfCard(displayName: String, sizeBytes: Long, onShare: () -
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text("PDF ready", fontWeight = FontWeight.Bold)
+            Text("$formatName ready", fontWeight = FontWeight.Bold)
             Text(displayName, style = MaterialTheme.typography.bodySmall)
             Text("${(sizeBytes / 1_024L).coerceAtLeast(1L)} KB")
             Button(
                 onClick = onShare,
-                modifier = Modifier.fillMaxWidth().testTag("share_consultation_pdf")
+                modifier = Modifier.fillMaxWidth().testTag("share_consultation_export")
             ) {
-                Text("Share or save PDF")
+                Text("Share or save file")
             }
         }
     }

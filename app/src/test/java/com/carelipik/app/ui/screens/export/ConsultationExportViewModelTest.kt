@@ -1,8 +1,9 @@
 package com.carelipik.app.ui.screens.export
 
-import com.carelipik.app.domain.export.ConsultationPdf
-import com.carelipik.app.domain.export.ConsultationPdfExportResult
-import com.carelipik.app.domain.export.ConsultationPdfExporter
+import com.carelipik.app.domain.export.ConsultationExportFormat
+import com.carelipik.app.domain.export.ConsultationExportResult
+import com.carelipik.app.domain.export.ConsultationStandardExporter
+import com.carelipik.app.domain.export.ExportedConsultationFile
 import com.carelipik.app.domain.model.ApprovedConsultation
 import com.carelipik.app.domain.model.ClinicalDraft
 import org.junit.Assert.assertEquals
@@ -33,13 +34,13 @@ class ConsultationExportViewModelTest {
 
         assertEquals(consultation, exporter.received)
         assertEquals(ConsultationExportStatus.Generated, viewModel.uiState.value.status)
-        assertEquals("approved.pdf", viewModel.uiState.value.pdf?.displayName)
+        assertEquals("approved.pdf", viewModel.uiState.value.exportedFile?.displayName)
     }
 
     @Test
     fun generationFailureCanBeRetried() {
         val exporter = CapturingExporter(
-            ConsultationPdfExportResult.Failure("Synthetic generation failure")
+            ConsultationExportResult.Failure("Synthetic generation failure")
         )
         val viewModel = ConsultationExportViewModel(exporter, processAsynchronously = false)
         viewModel.load(approvedConsultation())
@@ -51,15 +52,31 @@ class ConsultationExportViewModelTest {
         assertTrue(viewModel.uiState.value.canGenerate)
     }
 
+    @Test
+    fun selectingFormatClearsPreviousFileAndExportsSelectedFormat() {
+        val exporter = CapturingExporter(successResult(ConsultationExportFormat.PlainText))
+        val viewModel = ConsultationExportViewModel(exporter, processAsynchronously = false)
+        viewModel.load(approvedConsultation())
+
+        viewModel.selectFormat(ConsultationExportFormat.PlainText)
+        viewModel.generate()
+
+        assertEquals(ConsultationExportFormat.PlainText, exporter.receivedFormat)
+        assertEquals(ConsultationExportFormat.PlainText, viewModel.uiState.value.exportedFile?.format)
+    }
+
     private class CapturingExporter(
-        private val result: ConsultationPdfExportResult
-    ) : ConsultationPdfExporter {
+        private val result: ConsultationExportResult
+    ) : ConsultationStandardExporter {
         var received: ApprovedConsultation? = null
+        var receivedFormat: ConsultationExportFormat? = null
 
         override suspend fun export(
-            consultation: ApprovedConsultation
-        ): ConsultationPdfExportResult {
+            consultation: ApprovedConsultation,
+            format: ConsultationExportFormat
+        ): ConsultationExportResult {
             received = consultation
+            receivedFormat = format
             return result
         }
     }
@@ -73,11 +90,15 @@ class ConsultationExportViewModelTest {
         draft = ClinicalDraft(history = "Synthetic history")
     )
 
-    private fun successResult() = ConsultationPdfExportResult.Success(
-        ConsultationPdf(
+    private fun successResult(
+        format: ConsultationExportFormat = ConsultationExportFormat.ClinicalPdf
+    ) = ConsultationExportResult.Success(
+        ExportedConsultationFile(
             localPath = "/private/cache/approved.pdf",
             displayName = "approved.pdf",
-            sizeBytes = 1_024L
+            sizeBytes = 1_024L,
+            mimeType = format.mimeType,
+            format = format
         )
     )
 }

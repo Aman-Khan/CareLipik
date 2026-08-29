@@ -7,7 +7,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import com.carelipik.app.domain.export.ConsultationPdf
+import com.carelipik.app.domain.export.ConsultationExportFormat
+import com.carelipik.app.domain.export.ExportedConsultationFile
 import com.carelipik.app.domain.model.ApprovedConsultation
 import com.carelipik.app.domain.model.ClinicalDraft
 import com.carelipik.app.ui.screens.export.ConsultationExportScreen
@@ -38,12 +39,15 @@ class ConsultationExportScreenTest {
                             visitReason = "Synthetic visit",
                             draft = ClinicalDraft(history = "Synthetic history")
                         ),
-                        pdf = ConsultationPdf(
+                        exportedFile = ExportedConsultationFile(
                             localPath = "/private/cache/synthetic.pdf",
                             displayName = "synthetic.pdf",
-                            sizeBytes = 2_048L
+                            sizeBytes = 2_048L,
+                            mimeType = "application/pdf",
+                            format = ConsultationExportFormat.ClinicalPdf
                         )
                     ),
+                    onFormatSelected = {},
                     onGenerate = {},
                     onShare = { shareRequested = true },
                     onBack = {},
@@ -54,10 +58,10 @@ class ConsultationExportScreenTest {
 
         composeRule.onNodeWithText("Share carefully").assertIsDisplayed()
         composeRule.onNodeWithText(
-            "The PDF contains sensitive clinical information. CareLipik creates it in " +
+            "Exports contain sensitive clinical information. CareLipik creates them in " +
                 "private cache and never includes consultation audio."
         ).assertIsDisplayed()
-        composeRule.onNodeWithTag("share_consultation_pdf")
+        composeRule.onNodeWithTag("share_consultation_export")
             .performScrollTo()
             .performClick()
         composeRule.runOnIdle { assertTrue(shareRequested) }

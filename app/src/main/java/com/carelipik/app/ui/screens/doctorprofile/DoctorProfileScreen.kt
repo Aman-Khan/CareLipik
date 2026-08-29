@@ -1,6 +1,11 @@
 package com.carelipik.app.ui.screens.doctorprofile
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -8,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -20,36 +26,71 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.carelipik.app.domain.model.ProcessingPreference
 import com.carelipik.app.domain.transcription.TranscriptionLanguage
+import kotlin.math.abs
+import kotlin.math.sin
 
 @Composable
 fun DoctorProfileScreen(
     uiState: DoctorProfileUiState,
+    voiceUiState: DoctorVoiceEnrollmentUiState,
     onFullNameChanged: (String) -> Unit,
     onSpecialtyChanged: (String) -> Unit,
     onRegistrationNumberChanged: (String) -> Unit,
     onClinicNameChanged: (String) -> Unit,
     onPreferredLanguageChanged: (TranscriptionLanguage) -> Unit,
     onProcessingPreferenceChanged: (ProcessingPreference) -> Unit,
+    onStartVoiceSample: () -> Unit,
+    onStopVoiceSample: () -> Unit,
+    onDeleteVoiceSample: () -> Unit,
     onBack: () -> Unit,
     onSave: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    var permissionDenied by remember { mutableStateOf(false) }
+    val microphonePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        permissionDenied = !isGranted
+        if (isGranted) onStartVoiceSample()
+    }
+    val startVoiceSampleWithPermission = {
+        if (
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            onStartVoiceSample()
+        } else {
+            microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -57,7 +98,13 @@ fun DoctorProfileScreen(
             .padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        ProfileHeader(onBack = onBack)
+        ProfileHeader(
+            onBack = onBack,
+            backEnabled = voiceUiState.status !in setOf(
+                DoctorVoiceEnrollmentStatus.Recording,
+                DoctorVoiceEnrollmentStatus.Saving
+            )
+        )
         ProfileIdentityCard(
             uiState = uiState,
             onFullNameChanged = onFullNameChanged,
@@ -74,9 +121,19 @@ fun DoctorProfileScreen(
             selectedPreference = uiState.processingPreference,
             onPreferenceChanged = onProcessingPreferenceChanged
         )
-        VoiceRecognitionPreview()
+        VoiceRecognitionCard(
+            uiState = voiceUiState,
+            permissionDenied = permissionDenied,
+            onStart = startVoiceSampleWithPermission,
+            onStop = onStopVoiceSample,
+            onDelete = onDeleteVoiceSample
+        )
         Button(
             onClick = onSave,
+            enabled = voiceUiState.status !in setOf(
+                DoctorVoiceEnrollmentStatus.Recording,
+                DoctorVoiceEnrollmentStatus.Saving
+            ),
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("doctor_profile_save")
@@ -84,7 +141,7 @@ fun DoctorProfileScreen(
             Text("Save profile", fontWeight = FontWeight.Bold)
         }
         Text(
-            text = "Profile changes currently remain available for this app session. Secure local persistence is the next component.",
+            text = "Profile text currently remains available for this app session. The voice sample is stored separately in private on-device storage.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
@@ -93,9 +150,9 @@ fun DoctorProfileScreen(
 }
 
 @Composable
-private fun ProfileHeader(onBack: () -> Unit) {
+private fun ProfileHeader(onBack: () -> Unit, backEnabled: Boolean) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        TextButton(onClick = onBack) {
+        TextButton(onClick = onBack, enabled = backEnabled) {
             Text("Back to home")
         }
         Row(
@@ -368,7 +425,13 @@ private fun ProcessingOption(
 }
 
 @Composable
-private fun VoiceRecognitionPreview() {
+private fun VoiceRecognitionCard(
+    uiState: DoctorVoiceEnrollmentUiState,
+    permissionDenied: Boolean,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+    onDelete: () -> Unit
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
@@ -385,7 +448,7 @@ private fun VoiceRecognitionPreview() {
                 shape = RoundedCornerShape(50)
             ) {
                 Text(
-                    text = "PLANNED",
+                    text = if (uiState.hasExistingSample) "ENROLLED · ON DEVICE" else "PRIVATE · ON DEVICE",
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.secondary,
@@ -398,9 +461,187 @@ private fun VoiceRecognitionPreview() {
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "After offline speaker segmentation is available, you will be able to record, replace or delete an on-device doctor voice sample.",
+                text = "A short voice sample will later help identify the doctor's turns. It never leaves this device.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            when (uiState.status) {
+                DoctorVoiceEnrollmentStatus.Recording -> {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = uiState.formattedElapsed,
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            VoiceSampleWaveform(uiState.amplitude)
+                            Text(
+                                text = "Read the phrase below in your normal consultation voice.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    VoiceEnrollmentPhrase()
+                    Button(
+                        onClick = onStop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("doctor_voice_finish")
+                    ) {
+                        Text("Finish and save sample")
+                    }
+                }
+                DoctorVoiceEnrollmentStatus.Saving -> {
+                    Text(
+                        text = "Checking and saving voice sample…",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                DoctorVoiceEnrollmentStatus.Enrolled -> {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.tertiaryContainer,
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "Voice sample ready",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "${uiState.formattedSampleDuration} · Stored only on this phone",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = onStart,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("doctor_voice_replace")
+                        ) {
+                            Text("Replace sample")
+                        }
+                        OutlinedButton(
+                            onClick = onDelete,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Delete")
+                        }
+                    }
+                }
+                DoctorVoiceEnrollmentStatus.Error,
+                DoctorVoiceEnrollmentStatus.NotEnrolled -> {
+                    VoiceEnrollmentPhrase()
+                    Button(
+                        onClick = onStart,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("doctor_voice_record")
+                    ) {
+                        Text(if (uiState.hasExistingSample) "Try replacement again" else "Record voice sample")
+                    }
+                    if (uiState.hasExistingSample) {
+                        OutlinedButton(onClick = onDelete, modifier = Modifier.fillMaxWidth()) {
+                            Text("Delete existing sample")
+                        }
+                    }
+                }
+            }
+            uiState.message?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (uiState.status == DoctorVoiceEnrollmentStatus.Error) {
+                        MaterialTheme.colorScheme.onErrorContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+            }
+            if (permissionDenied) {
+                Text(
+                    text = "Microphone permission is needed only while recording the doctor voice sample.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun VoiceEnrollmentPhrase() {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = "Suggested phrase",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "Please tell me what brings you in today, when the symptoms started, and whether you are taking any medicines.",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                text = "Aim for 10–15 seconds in a quiet room.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun VoiceSampleWaveform(amplitude: Float) {
+    val waveColor = MaterialTheme.colorScheme.tertiary
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .semantics { contentDescription = "Live doctor voice sample microphone level" }
+    ) {
+        val barCount = 21
+        val spacing = size.width / barCount
+        val centerY = size.height / 2f
+        repeat(barCount) { index ->
+            val activity = (0.08f + amplitude.coerceIn(0f, 1f) * 0.92f) *
+                (0.55f + abs(sin(index * 0.72f)) * 0.45f)
+            val halfHeight = size.height * activity / 2f
+            val x = spacing * (index + 0.5f)
+            drawLine(
+                color = waveColor,
+                start = Offset(x, centerY - halfHeight),
+                end = Offset(x, centerY + halfHeight),
+                strokeWidth = spacing * 0.4f,
+                cap = StrokeCap.Round
             )
         }
     }

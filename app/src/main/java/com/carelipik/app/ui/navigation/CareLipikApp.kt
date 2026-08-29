@@ -17,6 +17,7 @@ import com.carelipik.app.ui.screens.doctorreview.DoctorReviewScreen
 import com.carelipik.app.ui.screens.doctorreview.DoctorReviewViewModel
 import com.carelipik.app.ui.screens.doctorprofile.DoctorProfileScreen
 import com.carelipik.app.ui.screens.doctorprofile.DoctorProfileViewModel
+import com.carelipik.app.ui.screens.doctorprofile.DoctorVoiceEnrollmentViewModel
 import com.carelipik.app.ui.screens.home.HomeScreen
 import com.carelipik.app.ui.screens.home.HomeViewModel
 import com.carelipik.app.ui.screens.patientdetails.PatientDetailsScreen
@@ -34,6 +35,7 @@ import com.carelipik.app.ui.screens.welcome.WelcomeViewModel
 fun CareLipikApp(
     homeViewModel: HomeViewModel = viewModel(),
     doctorProfileViewModel: DoctorProfileViewModel = viewModel(),
+    doctorVoiceEnrollmentViewModel: DoctorVoiceEnrollmentViewModel? = null,
     welcomeViewModel: WelcomeViewModel = viewModel(),
     patientDetailsViewModel: PatientDetailsViewModel = viewModel(),
     recordingViewModel: RecordingViewModel? = null,
@@ -48,8 +50,13 @@ fun CareLipikApp(
     val activeTranscriptViewModel = transcriptViewModel ?: viewModel(
         factory = TranscriptViewModel.Factory(context)
     )
+    val activeDoctorVoiceEnrollmentViewModel = doctorVoiceEnrollmentViewModel ?: viewModel(
+        factory = DoctorVoiceEnrollmentViewModel.Factory(context)
+    )
     val homeUiState by homeViewModel.uiState.collectAsState()
     val doctorProfileUiState by doctorProfileViewModel.uiState.collectAsState()
+    val doctorVoiceEnrollmentUiState by
+        activeDoctorVoiceEnrollmentViewModel.uiState.collectAsState()
     val welcomeUiState by welcomeViewModel.uiState.collectAsState()
     val patientDetailsUiState by patientDetailsViewModel.uiState.collectAsState()
     val recordingUiState by activeRecordingViewModel.uiState.collectAsState()
@@ -69,12 +76,16 @@ fun CareLipikApp(
             )
             ConsultationDestination.DoctorProfile -> DoctorProfileScreen(
                 uiState = doctorProfileUiState,
+                voiceUiState = doctorVoiceEnrollmentUiState,
                 onFullNameChanged = doctorProfileViewModel::setFullName,
                 onSpecialtyChanged = doctorProfileViewModel::setSpecialty,
                 onRegistrationNumberChanged = doctorProfileViewModel::setRegistrationNumber,
                 onClinicNameChanged = doctorProfileViewModel::setClinicName,
                 onPreferredLanguageChanged = doctorProfileViewModel::togglePreferredLanguage,
                 onProcessingPreferenceChanged = doctorProfileViewModel::setProcessingPreference,
+                onStartVoiceSample = activeDoctorVoiceEnrollmentViewModel::startRecording,
+                onStopVoiceSample = activeDoctorVoiceEnrollmentViewModel::stopAndSave,
+                onDeleteVoiceSample = activeDoctorVoiceEnrollmentViewModel::deleteSample,
                 onBack = navigator::navigateBack,
                 onSave = {
                     doctorProfileViewModel.saveProfile()?.let { profile ->

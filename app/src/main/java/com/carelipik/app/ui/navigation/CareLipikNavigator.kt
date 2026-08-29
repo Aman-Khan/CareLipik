@@ -15,4 +15,10 @@ class CareLipikNavigator {
         val nextIndex = (destinations.indexOf(currentDestination) + 1) % destinations.size
         currentDestination = destinations[nextIndex]
     }
+
+    fun navigateBack() {
+        val destinations = ConsultationDestination.entries
+        val previousIndex = (destinations.indexOf(currentDestination) - 1).coerceAtLeast(0)
+        currentDestination = destinations[previousIndex]
+    }
 }

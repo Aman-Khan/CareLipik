@@ -1,0 +1,18 @@
+package com.carelipik.app.domain.model
+
+data class ClinicalDraft(
+    val presentingComplaint: String = "",
+    val history: String = "",
+    val keyFindings: String = "",
+    val assessmentNotes: String = "",
+    val planNotes: String = ""
+) {
+    val hasContent: Boolean
+        get() = listOf(
+            presentingComplaint,
+            history,
+            keyFindings,
+            assessmentNotes,
+            planNotes
+        ).any(String::isNotBlank)
+}

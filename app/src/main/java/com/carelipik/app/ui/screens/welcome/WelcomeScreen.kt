@@ -6,7 +6,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
@@ -28,7 +31,11 @@ fun WelcomeScreen(
     modifier: Modifier = Modifier
 ) {
     Column(
-        modifier = modifier.fillMaxSize().padding(24.dp),
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .navigationBarsPadding()
+            .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         Text(text = "CareLipik", style = MaterialTheme.typography.displaySmall)

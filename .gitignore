@@ -12,7 +12,10 @@
 /captures
 .externalNativeBuild
 .cxx
+/output/
+/tmp/
 local.properties
 
 # Downloaded offline speech models are local build inputs, never source-controlled.
 /app/src/main/assets/models/
+/tools/offline_speaker_diarization/model_candidates/

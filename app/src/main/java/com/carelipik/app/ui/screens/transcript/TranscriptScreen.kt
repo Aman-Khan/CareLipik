@@ -49,6 +49,7 @@ fun TranscriptScreen(
     onTranscriptChanged: (String) -> Unit,
     onConfirmConcern: (String) -> Unit,
     onApplySuggestion: (String) -> Unit,
+    onAnalyzeTermsOnline: () -> Unit,
     onViewModeChanged: (TranscriptViewMode) -> Unit,
     onSpeakerRoleAssigned: (String, SpeakerRole) -> Unit,
     onRetry: () -> Unit,
@@ -86,6 +87,17 @@ fun TranscriptScreen(
                 onRetry = onRetry
             )
             TranscriptStatus.Ready -> {
+                uiState.speakerSeparationWarning?.let { warning ->
+                    SpeakerSeparationWarning(warning)
+                }
+                if (!uiState.engine.isOffline) {
+                    OnlineClinicalAnalysisPanel(
+                        source = uiState.clinicalAnalysisSource,
+                        warning = uiState.clinicalAnalysisWarning,
+                        isAnalyzing = uiState.isAnalyzingTerms,
+                        onAnalyze = onAnalyzeTermsOnline
+                    )
+                }
                 if (uiState.concerns.isNotEmpty()) {
                     TranscriptTermReviewPanel(
                         uiState = uiState,
@@ -141,6 +153,63 @@ fun TranscriptScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun OnlineClinicalAnalysisPanel(
+    source: String?,
+    warning: String?,
+    isAnalyzing: Boolean,
+    onAnalyze: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.tertiaryContainer
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = if (source == null) "Online medical term analysis" else "$source term analysis",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = warning ?: "Candidate terms are extracted online and must be confirmed by the doctor.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onTertiaryContainer
+            )
+            OutlinedButton(
+                onClick = onAnalyze,
+                enabled = !isAnalyzing,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (isAnalyzing) {
+                    CircularProgressIndicator(modifier = Modifier.padding(4.dp))
+                } else {
+                    Text(if (source == null) "Analyze medical terms" else "Analyze again")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpeakerSeparationWarning(message: String) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.errorContainer
+    ) {
+        Text(
+            text = message,
+            modifier = Modifier.padding(14.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onErrorContainer
+        )
     }
 }
 

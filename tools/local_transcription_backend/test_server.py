@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from server import (
     TranscriptionConfig,
     create_server,
+    normalize_clinical_entities,
     normalize_provider_result,
 )
 
@@ -29,6 +30,35 @@ class FakeBatchClient:
         if job_id != "job_test":
             raise AssertionError("Unexpected job id")
         return self.next_status
+
+
+class FakeClinicalClient:
+    def __init__(self) -> None:
+        self.request = None
+
+    def analyze(self, transcript, language_code):
+        self.request = (transcript, language_code)
+        return {
+            "source": "gemini",
+            "codes_verified": False,
+            "entities": [
+                {
+                    "id": "cloud:MEDICATION:7:dolo 650",
+                    "source_text": "Dolo 650",
+                    "normalized_text": "paracetamol 650 mg",
+                    "brand_name": "Dolo",
+                    "generic_salt": "paracetamol",
+                    "strength": "650 mg",
+                    "category": "MEDICATION",
+                    "assertion": "PRESENT",
+                    "confidence": 0.94,
+                    "possible_asr_error": False,
+                    "start_index": 7,
+                    "end_index_exclusive": 15,
+                    "verification_status": "doctor_confirmation_required",
+                }
+            ],
+        }
 
 
 @contextmanager
@@ -121,6 +151,127 @@ class LocalBackendTest(unittest.TestCase):
         self.assertEqual("1", normalized["segments"][1]["speaker_id"])
         self.assertNotIn("doctor", json.dumps(normalized).lower())
         self.assertNotIn("patient", json.dumps(normalized).lower())
+
+    def test_provider_result_sorts_timed_turns_without_merging_them(self):
+        normalized = normalize_provider_result(
+            "job_test",
+            {
+                "transcript": "Doctor then patient then doctor",
+                "diarized_transcript": {
+                    "entries": [
+                        {
+                            "speaker_id": "1",
+                            "transcript": "I have a fever",
+                            "start_time_seconds": 2.8,
+                            "end_time_seconds": 4.2,
+                        },
+                        {
+                            "speaker_id": "0",
+                            "transcript": "Good morning",
+                            "start_time_seconds": 0.01,
+                            "end_time_seconds": 2.5,
+                        },
+                        {
+                            "speaker_id": "0",
+                            "transcript": "How high was it?",
+                            "start_time_seconds": 4.5,
+                            "end_time_seconds": 5.8,
+                        },
+                    ]
+                },
+            },
+        )
+
+        self.assertEqual(["0", "1", "0"], [item["speaker_id"] for item in normalized["segments"]])
+        self.assertEqual(0.01, normalized["segments"][0]["start_time_seconds"])
+        self.assertNotIn("speaker_separation_warning", normalized)
+
+    def test_provider_result_does_not_present_one_voice_as_diarized(self):
+        normalized = normalize_provider_result(
+            "job_test",
+            {
+                "transcript": "One continuous block",
+                "diarized_transcript": {
+                    "entries": [
+                        {"speaker_id": "0", "transcript": "One continuous block"},
+                    ]
+                },
+            },
+        )
+
+        self.assertEqual([], normalized["segments"])
+        self.assertIn("exactly two voices", normalized["speaker_separation_warning"])
+
+    def test_clinical_normalization_rejects_hallucinated_source_text(self):
+        normalized = normalize_clinical_entities(
+            "Patient takes Dolo 650 and denies chest pain.",
+            {
+                "entities": [
+                    {
+                        "source_text": "Dolo 650",
+                        "normalized_text": "paracetamol 650 mg",
+                        "brand_name": "Dolo",
+                        "generic_salt": "paracetamol",
+                        "strength": "650 mg",
+                        "category": "MEDICATION",
+                        "assertion": "PRESENT",
+                        "confidence": 1.4,
+                        "possible_asr_error": False,
+                    },
+                    {
+                        "source_text": "azithromycin",
+                        "normalized_text": "azithromycin",
+                        "brand_name": "",
+                        "generic_salt": "azithromycin",
+                        "strength": "",
+                        "category": "MEDICATION",
+                        "assertion": "PRESENT",
+                        "confidence": 0.9,
+                        "possible_asr_error": False,
+                    },
+                ]
+            },
+        )
+
+        self.assertEqual(1, len(normalized["entities"]))
+        self.assertEqual("Dolo 650", normalized["entities"][0]["source_text"])
+        self.assertEqual("paracetamol", normalized["entities"][0]["generic_salt"])
+        self.assertEqual(1.0, normalized["entities"][0]["confidence"])
+        self.assertFalse(normalized["codes_verified"])
+
+    def test_clinical_endpoint_forwards_only_transcript_and_language(self):
+        batch_client = FakeBatchClient()
+        clinical_client = FakeClinicalClient()
+        body = json.dumps(
+            {"transcript": "I take Dolo 650.", "language_code": "en-IN"}
+        ).encode("utf-8")
+
+        with running_server_with_clinical(batch_client, clinical_client) as base_url:
+            request = urllib.request.Request(
+                f"{base_url}/v1/clinical-entities",
+                data=body,
+                method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(request) as response:
+                result = json.load(response)
+
+        self.assertEqual(200, response.status)
+        self.assertEqual(("I take Dolo 650.", "en-IN"), clinical_client.request)
+        self.assertEqual("MEDICATION", result["entities"][0]["category"])
+
+
+@contextmanager
+def running_server_with_clinical(batch_client, clinical_client):
+    server = create_server("127.0.0.1", 0, batch_client, clinical_client)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
 if __name__ == "__main__":

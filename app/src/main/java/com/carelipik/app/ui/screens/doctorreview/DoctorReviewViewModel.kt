@@ -39,25 +39,30 @@ class DoctorReviewViewModel(
         return _uiState.value.canApprove
     }
 
-    fun approve(patient: PatientDetailsUiState, onSaved: () -> Unit): Boolean {
+    fun approve(
+        patient: PatientDetailsUiState,
+        onSaved: (ApprovedConsultation) -> Unit
+    ): Boolean {
         if (!validateApproval()) return false
         val store = repository ?: return false
         val consultation = ApprovedConsultation(
             id = newId(),
             approvedAtMillis = currentTimeMillis(),
             patientName = patient.patientName.trim(),
-            patientAge = patient.age.trim(),
-            visitReason = patient.visitReason.trim(),
+            patientAge = patient.age.trim().ifBlank { _uiState.value.draft.patientAge.trim() },
+            visitReason = patient.visitReason.trim().ifBlank {
+                _uiState.value.draft.presentingComplaint.trim()
+            },
             draft = _uiState.value.draft
         )
         if (processAsynchronously) {
             viewModelScope.launch {
                 store.save(consultation)
-                onSaved()
+                onSaved(consultation)
             }
         } else {
             runBlocking { store.save(consultation) }
-            onSaved()
+            onSaved(consultation)
         }
         return true
     }

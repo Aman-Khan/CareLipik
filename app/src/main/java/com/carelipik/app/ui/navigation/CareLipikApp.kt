@@ -1,5 +1,7 @@
 package com.carelipik.app.ui.navigation
 
+import android.content.Intent
+import java.io.File
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
@@ -9,6 +11,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.carelipik.app.domain.model.ConsultationDestination
 import com.carelipik.app.ui.screens.clinicaldraft.ClinicalDraftScreen
@@ -20,11 +23,12 @@ import com.carelipik.app.ui.screens.doctorprofile.DoctorProfileViewModel
 import com.carelipik.app.ui.screens.doctorprofile.DoctorVoiceEnrollmentViewModel
 import com.carelipik.app.ui.screens.home.HomeScreen
 import com.carelipik.app.ui.screens.home.HomeViewModel
+import com.carelipik.app.ui.screens.export.ConsultationExportScreen
+import com.carelipik.app.ui.screens.export.ConsultationExportViewModel
 import com.carelipik.app.ui.screens.history.ConsultationHistoryScreen
 import com.carelipik.app.ui.screens.history.ConsultationHistoryViewModel
 import com.carelipik.app.ui.screens.patientdetails.PatientDetailsScreen
 import com.carelipik.app.ui.screens.patientdetails.PatientDetailsViewModel
-import com.carelipik.app.ui.screens.placeholder.PlaceholderScreen
 import com.carelipik.app.ui.screens.recording.RecordingScreen
 import com.carelipik.app.ui.screens.recording.RecordingViewModel
 import com.carelipik.app.ui.screens.transcript.TranscriptScreen
@@ -43,7 +47,8 @@ fun CareLipikApp(
     transcriptViewModel: TranscriptViewModel? = null,
     clinicalDraftViewModel: ClinicalDraftViewModel = viewModel(),
     doctorReviewViewModel: DoctorReviewViewModel? = null,
-    consultationHistoryViewModel: ConsultationHistoryViewModel? = null
+    consultationHistoryViewModel: ConsultationHistoryViewModel? = null,
+    consultationExportViewModel: ConsultationExportViewModel? = null
 ) {
     val context = LocalContext.current
     val activeRecordingViewModel = recordingViewModel ?: viewModel(
@@ -61,6 +66,9 @@ fun CareLipikApp(
     val activeConsultationHistoryViewModel = consultationHistoryViewModel ?: viewModel(
         factory = ConsultationHistoryViewModel.Factory(context)
     )
+    val activeConsultationExportViewModel = consultationExportViewModel ?: viewModel(
+        factory = ConsultationExportViewModel.Factory(context)
+    )
     val homeUiState by homeViewModel.uiState.collectAsState()
     val doctorProfileUiState by doctorProfileViewModel.uiState.collectAsState()
     val doctorVoiceEnrollmentUiState by
@@ -72,6 +80,7 @@ fun CareLipikApp(
     val clinicalDraftUiState by clinicalDraftViewModel.uiState.collectAsState()
     val doctorReviewUiState by activeDoctorReviewViewModel.uiState.collectAsState()
     val consultationHistoryUiState by activeConsultationHistoryViewModel.uiState.collectAsState()
+    val consultationExportUiState by activeConsultationExportViewModel.uiState.collectAsState()
     val navigator = remember { CareLipikNavigator() }
 
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
@@ -107,6 +116,10 @@ fun CareLipikApp(
             ConsultationDestination.ConsultationHistory -> ConsultationHistoryScreen(
                 uiState = consultationHistoryUiState,
                 onOpen = activeConsultationHistoryViewModel::select,
+                onExport = { consultation ->
+                    activeConsultationExportViewModel.load(consultation)
+                    navigator.openExportFromHistory()
+                },
                 onDelete = activeConsultationHistoryViewModel::delete,
                 onBack = {
                     if (consultationHistoryUiState.selected != null) {
@@ -129,6 +142,7 @@ fun CareLipikApp(
                 onTranscriptChanged = activeTranscriptViewModel::setTranscript,
                 onConfirmConcern = activeTranscriptViewModel::confirmConcern,
                 onApplySuggestion = activeTranscriptViewModel::applySuggestedReplacement,
+                onAnalyzeTermsOnline = activeTranscriptViewModel::analyzeTermsOnline,
                 onViewModeChanged = activeTranscriptViewModel::setViewMode,
                 onSpeakerRoleAssigned = activeTranscriptViewModel::assignSpeakerRole,
                 onRetry = activeTranscriptViewModel::retry,
@@ -143,6 +157,7 @@ fun CareLipikApp(
             )
             ConsultationDestination.ClinicalDraft -> ClinicalDraftScreen(
                 uiState = clinicalDraftUiState,
+                onPatientAgeChanged = clinicalDraftViewModel::setPatientAge,
                 onPresentingComplaintChanged = clinicalDraftViewModel::setPresentingComplaint,
                 onHistoryChanged = clinicalDraftViewModel::setHistory,
                 onKeyFindingsChanged = clinicalDraftViewModel::setKeyFindings,
@@ -165,9 +180,10 @@ fun CareLipikApp(
                 onApprove = {
                     activeDoctorReviewViewModel.approve(
                         patient = patientDetailsViewModel.currentDetails(),
-                        onSaved = {
+                        onSaved = { consultation ->
                             activeRecordingViewModel.discardRecording()
                             activeConsultationHistoryViewModel.refresh()
+                            activeConsultationExportViewModel.load(consultation)
                             navigator.navigateToNext()
                         }
                     )
@@ -217,9 +233,29 @@ fun CareLipikApp(
                 },
                 modifier = Modifier.padding(innerPadding)
             )
-            else -> PlaceholderScreen(
-                destination = navigator.currentDestination,
-                onNext = navigator::navigateToNext,
+            ConsultationDestination.Export -> ConsultationExportScreen(
+                uiState = consultationExportUiState,
+                onFormatSelected = activeConsultationExportViewModel::selectFormat,
+                onGenerate = activeConsultationExportViewModel::generate,
+                onShare = {
+                    consultationExportUiState.exportedFile?.let { exportedFile ->
+                        val uri = FileProvider.getUriForFile(
+                            context,
+                            "${context.packageName}.fileprovider",
+                            File(exportedFile.localPath)
+                        )
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = exportedFile.mimeType
+                            putExtra(Intent.EXTRA_STREAM, uri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(
+                            Intent.createChooser(shareIntent, "Share clinical note")
+                        )
+                    }
+                },
+                onBack = navigator::navigateBack,
+                onFinish = navigator::finishExport,
                 modifier = Modifier.padding(innerPadding)
             )
         }

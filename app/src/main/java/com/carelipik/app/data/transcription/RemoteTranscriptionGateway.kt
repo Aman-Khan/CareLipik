@@ -15,13 +15,16 @@ data class RemoteTranscriptionRequest(
 
 data class RemoteSpeakerSegment(
     val speakerId: String,
-    val transcript: String
+    val transcript: String,
+    val startTimeSeconds: Double? = null,
+    val endTimeSeconds: Double? = null
 )
 
 sealed interface RemoteTranscriptionResult {
     data class Success(
         val transcript: String,
-        val segments: List<RemoteSpeakerSegment> = emptyList()
+        val segments: List<RemoteSpeakerSegment> = emptyList(),
+        val speakerSeparationWarning: String? = null
     ) : RemoteTranscriptionResult
 
     data class Failure(val message: String) : RemoteTranscriptionResult

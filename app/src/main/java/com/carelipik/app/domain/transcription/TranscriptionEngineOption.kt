@@ -13,10 +13,11 @@ enum class TranscriptionEngineOption(
         supportedLanguages = setOf(TranscriptionLanguage.English)
     ),
     SaarasHindiHinglish(
-        displayName = "Hindi & Hinglish (Saaras)",
-        description = "Online Indian-language ASR with two-speaker separation",
+        displayName = "Online multilingual (Saaras)",
+        description = "Cloud ASR with batch two-speaker separation for Indian conversations",
         isOffline = false,
         supportedLanguages = setOf(
+            TranscriptionLanguage.English,
             TranscriptionLanguage.Hindi,
             TranscriptionLanguage.Hinglish
         )

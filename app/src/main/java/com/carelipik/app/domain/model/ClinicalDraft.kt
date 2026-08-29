@@ -1,11 +1,13 @@
 package com.carelipik.app.domain.model
 
 data class ClinicalDraft(
+    val patientAge: String = "",
     val presentingComplaint: String = "",
     val history: String = "",
     val keyFindings: String = "",
     val assessmentNotes: String = "",
-    val planNotes: String = ""
+    val planNotes: String = "",
+    val reviewedTranscript: String = ""
 ) {
     val hasContent: Boolean
         get() = listOf(
@@ -13,6 +15,7 @@ data class ClinicalDraft(
             history,
             keyFindings,
             assessmentNotes,
-            planNotes
+            planNotes,
+            reviewedTranscript
         ).any(String::isNotBlank)
 }

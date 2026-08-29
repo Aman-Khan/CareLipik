@@ -26,13 +26,14 @@ import java.util.Date
 fun ConsultationHistoryScreen(
     uiState: ConsultationHistoryUiState,
     onOpen: (String) -> Unit,
+    onExport: (ApprovedConsultation) -> Unit,
     onDelete: (String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val selected = uiState.selected
     if (selected != null) {
-        ConsultationHistoryDetail(selected, onDelete, onBack, modifier)
+        ConsultationHistoryDetail(selected, onExport, onDelete, onBack, modifier)
         return
     }
     Column(
@@ -71,6 +72,7 @@ fun ConsultationHistoryScreen(
 @Composable
 private fun ConsultationHistoryDetail(
     item: ApprovedConsultation,
+    onExport: (ApprovedConsultation) -> Unit,
     onDelete: (String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier
@@ -92,6 +94,16 @@ private fun ConsultationHistoryDetail(
         HistorySection("Key findings", item.draft.keyFindings)
         HistorySection("Assessment notes", item.draft.assessmentNotes)
         HistorySection("Plan notes", item.draft.planNotes)
+        HistorySection(
+            "Complete reviewed transcript",
+            item.draft.reviewedTranscript.ifBlank { "Not available for this older record" }
+        )
+        androidx.compose.material3.Button(
+            onClick = { onExport(item) },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Export approved PDF")
+        }
         OutlinedButton(onClick = { onDelete(item.id) }, modifier = Modifier.fillMaxWidth()) {
             Text("Delete consultation")
         }

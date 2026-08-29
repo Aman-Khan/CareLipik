@@ -7,6 +7,10 @@ import com.carelipik.app.domain.transcription.TranscriptionEngineResolver
 import com.carelipik.app.domain.transcription.TranscriptionResult
 import com.carelipik.app.domain.transcription.TranscriptSegment
 import com.carelipik.app.domain.transcription.SpeakerRole
+import com.carelipik.app.domain.transcription.OnlineTranscriptReviewAnalyzer
+import com.carelipik.app.domain.transcription.OnlineTranscriptReviewResult
+import com.carelipik.app.domain.transcription.TranscriptConcern
+import com.carelipik.app.domain.transcription.TranscriptConcernType
 import com.carelipik.app.domain.voice.DoctorVoiceRoleMatch
 import com.carelipik.app.domain.voice.DoctorVoiceRoleMatchResult
 import org.junit.Assert.assertEquals
@@ -180,10 +184,51 @@ class TranscriptViewModelTest {
         assertEquals(SpeakerRole.Patient, viewModel.uiState.value.speakerRoles["speaker-2"])
     }
 
+    @Test
+    fun onlineEngine_usesCloudCandidatesAndRequiresDoctorConfirmation() {
+        val cloudConcern = TranscriptConcern(
+            id = "cloud:MEDICATION:7:dolo 650",
+            text = "Dolo 650",
+            startIndex = 7,
+            endIndexExclusive = 15,
+            type = TranscriptConcernType.MedicalTerm,
+            reason = "AI medication candidate; doctor confirmation required."
+        )
+        val viewModel = TranscriptViewModel(
+            engineResolver = resolver(
+                StubEngine(
+                    result = TranscriptionResult.Success("I take Dolo 650."),
+                    option = TranscriptionEngineOption.SaarasHindiHinglish
+                )
+            ),
+            onlineReviewAnalyzer = OnlineTranscriptReviewAnalyzer { _, _ ->
+                OnlineTranscriptReviewResult.Success(
+                    concerns = listOf(cloudConcern),
+                    sourceName = "Gemini",
+                    codesVerified = false
+                )
+            },
+            processAsynchronously = false
+        )
+
+        viewModel.transcribe(
+            "/private/recording.wav",
+            TranscriptionLanguage.English,
+            TranscriptionEngineOption.SaarasHindiHinglish
+        )
+
+        assertEquals(listOf(cloudConcern), viewModel.uiState.value.concerns)
+        assertEquals("Gemini", viewModel.uiState.value.clinicalAnalysisSource)
+        assertFalse(viewModel.uiState.value.canContinue)
+        viewModel.confirmConcern(cloudConcern.id)
+        assertTrue(viewModel.uiState.value.canContinue)
+    }
+
     private class StubEngine(
-        private val result: TranscriptionResult
+        private val result: TranscriptionResult,
+        override val option: TranscriptionEngineOption =
+            TranscriptionEngineOption.WhisperMultilingual
     ) : AudioTranscriptionEngine {
-        override val option: TranscriptionEngineOption = TranscriptionEngineOption.WhisperMultilingual
         var receivedLanguage: TranscriptionLanguage? = null
 
         override fun transcribe(

@@ -26,6 +26,7 @@ import com.carelipik.app.ui.components.ConsultationScreenHeader
 @Composable
 fun ClinicalDraftScreen(
     uiState: ClinicalDraftUiState,
+    onPatientAgeChanged: (String) -> Unit,
     onPresentingComplaintChanged: (String) -> Unit,
     onHistoryChanged: (String) -> Unit,
     onKeyFindingsChanged: (String) -> Unit,
@@ -63,6 +64,12 @@ fun ClinicalDraftScreen(
             )
             ClinicalDraftStatus.Ready -> {
                 DraftField(
+                    label = "Patient age from reviewed transcript",
+                    value = uiState.draft.patientAge,
+                    onValueChanged = onPatientAgeChanged,
+                    minLines = 1
+                )
+                DraftField(
                     label = "Presenting complaint",
                     value = uiState.draft.presentingComplaint,
                     onValueChanged = onPresentingComplaintChanged
@@ -87,6 +94,7 @@ fun ClinicalDraftScreen(
                     value = uiState.draft.planNotes,
                     onValueChanged = onPlanNotesChanged
                 )
+                ReadOnlySourceTranscript(uiState.draft.reviewedTranscript)
                 uiState.draftError?.let { error ->
                     Text(error, color = MaterialTheme.colorScheme.error)
                 }
@@ -110,9 +118,11 @@ private fun ReviewNotice() {
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Text("Unverified prototype draft", style = MaterialTheme.typography.titleSmall)
+            Text("Transcript-backed draft", style = MaterialTheme.typography.titleSmall)
             Text(
-                "This sample was not extracted from your recording. Do not use it as a medical record. The doctor must verify, edit, or remove every statement.",
+                "Patient statements are copied from the reviewed transcript without clinical " +
+                    "interpretation. Organize and correct every section before approval. The " +
+                    "complete reviewed transcript is retained as a source appendix.",
                 style = MaterialTheme.typography.bodyMedium
             )
         }
@@ -120,14 +130,35 @@ private fun ReviewNotice() {
 }
 
 @Composable
-private fun DraftField(label: String, value: String, onValueChanged: (String) -> Unit) {
+private fun DraftField(
+    label: String,
+    value: String,
+    onValueChanged: (String) -> Unit,
+    minLines: Int = 3
+) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChanged,
         label = { Text(label) },
-        minLines = 3,
+        minLines = minLines,
         modifier = Modifier.fillMaxWidth()
     )
+}
+
+@Composable
+private fun ReadOnlySourceTranscript(transcript: String) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("Reviewed transcript appendix", style = MaterialTheme.typography.titleSmall)
+            Text(
+                transcript.ifBlank { "No reviewed transcript available" },
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+    }
 }
 
 @Composable

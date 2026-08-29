@@ -88,7 +88,7 @@ class HttpRemoteTranscriptionGateway(
             if (response.code !in 200..299) throw BackendException(response.errorMessage())
             val json = JSONObject(response.body)
             if (json.optString("status").equals("completed", ignoreCase = true)) {
-                return JobSubmission.Completed(json.toRemoteResult())
+                return JobSubmission.Completed(parseCompletedResponse(response.body))
             }
             val jobId = json.optString("id").ifBlank { json.optString("job_id") }
             require(jobId.matches(SAFE_JOB_ID)) { "Backend returned an invalid job identifier." }
@@ -107,7 +107,7 @@ class HttpRemoteTranscriptionGateway(
                 if (response.code !in 200..299) throw BackendException(response.errorMessage())
                 val json = JSONObject(response.body)
                 when (json.optString("status").lowercase()) {
-                    "completed" -> return json.toRemoteResult()
+                    "completed" -> return parseCompletedResponse(response.body)
                     "failed" -> return RemoteTranscriptionResult.Failure(
                         json.optString("message").ifBlank {
                             "The online transcription service could not process this recording."
@@ -153,6 +153,9 @@ class HttpRemoteTranscriptionGateway(
         return backendMessage.ifBlank { "Transcription backend returned HTTP $code." }
     }
 
+    internal fun parseCompletedResponse(body: String): RemoteTranscriptionResult.Success =
+        JSONObject(body).toRemoteResult()
+
     private fun JSONObject.toRemoteResult(): RemoteTranscriptionResult.Success {
         val segmentsJson = optJSONArray("segments")
             ?: optJSONObject("diarized_transcript")?.optJSONArray("entries")
@@ -165,7 +168,9 @@ class HttpRemoteTranscriptionGateway(
                         add(
                             RemoteSpeakerSegment(
                                 speakerId = item.optString("speaker_id", "unknown"),
-                                transcript = text
+                                transcript = text,
+                                startTimeSeconds = item.optionalDouble("start_time_seconds"),
+                                endTimeSeconds = item.optionalDouble("end_time_seconds")
                             )
                         )
                     }
@@ -174,9 +179,20 @@ class HttpRemoteTranscriptionGateway(
         }
         return RemoteTranscriptionResult.Success(
             transcript = optString("transcript"),
-            segments = segments
+            segments = segments,
+            speakerSeparationWarning = optionalString("speaker_separation_warning")
         )
     }
+
+    private fun JSONObject.optionalString(name: String): String? =
+        normalizeOptionalString(
+            fieldPresent = has(name),
+            isJsonNull = isNull(name),
+            value = optString(name)
+        )
+
+    private fun JSONObject.optionalDouble(name: String): Double? =
+        if (has(name) && !isNull(name)) optDouble(name).takeIf { !it.isNaN() } else null
 
     private fun DataOutputStream.writeFormField(
         boundary: String,
@@ -218,3 +234,9 @@ class HttpRemoteTranscriptionGateway(
         val LOCAL_HOSTS = setOf("127.0.0.1", "localhost")
     }
 }
+
+internal fun normalizeOptionalString(
+    fieldPresent: Boolean,
+    isJsonNull: Boolean,
+    value: String
+): String? = if (fieldPresent && !isJsonNull) value.ifBlank { null } else null

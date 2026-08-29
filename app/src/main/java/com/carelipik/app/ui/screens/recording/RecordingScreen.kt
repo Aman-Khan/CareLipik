@@ -344,8 +344,8 @@ private fun TranscriptionSetupPanel(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             SectionLabel(number = "2", title = "Transcription engine")
             Text(
-                text = "MedASR is available for English, Saaras for Hindi and Hinglish, " +
-                    "and Whisper remains the offline fallback.",
+                text = "Saaras provides online two-speaker separation for English, Hindi, and " +
+                    "Hinglish. MedASR and Whisper remain offline options.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -640,14 +640,16 @@ private fun languageSegmentLabel(language: TranscriptionLanguage): String = when
 
 private fun languageSupportingText(language: TranscriptionLanguage): String = when (language) {
     TranscriptionLanguage.Auto -> "Whisper detects the language without uploading audio."
-    TranscriptionLanguage.English -> "Best for English consultations; MedASR is recommended."
+    TranscriptionLanguage.English ->
+        "Saaras is recommended for online speaker separation; MedASR stays offline."
     TranscriptionLanguage.Hindi -> "Best for conversations spoken mostly in Hindi."
     TranscriptionLanguage.Hinglish -> "Best when Hindi and English are naturally mixed."
 }
 
 private fun engineUnavailableMessage(engine: TranscriptionEngineOption): String = when (engine) {
     TranscriptionEngineOption.MedAsrEnglish -> "Choose English to use MedASR."
-    TranscriptionEngineOption.SaarasHindiHinglish -> "Choose Hindi or Hinglish to use Saaras."
+    TranscriptionEngineOption.SaarasHindiHinglish ->
+        "Choose English, Hindi, or Hinglish to use Saaras."
     TranscriptionEngineOption.WhisperMultilingual -> "Unavailable for this language."
 }
 

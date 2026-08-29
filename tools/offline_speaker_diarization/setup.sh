@@ -5,7 +5,7 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 REPOSITORY_ROOT="$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)"
 MODEL_DIRECTORY="$REPOSITORY_ROOT/app/src/main/assets/models/sherpa-onnx-speaker-diarization"
 SEGMENTATION_FILE="$MODEL_DIRECTORY/segmentation-model.onnx"
-EMBEDDING_FILE="$MODEL_DIRECTORY/embedding-model.onnx"
+EMBEDDING_FILE="$MODEL_DIRECTORY/nemo_en_titanet_small.onnx"
 
 if [ "${1:-}" = "--check" ]; then
     if [ -s "$SEGMENTATION_FILE" ] && [ -s "$EMBEDDING_FILE" ]; then
@@ -29,7 +29,7 @@ cp "$DOWNLOAD_DIRECTORY/sherpa-onnx-pyannote-segmentation-3-0/model.onnx" \
     "$SEGMENTATION_FILE"
 
 curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 --max-time 300 \
-    "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx" \
+    "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/nemo_en_titanet_small.onnx" \
     -o "$EMBEDDING_FILE"
 
 test -s "$SEGMENTATION_FILE"

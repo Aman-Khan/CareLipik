@@ -57,9 +57,10 @@ class RuleBasedTranscriptReviewAnalyzer : TranscriptReviewAnalyzer {
         val term: String,
         val type: TranscriptConcernType,
         val languages: Set<TranscriptionLanguage>,
-        val suggestedReplacement: String? = null
+        val suggestedReplacement: String? = null,
+        val customPattern: Regex? = null
     ) {
-        val pattern = Regex(
+        val pattern = customPattern ?: Regex(
             pattern = "(?<![\\p{L}\\p{M}\\p{N}])${Regex.escape(term)}" +
                 "(?![\\p{L}\\p{M}\\p{N}])",
             option = RegexOption.IGNORE_CASE
@@ -82,6 +83,18 @@ class RuleBasedTranscriptReviewAnalyzer : TranscriptReviewAnalyzer {
             ReviewRule("paracitamol", TranscriptConcernType.PossibleRecognitionError, ALL, "paracetamol"),
             ReviewRule("cup", TranscriptConcernType.PossibleRecognitionError, ALL, "cough"),
             ReviewRule("coff", TranscriptConcernType.PossibleRecognitionError, ALL, "cough"),
+            ReviewRule("cuff", TranscriptConcernType.PossibleRecognitionError, ALL, "cough"),
+            ReviewRule("golf", TranscriptConcernType.PossibleRecognitionError, ALL, "cough"),
+            ReviewRule(
+                "Iron",
+                TranscriptConcernType.PossibleRecognitionError,
+                ALL,
+                "I am",
+                Regex("\\bIron(?=\\s+\\d{1,3}\\s+(?:years?|yrs?)\\s+old\\b)", RegexOption.IGNORE_CASE)
+            ),
+            ReviewRule("soar throat", TranscriptConcernType.PossibleRecognitionError, ALL, "sore throat"),
+            ReviewRule("yellow flame", TranscriptConcernType.PossibleRecognitionError, ALL, "yellow phlegm"),
+            ReviewRule("loose tools", TranscriptConcernType.PossibleRecognitionError, ALL, "loose stools"),
             ReviewRule("khasi", TranscriptConcernType.PossibleRecognitionError, ALL, "khansi"),
             ReviewRule("खासी", TranscriptConcernType.PossibleRecognitionError, HINDI, "खांसी"),
             ReviewRule("breathing difficulty", TranscriptConcernType.MedicalTerm, ALL),

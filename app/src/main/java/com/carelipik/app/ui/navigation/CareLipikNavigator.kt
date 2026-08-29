@@ -9,6 +9,7 @@ import com.carelipik.app.domain.model.ConsultationDestination
 class CareLipikNavigator {
     var currentDestination by mutableStateOf(ConsultationDestination.Home)
         private set
+    private var exportReturnDestination = ConsultationDestination.DoctorReview
 
     fun startConsultation() {
         currentDestination = ConsultationDestination.Welcome
@@ -22,6 +23,15 @@ class CareLipikNavigator {
         currentDestination = ConsultationDestination.ConsultationHistory
     }
 
+    fun openExportFromHistory() {
+        exportReturnDestination = ConsultationDestination.ConsultationHistory
+        currentDestination = ConsultationDestination.Export
+    }
+
+    fun finishExport() {
+        currentDestination = ConsultationDestination.Home
+    }
+
     fun navigateToNext() {
         currentDestination = when (currentDestination) {
             ConsultationDestination.Home -> ConsultationDestination.Welcome
@@ -32,7 +42,10 @@ class CareLipikNavigator {
             ConsultationDestination.ConsultationRecording -> ConsultationDestination.Transcript
             ConsultationDestination.Transcript -> ConsultationDestination.ClinicalDraft
             ConsultationDestination.ClinicalDraft -> ConsultationDestination.DoctorReview
-            ConsultationDestination.DoctorReview -> ConsultationDestination.Export
+            ConsultationDestination.DoctorReview -> {
+                exportReturnDestination = ConsultationDestination.DoctorReview
+                ConsultationDestination.Export
+            }
             ConsultationDestination.Export -> ConsultationDestination.Home
         }
     }
@@ -48,7 +61,7 @@ class CareLipikNavigator {
             ConsultationDestination.Transcript -> ConsultationDestination.ConsultationRecording
             ConsultationDestination.ClinicalDraft -> ConsultationDestination.Transcript
             ConsultationDestination.DoctorReview -> ConsultationDestination.ClinicalDraft
-            ConsultationDestination.Export -> ConsultationDestination.DoctorReview
+            ConsultationDestination.Export -> exportReturnDestination
         }
     }
 }

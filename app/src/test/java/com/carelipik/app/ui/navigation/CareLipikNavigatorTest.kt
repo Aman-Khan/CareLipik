@@ -65,4 +65,26 @@ class CareLipikNavigatorTest {
         navigator.navigateBack()
         assertEquals(ConsultationDestination.Home, navigator.currentDestination)
     }
+
+    @Test
+    fun exportOpenedFromHistory_returnsToHistory() {
+        val navigator = CareLipikNavigator()
+        navigator.openConsultationHistory()
+        navigator.openExportFromHistory()
+
+        navigator.navigateBack()
+
+        assertEquals(ConsultationDestination.ConsultationHistory, navigator.currentDestination)
+    }
+
+    @Test
+    fun finishingExport_returnsHome() {
+        val navigator = CareLipikNavigator()
+        navigator.openConsultationHistory()
+        navigator.openExportFromHistory()
+
+        navigator.finishExport()
+
+        assertEquals(ConsultationDestination.Home, navigator.currentDestination)
+    }
 }

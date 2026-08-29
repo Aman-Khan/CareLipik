@@ -6,7 +6,7 @@ import com.carelipik.app.domain.transcription.TranscriptionLanguage
 import com.carelipik.app.domain.transcription.TranscriptionResult
 import com.carelipik.app.domain.transcription.TranscriptSegment
 
-/** Hindi and code-mixed Hindi/English transcription through the CareLipik backend. */
+/** Multilingual online transcription and diarization through the CareLipik backend. */
 class SaarasTranscriptionEngine(
     private val gateway: RemoteTranscriptionGateway
 ) : AudioTranscriptionEngine {
@@ -18,10 +18,11 @@ class SaarasTranscriptionEngine(
         language: TranscriptionLanguage
     ): TranscriptionResult {
         val mode = when (language) {
+            TranscriptionLanguage.English,
             TranscriptionLanguage.Hindi -> RemoteTranscriptionMode.Transcribe
             TranscriptionLanguage.Hinglish -> RemoteTranscriptionMode.CodeMix
             else -> return TranscriptionResult.Failure(
-                "Saaras is currently available for Hindi and Hinglish recordings only."
+                "Choose English, Hindi, or Hinglish to use Saaras."
             )
         }
         if (audioPath.isBlank()) {
@@ -33,7 +34,7 @@ class SaarasTranscriptionEngine(
                 RemoteTranscriptionRequest(
                     audioPath = audioPath,
                     model = MODEL,
-                    languageCode = HINDI_LANGUAGE_CODE,
+                    languageCode = language.saarasLanguageCode(),
                     mode = mode,
                     expectedSpeakerCount = EXPECTED_SPEAKER_COUNT
                 )
@@ -54,7 +55,9 @@ class SaarasTranscriptionEngine(
                 }
                 TranscriptSegment(
                     speakerId = "speaker-$speakerNumber",
-                    transcript = segment.transcript.trim()
+                    transcript = segment.transcript.trim(),
+                    startTimeSeconds = segment.startTimeSeconds,
+                    endTimeSeconds = segment.endTimeSeconds
                 )
             }
         val diarizedTranscript = structuredSegments.joinToString(separator = "\n\n") { segment ->
@@ -66,8 +69,19 @@ class SaarasTranscriptionEngine(
                 "No speech was detected. Check the recording and try again."
             )
         } else {
-            TranscriptionResult.Success(reviewText, structuredSegments)
+            TranscriptionResult.Success(
+                transcript = reviewText,
+                segments = structuredSegments,
+                speakerSeparationWarning = speakerSeparationWarning
+            )
         }
+    }
+
+    private fun TranscriptionLanguage.saarasLanguageCode(): String = when (this) {
+        TranscriptionLanguage.English -> ENGLISH_LANGUAGE_CODE
+        TranscriptionLanguage.Hindi,
+        TranscriptionLanguage.Hinglish -> HINDI_LANGUAGE_CODE
+        TranscriptionLanguage.Auto -> error("Auto language is not supported by this engine")
     }
 
     private fun String.toDisplayLabel(): String = split('-').joinToString(" ") { part ->
@@ -76,6 +90,7 @@ class SaarasTranscriptionEngine(
 
     private companion object {
         const val MODEL = "saaras:v3"
+        const val ENGLISH_LANGUAGE_CODE = "en-IN"
         const val HINDI_LANGUAGE_CODE = "hi-IN"
         const val EXPECTED_SPEAKER_COUNT = 2
     }

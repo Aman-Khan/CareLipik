@@ -1,0 +1,41 @@
+[
+  {
+    "id": "english-dry-cough",
+    "title": "English dry cough consultation",
+    "language_code": "en-IN",
+    "turns": [
+      {"role": "doctor", "speaker": "ratan", "text": "Good morning. What brings you in today?"},
+      {"role": "patient", "speaker": "ishita", "text": "I have had a dry cough for three days."},
+      {"role": "doctor", "speaker": "ratan", "text": "Have you had fever, breathing difficulty, or chest pain?"},
+      {"role": "patient", "speaker": "ishita", "text": "I had a mild fever yesterday, but no breathing difficulty or chest pain."},
+      {"role": "doctor", "speaker": "ratan", "text": "Have you taken any medicine, and do you have any known allergies?"},
+      {"role": "patient", "speaker": "ishita", "text": "I took paracetamol once yesterday. I have no known medicine allergy."}
+    ]
+  },
+  {
+    "id": "hindi-dry-cough",
+    "title": "Hindi dry cough consultation",
+    "language_code": "hi-IN",
+    "turns": [
+      {"role": "doctor", "speaker": "shubh", "text": "नमस्ते, आपको क्या परेशानी हो रही है?"},
+      {"role": "patient", "speaker": "priya", "text": "मुझे तीन दिनों से सूखी खांसी है।"},
+      {"role": "doctor", "speaker": "shubh", "text": "क्या आपको बुखार, सांस लेने में परेशानी या सीने में दर्द है?"},
+      {"role": "patient", "speaker": "priya", "text": "कल हल्का बुखार था, लेकिन सांस लेने में परेशानी या सीने में दर्द नहीं है।"},
+      {"role": "doctor", "speaker": "shubh", "text": "क्या आपने कोई दवा ली है, और क्या आपको किसी दवा से एलर्जी है?"},
+      {"role": "patient", "speaker": "priya", "text": "मैंने कल एक बार पैरासिटामोल ली थी। मुझे किसी दवा से एलर्जी की जानकारी नहीं है।"}
+    ]
+  },
+  {
+    "id": "hinglish-dry-cough",
+    "title": "Hinglish dry cough consultation",
+    "language_code": "hi-IN",
+    "turns": [
+      {"role": "doctor", "speaker": "shubh", "text": "Good morning, aapko kya problem ho rahi hai?"},
+      {"role": "patient", "speaker": "priya", "text": "Doctor, mujhe three days se dry cough hai."},
+      {"role": "doctor", "speaker": "shubh", "text": "Fever, breathing difficulty, ya chest pain hai?"},
+      {"role": "patient", "speaker": "priya", "text": "Kal mild fever tha, but breathing difficulty ya chest pain nahi hai."},
+      {"role": "doctor", "speaker": "shubh", "text": "Koi medicine li hai, aur kisi medicine se allergy hai?"},
+      {"role": "patient", "speaker": "priya", "text": "Maine kal ek baar paracetamol liya tha. Mujhe koi known medicine allergy nahi hai."}
+    ]
+  }
+]

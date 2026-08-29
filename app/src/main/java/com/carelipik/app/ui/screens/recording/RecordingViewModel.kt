@@ -7,6 +7,7 @@ import android.content.Context
 import com.carelipik.app.data.audio.AndroidMicrophoneRecorder
 import com.carelipik.app.data.audio.FakeConsultationRecorder
 import com.carelipik.app.domain.recording.ConsultationRecorder
+import com.carelipik.app.domain.recording.AudioImportResult
 import com.carelipik.app.domain.transcription.TranscriptionLanguage
 import com.carelipik.app.domain.transcription.TranscriptionEngineOption
 import kotlinx.coroutines.Job
@@ -35,7 +36,14 @@ class RecordingViewModel(
             }
             viewModelScope.launch {
                 recorder.recordedAudio.collect { audio ->
-                    _uiState.update { it.copy(hasSavedAudio = audio != null) }
+                    _uiState.update {
+                        it.copy(
+                            hasSavedAudio = audio != null,
+                            audioSource = audio?.source,
+                            audioDisplayName = audio?.displayName.orEmpty(),
+                            audioSizeBytes = audio?.sizeBytes ?: 0
+                        )
+                    }
                 }
             }
             viewModelScope.launch {
@@ -49,7 +57,15 @@ class RecordingViewModel(
     fun startRecording() {
         if (_uiState.value.status != RecordingStatus.Ready) return
         recorder.start()
-        _uiState.update { it.copy(status = RecordingStatus.Recording) }
+        _uiState.update {
+            it.copy(
+                status = RecordingStatus.Recording,
+                importError = null,
+                audioSource = null,
+                audioDisplayName = "",
+                audioSizeBytes = 0
+            )
+        }
         if (useAutomaticTimer) startTimer()
     }
 
@@ -72,9 +88,13 @@ class RecordingViewModel(
         recorder.stop()
         timerJob?.cancel()
         _uiState.update {
+            val audio = recorder.recordedAudio.value
             it.copy(
                 status = RecordingStatus.Completed,
-                hasSavedAudio = recorder.recordedAudio.value != null
+                hasSavedAudio = audio != null,
+                audioSource = audio?.source,
+                audioDisplayName = audio?.displayName.orEmpty(),
+                audioSizeBytes = audio?.sizeBytes ?: 0
             )
         }
     }
@@ -96,6 +116,55 @@ class RecordingViewModel(
     }
 
     fun recordedAudioPath(): String? = recorder.recordedAudio.value?.localPath
+
+    fun importAudio(sourceUri: String) {
+        if (_uiState.value.status in setOf(RecordingStatus.Recording, RecordingStatus.Paused)) return
+        if (sourceUri.isBlank()) return
+        stopPlayback()
+        val previousAudio = recorder.recordedAudio.value
+        _uiState.update { it.copy(isImporting = true, importError = null) }
+        viewModelScope.launch {
+            when (val result = recorder.importAudio(sourceUri)) {
+                is AudioImportResult.Success -> {
+                    val audio = result.audio
+                    _uiState.update {
+                        it.copy(
+                            status = RecordingStatus.Completed,
+                            elapsedSeconds = ((audio.durationMillis + 999L) / 1_000L).toInt(),
+                            amplitude = 0f,
+                            hasSavedAudio = true,
+                            audioSource = audio.source,
+                            audioDisplayName = audio.displayName,
+                            audioSizeBytes = audio.sizeBytes,
+                            isPlaying = false,
+                            isImporting = false,
+                            importError = null
+                        )
+                    }
+                }
+                is AudioImportResult.Failure -> {
+                    _uiState.update {
+                        it.copy(
+                            status = if (previousAudio == null) {
+                                RecordingStatus.Ready
+                            } else {
+                                RecordingStatus.Completed
+                            },
+                            elapsedSeconds = previousAudio?.durationMillis?.let { duration ->
+                                ((duration + 999L) / 1_000L).toInt()
+                            } ?: 0,
+                            hasSavedAudio = previousAudio != null,
+                            audioSource = previousAudio?.source,
+                            audioDisplayName = previousAudio?.displayName.orEmpty(),
+                            audioSizeBytes = previousAudio?.sizeBytes ?: 0,
+                            isImporting = false,
+                            importError = result.message
+                        )
+                    }
+                }
+            }
+        }
+    }
 
     fun setTranscriptionLanguage(language: TranscriptionLanguage) {
         _uiState.update { state ->

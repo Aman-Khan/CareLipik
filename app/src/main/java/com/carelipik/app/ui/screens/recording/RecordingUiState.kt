@@ -1,5 +1,6 @@
 package com.carelipik.app.ui.screens.recording
 
+import com.carelipik.app.domain.model.RecordedAudioSource
 import com.carelipik.app.domain.transcription.TranscriptionLanguage
 import com.carelipik.app.domain.transcription.TranscriptionEngineOption
 
@@ -15,7 +16,12 @@ data class RecordingUiState(
     val elapsedSeconds: Int = 0,
     val amplitude: Float = 0f,
     val hasSavedAudio: Boolean = false,
+    val audioSource: RecordedAudioSource? = null,
+    val audioDisplayName: String = "",
+    val audioSizeBytes: Long = 0,
     val isPlaying: Boolean = false,
+    val isImporting: Boolean = false,
+    val importError: String? = null,
     val transcriptionLanguage: TranscriptionLanguage = TranscriptionLanguage.English,
     val transcriptionEngine: TranscriptionEngineOption = TranscriptionEngineOption.MedAsrEnglish,
     val hasOnlineProcessingConsent: Boolean = false
@@ -26,5 +32,9 @@ data class RecordingUiState(
     val canContinue: Boolean
         get() = status == RecordingStatus.Completed &&
             hasSavedAudio &&
+            !isImporting &&
             (transcriptionEngine.isOffline || hasOnlineProcessingConsent)
+
+    val isImportedAudio: Boolean
+        get() = audioSource == RecordedAudioSource.Imported
 }

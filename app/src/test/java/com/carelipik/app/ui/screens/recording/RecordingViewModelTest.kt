@@ -1,6 +1,7 @@
 package com.carelipik.app.ui.screens.recording
 
 import com.carelipik.app.domain.recording.ConsultationRecorder
+import com.carelipik.app.domain.recording.AudioImportResult
 import com.carelipik.app.domain.transcription.TranscriptionLanguage
 import com.carelipik.app.domain.transcription.TranscriptionEngineOption
 import org.junit.Assert.assertEquals
@@ -158,5 +159,7 @@ class RecordingViewModelTest {
         override fun discard() { calls += "discard" }
         override fun play() { calls += "play" }
         override fun stopPlayback() { calls += "stopPlayback" }
+        override suspend fun importAudio(sourceUri: String): AudioImportResult =
+            AudioImportResult.Failure("Test import is unavailable")
     }
 }

@@ -1,6 +1,7 @@
 package com.carelipik.app.data.audio
 
 import com.carelipik.app.domain.recording.ConsultationRecorder
+import com.carelipik.app.domain.recording.AudioImportResult
 import com.carelipik.app.domain.model.RecordedAudio
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,4 +19,6 @@ class FakeConsultationRecorder : ConsultationRecorder {
     override fun discard() = Unit
     override fun play() = Unit
     override fun stopPlayback() = Unit
+    override suspend fun importAudio(sourceUri: String): AudioImportResult =
+        AudioImportResult.Failure("Audio import is unavailable in the preview recorder.")
 }

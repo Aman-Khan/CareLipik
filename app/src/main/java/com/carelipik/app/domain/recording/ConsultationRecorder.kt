@@ -3,7 +3,12 @@ package com.carelipik.app.domain.recording
 import com.carelipik.app.domain.model.RecordedAudio
 import kotlinx.coroutines.flow.StateFlow
 
-/** Boundary for consultation audio capture. Real device recording will implement this later. */
+sealed interface AudioImportResult {
+    data class Success(val audio: RecordedAudio) : AudioImportResult
+    data class Failure(val message: String) : AudioImportResult
+}
+
+/** Boundary for consultation audio capture, temporary import and playback. */
 interface ConsultationRecorder {
     /** Normalized microphone energy from 0 (silence) to 1 (loud). */
     val amplitude: StateFlow<Float>
@@ -17,4 +22,5 @@ interface ConsultationRecorder {
     fun discard()
     fun play()
     fun stopPlayback()
+    suspend fun importAudio(sourceUri: String): AudioImportResult
 }

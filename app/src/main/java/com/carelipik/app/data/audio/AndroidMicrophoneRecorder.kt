@@ -8,8 +8,12 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaPlayer
 import android.media.MediaRecorder
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.core.content.ContextCompat
 import com.carelipik.app.domain.model.RecordedAudio
+import com.carelipik.app.domain.model.RecordedAudioSource
+import com.carelipik.app.domain.recording.AudioImportResult
 import com.carelipik.app.domain.recording.ConsultationRecorder
 import java.io.File
 import java.io.RandomAccessFile
@@ -25,6 +29,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.sqrt
 
 /** Captures mono PCM audio into a private-cache WAV file and reports live microphone energy. */
@@ -43,6 +48,10 @@ class AndroidMicrophoneRecorder(private val context: Context) : ConsultationReco
     private var mediaPlayer: MediaPlayer? = null
     @Volatile private var isPaused = false
     @Volatile private var shouldStop = false
+
+    init {
+        cleanupStaleTemporaryAudio()
+    }
 
     override fun start() {
         discard()
@@ -103,6 +112,51 @@ class AndroidMicrophoneRecorder(private val context: Context) : ConsultationReco
         mediaPlayer = null
         _isPlaying.value = false
     }
+
+    override suspend fun importAudio(sourceUri: String): AudioImportResult =
+        withContext(Dispatchers.IO) {
+            stopPlayback()
+            val uri = runCatching { Uri.parse(sourceUri) }.getOrNull()
+                ?: return@withContext AudioImportResult.Failure("The selected file is unavailable.")
+            val directory = File(context.cacheDir, "consultation_audio").apply { mkdirs() }
+            val importedFile = File(directory, "import-${UUID.randomUUID()}.wav")
+            try {
+                val displayName = queryDisplayName(uri) ?: "Imported consultation.wav"
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    importedFile.outputStream().use { output ->
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        var totalBytes = 0L
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            totalBytes += count
+                            require(totalBytes <= MAX_IMPORTED_AUDIO_BYTES) {
+                                "Select a WAV file smaller than 100 MB."
+                            }
+                            output.write(buffer, 0, count)
+                        }
+                    }
+                } ?: error("The selected file could not be opened.")
+                val metadata = WaveAudioInspector.inspectCompatiblePcm(importedFile)
+                val audio = RecordedAudio(
+                    localPath = importedFile.absolutePath,
+                    sizeBytes = importedFile.length(),
+                    displayName = displayName,
+                    durationMillis = metadata.durationMillis,
+                    source = RecordedAudioSource.Imported
+                )
+                val previousFile = outputFile
+                outputFile = importedFile
+                _recordedAudio.value = audio
+                if (previousFile != importedFile) previousFile?.delete()
+                AudioImportResult.Success(audio)
+            } catch (error: Exception) {
+                importedFile.delete()
+                AudioImportResult.Failure(
+                    error.message ?: "The selected WAV file could not be imported."
+                )
+            }
+        }
 
     @SuppressLint("MissingPermission")
     private fun startCapture() {
@@ -167,7 +221,11 @@ class AndroidMicrophoneRecorder(private val context: Context) : ConsultationReco
                     val dataSize = (output.length() - WAVE_HEADER_SIZE).coerceAtLeast(0)
                     writeWaveHeader(output, sampleRate, dataSize)
                     if (dataSize > 0 && outputFile === file && file.exists()) {
-                        _recordedAudio.value = RecordedAudio(file.absolutePath, output.length())
+                        _recordedAudio.value = RecordedAudio(
+                            localPath = file.absolutePath,
+                            sizeBytes = output.length(),
+                            durationMillis = dataSize * 1_000L / (sampleRate * 2L)
+                        )
                     }
                 }
             }
@@ -199,6 +257,28 @@ class AndroidMicrophoneRecorder(private val context: Context) : ConsultationReco
         write(byteArrayOf(value.toByte(), (value shr 8).toByte()))
     }
 
+    private fun queryDisplayName(uri: Uri): String? {
+        return runCatching {
+            context.contentResolver.query(
+                uri,
+                arrayOf(OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+        }.getOrNull() ?: uri.lastPathSegment
+    }
+
+    private fun cleanupStaleTemporaryAudio() {
+        val expirationTime = System.currentTimeMillis() - TEMPORARY_AUDIO_MAX_AGE_MILLIS
+        File(context.cacheDir, "consultation_audio")
+            .listFiles()
+            ?.filter { it.isFile && it.lastModified() < expirationTime }
+            ?.forEach(File::delete)
+    }
+
     fun close() {
         discard()
         scope.cancel()
@@ -206,5 +286,7 @@ class AndroidMicrophoneRecorder(private val context: Context) : ConsultationReco
 
     private companion object {
         const val WAVE_HEADER_SIZE = 44L
+        const val MAX_IMPORTED_AUDIO_BYTES = 100L * 1024L * 1024L
+        const val TEMPORARY_AUDIO_MAX_AGE_MILLIS = 24L * 60L * 60L * 1_000L
     }
 }

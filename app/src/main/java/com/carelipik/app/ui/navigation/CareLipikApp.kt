@@ -157,6 +157,7 @@ fun CareLipikApp(
                 onResume = activeRecordingViewModel::resumeRecording,
                 onStop = activeRecordingViewModel::stopRecording,
                 onDiscard = activeRecordingViewModel::discardRecording,
+                onImportAudio = activeRecordingViewModel::importAudio,
                 onTogglePlayback = activeRecordingViewModel::togglePlayback,
                 onTranscriptionLanguageChanged = activeRecordingViewModel::setTranscriptionLanguage,
                 onTranscriptionEngineChanged = activeRecordingViewModel::setTranscriptionEngine,

@@ -63,6 +63,7 @@ fun RecordingScreen(
     onResume: () -> Unit,
     onStop: () -> Unit,
     onDiscard: () -> Unit,
+    onImportAudio: (String) -> Unit,
     onTogglePlayback: () -> Unit,
     onTranscriptionLanguageChanged: (TranscriptionLanguage) -> Unit,
     onTranscriptionEngineChanged: (TranscriptionEngineOption) -> Unit,
@@ -78,6 +79,14 @@ fun RecordingScreen(
     ) { isGranted ->
         permissionDenied = !isGranted
         if (isGranted) onStart()
+    }
+    val audioFileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.toString()?.let(onImportAudio)
+    }
+    val chooseAudioFile = {
+        audioFileLauncher.launch(arrayOf("audio/*"))
     }
     val startWithPermission = {
         if (
@@ -100,7 +109,7 @@ fun RecordingScreen(
     ) {
         ConsultationScreenHeader(
             title = "Record consultation",
-            subtitle = "Keep the phone nearby and make sure everyone can be heard clearly.",
+            subtitle = "Record now or import a reusable WAV test file.",
             currentStep = 3,
             totalSteps = 7,
             onBack = onBack,
@@ -135,7 +144,11 @@ fun RecordingScreen(
                             text = when (uiState.status) {
                                 RecordingStatus.Recording -> "REC"
                                 RecordingStatus.Paused -> "II"
-                                RecordingStatus.Completed -> "OK"
+                                RecordingStatus.Completed -> if (uiState.isImportedAudio) {
+                                    "FILE"
+                                } else {
+                                    "OK"
+                                }
                                 RecordingStatus.Ready -> "MIC"
                             },
                             color = MaterialTheme.colorScheme.onPrimary,
@@ -156,8 +169,10 @@ fun RecordingScreen(
             }
         }
         Text(
-            if (uiState.hasSavedAudio) {
-                "Saved privately on this device. Review it before continuing."
+            if (uiState.isImportedAudio) {
+                "A temporary private copy was created. It is removed when you discard it."
+            } else if (uiState.hasSavedAudio) {
+                "Saved temporarily and privately on this device. Review it before continuing."
             } else {
                 "Audio is recorded only into this app's private temporary storage."
             },
@@ -167,10 +182,26 @@ fun RecordingScreen(
         RecordingActions(
             status = uiState.status,
             onStart = startWithPermission,
+            onImport = chooseAudioFile,
             onPause = onPause,
             onResume = onResume,
-            onStop = onStop
+            onStop = onStop,
+            isImporting = uiState.isImporting
         )
+        uiState.importError?.let { message ->
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.errorContainer
+            ) {
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(14.dp)
+                )
+            }
+        }
         if (permissionDenied) {
             Text(
                 "Microphone permission is needed to show the live sound level.",
@@ -179,10 +210,15 @@ fun RecordingScreen(
             )
         }
         if (uiState.status == RecordingStatus.Completed && uiState.hasSavedAudio) {
+            if (uiState.isImportedAudio) {
+                ImportedAudioDetails(uiState = uiState)
+            }
             CompletedRecordingActions(
                 isPlaying = uiState.isPlaying,
+                isImportedAudio = uiState.isImportedAudio,
                 onTogglePlayback = onTogglePlayback,
-                onDiscard = onDiscard
+                onDiscard = onDiscard,
+                onReplace = chooseAudioFile
             )
             TranscriptionSetupPanel(
                 selectedLanguage = uiState.transcriptionLanguage,
@@ -203,18 +239,68 @@ fun RecordingScreen(
 @Composable
 private fun CompletedRecordingActions(
     isPlaying: Boolean,
+    isImportedAudio: Boolean,
     onTogglePlayback: () -> Unit,
-    onDiscard: () -> Unit
+    onDiscard: () -> Unit,
+    onReplace: () -> Unit
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Button(onClick = onTogglePlayback, modifier = Modifier.weight(1f)) {
-            Text(if (isPlaying) "Stop audio" else "Listen")
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Button(onClick = onTogglePlayback, modifier = Modifier.weight(1f)) {
+                Text(if (isPlaying) "Stop audio" else "Listen")
+            }
+            if (isImportedAudio) {
+                OutlinedButton(onClick = onReplace, modifier = Modifier.weight(1f)) {
+                    Text("Replace")
+                }
+            } else {
+                OutlinedButton(onClick = onDiscard, modifier = Modifier.weight(1f)) {
+                    Text("Record again")
+                }
+            }
         }
-        OutlinedButton(onClick = onDiscard, modifier = Modifier.weight(1f)) {
-            Text("Record again")
+        if (isImportedAudio) {
+            OutlinedButton(onClick = onDiscard, modifier = Modifier.fillMaxWidth()) {
+                Text("Remove imported audio")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImportedAudioDetails(uiState: RecordingUiState) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = "Imported audio",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = uiState.audioDisplayName.ifBlank { "Consultation audio.wav" },
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "${uiState.formattedDuration} · ${formatFileSize(uiState.audioSizeBytes)} · Temporary",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = "Compatible format: mono 16 kHz, 16-bit PCM WAV.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -614,13 +700,31 @@ private fun RecordingWaveform(status: RecordingStatus, amplitude: Float) {
 private fun RecordingActions(
     status: RecordingStatus,
     onStart: () -> Unit,
+    onImport: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
-    onStop: () -> Unit
+    onStop: () -> Unit,
+    isImporting: Boolean
 ) {
     when (status) {
-        RecordingStatus.Ready -> Button(onClick = onStart, modifier = Modifier.fillMaxWidth()) {
-            Text("Start recording")
+        RecordingStatus.Ready -> Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Button(
+                onClick = onStart,
+                enabled = !isImporting,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Start recording")
+            }
+            OutlinedButton(
+                onClick = onImport,
+                enabled = !isImporting,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(if (isImporting) "Importing…" else "Import audio")
+            }
         }
         RecordingStatus.Recording -> Row(
             modifier = Modifier.fillMaxWidth(),
@@ -641,8 +745,19 @@ private fun RecordingActions(
 }
 
 private fun statusMessage(uiState: RecordingUiState): String = when (uiState.status) {
-    RecordingStatus.Ready -> "Ready to record"
+    RecordingStatus.Ready -> if (uiState.isImporting) "Importing audio…" else "Ready for audio"
     RecordingStatus.Recording -> "Recording in progress"
     RecordingStatus.Paused -> "Recording paused"
-    RecordingStatus.Completed -> if (uiState.hasSavedAudio) "Recording ready" else "Saving recording…"
+    RecordingStatus.Completed -> when {
+        uiState.isImporting -> "Importing replacement…"
+        uiState.isImportedAudio -> "Imported audio ready"
+        uiState.hasSavedAudio -> "Recording ready"
+        else -> "Saving recording…"
+    }
+}
+
+private fun formatFileSize(sizeBytes: Long): String = when {
+    sizeBytes >= 1024L * 1024L -> "%.1f MB".format(sizeBytes / (1024f * 1024f))
+    sizeBytes >= 1024L -> "%.0f KB".format(sizeBytes / 1024f)
+    else -> "$sizeBytes B"
 }

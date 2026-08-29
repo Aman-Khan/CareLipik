@@ -42,4 +42,23 @@ class RuleBasedTranscriptReviewAnalyzerTest {
         assertEquals("khansi", concerns.first { it.text == "khasi" }.suggestedReplacement)
         assertTrue(concerns.any { it.text == "bukhar" })
     }
+
+    @Test
+    fun observedMedicalAsrConfusions_areSuggestionsAndNeverSilentReplacements() {
+        val transcript = "Iron 47 years old. I have golf and soar throat with yellow flame."
+
+        val concerns = analyzer.analyze(transcript, TranscriptionLanguage.English)
+
+        assertEquals("I am", concerns.first { it.text == "Iron" }.suggestedReplacement)
+        assertEquals("cough", concerns.first { it.text == "golf" }.suggestedReplacement)
+        assertEquals(
+            "sore throat",
+            concerns.first { it.text.equals("soar throat", ignoreCase = true) }.suggestedReplacement
+        )
+        assertEquals(
+            "yellow phlegm",
+            concerns.first { it.text.equals("yellow flame", ignoreCase = true) }.suggestedReplacement
+        )
+        assertTrue(transcript.contains("Iron 47"))
+    }
 }

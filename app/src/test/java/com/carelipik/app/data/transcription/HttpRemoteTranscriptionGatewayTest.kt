@@ -1,6 +1,8 @@
 package com.carelipik.app.data.transcription
 
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class HttpRemoteTranscriptionGatewayTest {
@@ -38,6 +40,28 @@ class HttpRemoteTranscriptionGatewayTest {
         assertTrue(
             (result as RemoteTranscriptionResult.Failure).message.contains("unavailable")
         )
+    }
+
+    @Test
+    fun completedResponse_doesNotRenderJsonNullAsWarningText() {
+        val result = normalizeOptionalString(
+            fieldPresent = true,
+            isJsonNull = true,
+            value = "null"
+        )
+
+        assertNull(result)
+    }
+
+    @Test
+    fun completedResponse_keepsRealSpeakerWarning() {
+        val result = normalizeOptionalString(
+            fieldPresent = true,
+            isJsonNull = false,
+            value = "Review speaker separation."
+        )
+
+        assertEquals("Review speaker separation.", result)
     }
 
     private fun testRequest() = RemoteTranscriptionRequest(

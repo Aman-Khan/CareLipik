@@ -113,6 +113,10 @@ private class ConsultationPdfLayout(private val document: PdfDocument) {
         section("Key findings", consultation.draft.keyFindings)
         section("Assessment notes", consultation.draft.assessmentNotes)
         section("Plan notes", consultation.draft.planNotes)
+        section(
+            "Complete reviewed transcript",
+            consultation.draft.reviewedTranscript.ifBlank { "Not available for this older record" }
+        )
         finishPage()
     }
 

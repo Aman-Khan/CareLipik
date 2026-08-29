@@ -8,7 +8,10 @@ import com.carelipik.app.data.transcription.FakeAudioTranscriptionEngine
 import com.carelipik.app.data.transcription.CareLipikTranscriptionEngineResolver
 import com.carelipik.app.data.transcription.RuleBasedTranscriptReviewAnalyzer
 import com.carelipik.app.data.transcription.LabelledTranscriptSegmentParser
+import com.carelipik.app.data.transcription.HttpOnlineTranscriptReviewAnalyzer
 import com.carelipik.app.domain.transcription.SpeakerRole
+import com.carelipik.app.domain.transcription.OnlineTranscriptReviewAnalyzer
+import com.carelipik.app.domain.transcription.OnlineTranscriptReviewResult
 import com.carelipik.app.domain.transcription.TranscriptSegment
 import com.carelipik.app.domain.transcription.TranscriptSegmentParser
 import com.carelipik.app.domain.transcription.TranscriptReviewAnalyzer
@@ -30,6 +33,7 @@ class TranscriptViewModel(
         FakeAudioTranscriptionEngine()
     },
     private val reviewAnalyzer: TranscriptReviewAnalyzer = RuleBasedTranscriptReviewAnalyzer(),
+    private val onlineReviewAnalyzer: OnlineTranscriptReviewAnalyzer? = null,
     private val segmentParser: TranscriptSegmentParser = LabelledTranscriptSegmentParser(),
     private val processAsynchronously: Boolean = true
 ) : ViewModel() {
@@ -62,10 +66,27 @@ class TranscriptViewModel(
                 val result = withContext(dispatcher) {
                     engine.transcribe(audioPath, language)
                 }
-                applyResult(result)
+                val onlineReview = if (
+                    result is TranscriptionResult.Success && !engine.option.isOffline
+                ) {
+                    withContext(Dispatchers.IO) {
+                        onlineReviewAnalyzer?.analyze(result.transcript, language)
+                    }
+                } else {
+                    null
+                }
+                applyResult(result, onlineReview)
             }
         } else {
-            applyResult(engine.transcribe(audioPath, language))
+            val result = engine.transcribe(audioPath, language)
+            val onlineReview = if (
+                result is TranscriptionResult.Success && !engine.option.isOffline
+            ) {
+                onlineReviewAnalyzer?.analyze(result.transcript, language)
+            } else {
+                null
+            }
+            applyResult(result, onlineReview)
         }
     }
 
@@ -91,8 +112,29 @@ class TranscriptViewModel(
                     it.viewMode
                 } else {
                     TranscriptViewMode.FullTranscript
+                },
+                clinicalAnalysisSource = null,
+                clinicalAnalysisWarning = if (!it.engine.isOffline) {
+                    "Transcript changed. Run online medical term analysis again for updated suggestions."
+                } else {
+                    null
                 }
             )
+        }
+    }
+
+    fun analyzeTermsOnline() {
+        val analyzer = onlineReviewAnalyzer ?: return
+        val state = _uiState.value
+        if (state.engine.isOffline || state.transcript.isBlank() || state.isAnalyzingTerms) return
+        _uiState.update {
+            it.copy(isAnalyzingTerms = true, clinicalAnalysisWarning = null)
+        }
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                analyzer.analyze(state.transcript, state.language)
+            }
+            applyOnlineReview(result)
         }
     }
 
@@ -177,7 +219,13 @@ class TranscriptViewModel(
                 } else {
                     TranscriptViewMode.FullTranscript
                 },
-                hasAttemptedContinue = false
+                hasAttemptedContinue = false,
+                clinicalAnalysisSource = null,
+                clinicalAnalysisWarning = if (!state.engine.isOffline) {
+                    "Transcript changed. Run online medical term analysis again for updated suggestions."
+                } else {
+                    null
+                }
             )
         }
     }
@@ -205,32 +253,79 @@ class TranscriptViewModel(
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             require(modelClass.isAssignableFrom(TranscriptViewModel::class.java))
             return TranscriptViewModel(
-                CareLipikTranscriptionEngineResolver(applicationContext)
+                engineResolver = CareLipikTranscriptionEngineResolver(applicationContext),
+                onlineReviewAnalyzer = HttpOnlineTranscriptReviewAnalyzer(
+                    backendBaseUrl = com.carelipik.app.BuildConfig.TRANSCRIPTION_BACKEND_URL,
+                    allowInsecureLocalhost = com.carelipik.app.BuildConfig.DEBUG
+                )
             ) as T
         }
     }
 
-    private fun applyResult(result: TranscriptionResult) {
+    private fun applyResult(
+        result: TranscriptionResult,
+        onlineReview: OnlineTranscriptReviewResult? = null
+    ) {
         _uiState.value = when (result) {
-            is TranscriptionResult.Success -> TranscriptUiState(
-                status = TranscriptStatus.Ready,
-                transcript = result.transcript,
-                language = sourceLanguage,
-                engine = sourceEngine,
-                concerns = reviewAnalyzer.analyze(result.transcript, sourceLanguage),
-                segments = result.segments.ifEmpty { segmentParser.parse(result.transcript) },
-                speakerRoles = rolesFor(
+            is TranscriptionResult.Success -> {
+                val fallbackConcerns = reviewAnalyzer.analyze(result.transcript, sourceLanguage)
+                val reviewSuccess = onlineReview as? OnlineTranscriptReviewResult.Success
+                val reviewFailure = onlineReview as? OnlineTranscriptReviewResult.Failure
+                TranscriptUiState(
+                    status = TranscriptStatus.Ready,
+                    transcript = result.transcript,
+                    language = sourceLanguage,
+                    engine = sourceEngine,
+                    concerns = reviewSuccess?.concerns ?: fallbackConcerns,
                     segments = result.segments.ifEmpty { segmentParser.parse(result.transcript) },
-                    doctorVoiceMatch = result.doctorVoiceMatch
-                ),
-                doctorVoiceMatch = result.doctorVoiceMatch
-            )
+                    speakerRoles = rolesFor(
+                        segments = result.segments.ifEmpty { segmentParser.parse(result.transcript) },
+                        doctorVoiceMatch = result.doctorVoiceMatch
+                    ),
+                    doctorVoiceMatch = result.doctorVoiceMatch,
+                    speakerSeparationWarning = result.speakerSeparationWarning,
+                    clinicalAnalysisSource = reviewSuccess?.sourceName,
+                    clinicalAnalysisWarning = when {
+                        reviewFailure != null -> reviewFailure.message +
+                            " Limited offline review is shown instead."
+                        reviewSuccess != null && !reviewSuccess.codesVerified ->
+                            "AI found candidate terms, but medicine salts and terminology codes " +
+                                "still require doctor verification."
+                        else -> null
+                    }
+                )
+            }
             is TranscriptionResult.Failure -> TranscriptUiState(
                 status = TranscriptStatus.Error,
                 errorMessage = result.message,
                 language = sourceLanguage,
                 engine = sourceEngine
             )
+        }
+    }
+
+    private fun applyOnlineReview(result: OnlineTranscriptReviewResult) {
+        _uiState.update { state ->
+            when (result) {
+                is OnlineTranscriptReviewResult.Success -> state.copy(
+                    concerns = result.concerns,
+                    confirmedConcernIds = emptySet(),
+                    clinicalAnalysisSource = result.sourceName,
+                    clinicalAnalysisWarning = if (result.codesVerified) {
+                        null
+                    } else {
+                        "AI found candidate terms, but medicine salts and terminology codes " +
+                            "still require doctor verification."
+                    },
+                    isAnalyzingTerms = false,
+                    hasAttemptedContinue = false
+                )
+                is OnlineTranscriptReviewResult.Failure -> state.copy(
+                    clinicalAnalysisWarning = result.message +
+                        " Existing review suggestions were kept.",
+                    isAnalyzingTerms = false
+                )
+            }
         }
     }
 

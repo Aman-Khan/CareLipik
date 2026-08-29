@@ -94,6 +94,10 @@ private fun ConsultationHistoryDetail(
         HistorySection("Key findings", item.draft.keyFindings)
         HistorySection("Assessment notes", item.draft.assessmentNotes)
         HistorySection("Plan notes", item.draft.planNotes)
+        HistorySection(
+            "Complete reviewed transcript",
+            item.draft.reviewedTranscript.ifBlank { "Not available for this older record" }
+        )
         androidx.compose.material3.Button(
             onClick = { onExport(item) },
             modifier = Modifier.fillMaxWidth()

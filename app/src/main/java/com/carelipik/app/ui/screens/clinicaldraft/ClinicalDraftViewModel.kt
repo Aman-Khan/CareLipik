@@ -2,7 +2,7 @@ package com.carelipik.app.ui.screens.clinicaldraft
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.carelipik.app.data.extraction.FakeClinicalExtractionEngine
+import com.carelipik.app.data.extraction.TranscriptBackedClinicalExtractionEngine
 import com.carelipik.app.domain.extraction.ClinicalExtractionEngine
 import com.carelipik.app.domain.extraction.ClinicalExtractionResult
 import kotlinx.coroutines.Dispatchers
@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class ClinicalDraftViewModel(
-    private val engine: ClinicalExtractionEngine = FakeClinicalExtractionEngine(),
+    private val engine: ClinicalExtractionEngine = TranscriptBackedClinicalExtractionEngine(),
     private val processAsynchronously: Boolean = true
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(ClinicalDraftUiState())
@@ -38,6 +38,9 @@ class ClinicalDraftViewModel(
         sourceTranscript?.let(::generate)
     }
 
+    fun setPatientAge(value: String) {
+        if (value.all(Char::isDigit)) updateDraft { copy(patientAge = value) }
+    }
     fun setPresentingComplaint(value: String) = updateDraft { copy(presentingComplaint = value) }
     fun setHistory(value: String) = updateDraft { copy(history = value) }
     fun setKeyFindings(value: String) = updateDraft { copy(keyFindings = value) }

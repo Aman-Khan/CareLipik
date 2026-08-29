@@ -97,4 +97,30 @@ class DoctorReviewViewModelTest {
         assertEquals("Test reference", saved.patientName)
         assertEquals("Synthetic history", saved.draft.history)
     }
+
+    @Test
+    fun approvedDraft_usesDoctorReviewedTranscriptAgeAndComplaintWhenFormFieldsAreBlank() =
+        runBlocking {
+            val repository = FakeLocalConsultationRepository()
+            val viewModel = DoctorReviewViewModel(
+                repository = repository,
+                processAsynchronously = false
+            )
+            viewModel.loadDraft(
+                ClinicalDraft(
+                    patientAge = "47",
+                    presentingComplaint = "Cough and fever for four days",
+                    reviewedTranscript = "Patient: I am 47 years old."
+                )
+            )
+            viewModel.setConfirmedReview(true)
+
+            assertTrue(
+                viewModel.approve(PatientDetailsUiState(patientName = "Test reference")) {}
+            )
+
+            val saved = repository.list().single()
+            assertEquals("47", saved.patientAge)
+            assertEquals("Cough and fever for four days", saved.visitReason)
+        }
 }

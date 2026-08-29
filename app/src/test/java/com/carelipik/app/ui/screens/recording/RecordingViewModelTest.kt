@@ -121,14 +121,14 @@ class RecordingViewModelTest {
     }
 
     @Test
-    fun switchingBackToEnglish_restoresMedAsrAsRecommendedEngine() {
+    fun switchingFromHinglishToEnglish_keepsCompatibleOnlineEngine() {
         val viewModel = RecordingViewModel(TrackingRecorder(), useAutomaticTimer = false)
 
         viewModel.setTranscriptionLanguage(TranscriptionLanguage.Hinglish)
         viewModel.setTranscriptionLanguage(TranscriptionLanguage.English)
 
         assertEquals(
-            TranscriptionEngineOption.MedAsrEnglish,
+            TranscriptionEngineOption.SaarasHindiHinglish,
             viewModel.transcriptionEngine()
         )
     }

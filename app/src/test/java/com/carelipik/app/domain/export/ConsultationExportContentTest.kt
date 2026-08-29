@@ -14,6 +14,7 @@ class ConsultationExportContentTest {
         assertTrue(json.contains("\"doctorApproved\": true"))
         assertTrue(json.contains("\"includesConsultationAudio\": false"))
         assertTrue(json.contains("Synthetic history"))
+        assertTrue(json.contains("Doctor: Synthetic question"))
         assertFalse(json.contains("localPath"))
         assertFalse(json.contains(".wav"))
     }
@@ -31,6 +32,7 @@ class ConsultationExportContentTest {
         assertTrue(patientIndex > compositionIndex)
         assertTrue(documentReferenceIndex > patientIndex)
         assertTrue(json.contains("\"code\": \"11488-4\""))
+        assertTrue(json.contains("Complete reviewed transcript"))
         assertFalse(json.contains(".wav"))
     }
 
@@ -41,6 +43,8 @@ class ConsultationExportContentTest {
         assertTrue(text.contains("PRESENTING COMPLAINT"))
         assertTrue(text.contains("ASSESSMENT NOTES"))
         assertTrue(text.contains("PLAN NOTES"))
+        assertTrue(text.contains("COMPLETE REVIEWED TRANSCRIPT"))
+        assertTrue(text.contains("Patient: Synthetic answer"))
         assertTrue(text.contains("Consultation audio is not included."))
     }
 
@@ -55,7 +59,8 @@ class ConsultationExportContentTest {
             history = "Synthetic history",
             keyFindings = "Synthetic findings",
             assessmentNotes = "Synthetic assessment",
-            planNotes = "Synthetic plan"
+            planNotes = "Synthetic plan",
+            reviewedTranscript = "Doctor: Synthetic question\n\nPatient: Synthetic answer"
         )
     )
 }

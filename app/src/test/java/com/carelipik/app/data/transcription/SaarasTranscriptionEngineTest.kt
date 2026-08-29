@@ -36,6 +36,20 @@ class SaarasTranscriptionEngineTest {
     }
 
     @Test
+    fun english_usesOnlineTranscribeModeAndIndianEnglishCode() {
+        val gateway = CapturingGateway(
+            RemoteTranscriptionResult.Success("Good morning")
+        )
+        val engine = SaarasTranscriptionEngine(gateway)
+
+        engine.transcribe("/private/test.wav", TranscriptionLanguage.English)
+
+        assertEquals("en-IN", gateway.request?.languageCode)
+        assertEquals(RemoteTranscriptionMode.Transcribe, gateway.request?.mode)
+        assertEquals(2, gateway.request?.expectedSpeakerCount)
+    }
+
+    @Test
     fun diarizedSegments_areNumberedWithoutGuessingRoles() {
         val gateway = CapturingGateway(
             RemoteTranscriptionResult.Success(
@@ -67,11 +81,11 @@ class SaarasTranscriptionEngineTest {
     }
 
     @Test
-    fun english_isRejectedBeforeUpload() {
+    fun autoLanguage_isRejectedBeforeUpload() {
         val gateway = CapturingGateway(RemoteTranscriptionResult.Success("unused"))
         val engine = SaarasTranscriptionEngine(gateway)
 
-        val result = engine.transcribe("/private/test.wav", TranscriptionLanguage.English)
+        val result = engine.transcribe("/private/test.wav", TranscriptionLanguage.Auto)
 
         assertTrue(result is TranscriptionResult.Failure)
         assertEquals(null, gateway.request)

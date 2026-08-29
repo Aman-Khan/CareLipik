@@ -31,6 +31,10 @@ data class TranscriptUiState(
     val segments: List<TranscriptSegment> = emptyList(),
     val speakerRoles: Map<String, SpeakerRole> = emptyMap(),
     val doctorVoiceMatch: DoctorVoiceRoleMatchResult? = null,
+    val speakerSeparationWarning: String? = null,
+    val clinicalAnalysisSource: String? = null,
+    val clinicalAnalysisWarning: String? = null,
+    val isAnalyzingTerms: Boolean = false,
     val viewMode: TranscriptViewMode = TranscriptViewMode.FullTranscript
 ) {
     val pendingConcerns: List<TranscriptConcern>
@@ -65,6 +69,7 @@ data class TranscriptUiState(
 
     val canContinue: Boolean
         get() = status == TranscriptStatus.Ready &&
+            !isAnalyzingTerms &&
             transcript.isNotBlank() &&
             pendingSpeakerIds.isEmpty() &&
             pendingConcerns.isEmpty()

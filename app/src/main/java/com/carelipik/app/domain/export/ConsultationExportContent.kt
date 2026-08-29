@@ -21,7 +21,8 @@ object ConsultationExportContent {
             "history": ${consultation.draft.history.json()},
             "keyFindings": ${consultation.draft.keyFindings.json()},
             "assessmentNotes": ${consultation.draft.assessmentNotes.json()},
-            "planNotes": ${consultation.draft.planNotes.json()}
+            "planNotes": ${consultation.draft.planNotes.json()},
+            "reviewedTranscript": ${consultation.draft.reviewedTranscript.json()}
           },
           "doctorApproved": true,
           "includesConsultationAudio": false
@@ -52,6 +53,9 @@ object ConsultationExportContent {
         PLAN NOTES
         ${consultation.draft.planNotes.ifBlank { "Not documented" }}
 
+        COMPLETE REVIEWED TRANSCRIPT
+        ${consultation.draft.reviewedTranscript.ifBlank { "Not available for this older record" }}
+
         CareLipik assists with documentation. Clinical accuracy remains the doctor's responsibility.
         Consultation audio is not included.
     """.trimIndent() + "\n"
@@ -70,7 +74,8 @@ object ConsultationExportContent {
             "History" to consultation.draft.history,
             "Key findings" to consultation.draft.keyFindings,
             "Assessment notes" to consultation.draft.assessmentNotes,
-            "Plan notes" to consultation.draft.planNotes
+            "Plan notes" to consultation.draft.planNotes,
+            "Complete reviewed transcript" to consultation.draft.reviewedTranscript
         ).joinToString(",\n") { (title, text) ->
             """
                 {

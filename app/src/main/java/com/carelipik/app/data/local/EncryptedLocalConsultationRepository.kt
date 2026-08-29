@@ -24,20 +24,26 @@ class EncryptedLocalConsultationRepository(context: Context) : ConsultationRepos
 
     override suspend fun list(): List<ApprovedConsultation> = withContext(Dispatchers.IO) {
         directory.listFiles { file -> file.extension == FILE_EXTENSION }.orEmpty()
-            .mapNotNull { file -> runCatching { decode(decrypt(file.readBytes())) }.getOrNull() }
+            .mapNotNull { file ->
+                runCatching { decodeFromStorage(decrypt(file.readBytes())) }.getOrNull()
+            }
             .sortedByDescending(ApprovedConsultation::approvedAtMillis)
     }
 
     override suspend fun get(id: String): ApprovedConsultation? = withContext(Dispatchers.IO) {
         val file = fileFor(id)
-        if (!file.isFile) null else runCatching { decode(decrypt(file.readBytes())) }.getOrNull()
+        if (!file.isFile) {
+            null
+        } else {
+            runCatching { decodeFromStorage(decrypt(file.readBytes())) }.getOrNull()
+        }
     }
 
     override suspend fun save(consultation: ApprovedConsultation) = withContext(Dispatchers.IO) {
         directory.mkdirs()
         val target = fileFor(consultation.id)
         val pending = File(directory, "${target.name}.pending")
-        pending.writeBytes(encrypt(encode(consultation)))
+        pending.writeBytes(encrypt(encodeForStorage(consultation)))
         if (!pending.renameTo(target)) {
             pending.copyTo(target, overwrite = true)
             check(pending.delete()) { "Could not finish saving consultation history." }
@@ -93,47 +99,86 @@ class EncryptedLocalConsultationRepository(context: Context) : ConsultationRepos
         }
     }
 
-    private fun encode(item: ApprovedConsultation): ByteArray =
+    internal fun encodeForStorage(item: ApprovedConsultation): ByteArray =
         ByteArrayOutputStream().use { bytes ->
             DataOutputStream(bytes).use { output ->
                 output.writeInt(FORMAT_VERSION)
-                output.writeUTF(item.id)
+                output.writeString(item.id)
                 output.writeLong(item.approvedAtMillis)
-                output.writeUTF(item.patientName)
-                output.writeUTF(item.patientAge)
-                output.writeUTF(item.visitReason)
-                output.writeUTF(item.draft.presentingComplaint)
-                output.writeUTF(item.draft.history)
-                output.writeUTF(item.draft.keyFindings)
-                output.writeUTF(item.draft.assessmentNotes)
-                output.writeUTF(item.draft.planNotes)
+                output.writeString(item.patientName)
+                output.writeString(item.patientAge)
+                output.writeString(item.visitReason)
+                output.writeString(item.draft.patientAge)
+                output.writeString(item.draft.presentingComplaint)
+                output.writeString(item.draft.history)
+                output.writeString(item.draft.keyFindings)
+                output.writeString(item.draft.assessmentNotes)
+                output.writeString(item.draft.planNotes)
+                output.writeString(item.draft.reviewedTranscript)
             }
             bytes.toByteArray()
         }
 
-    private fun decode(bytes: ByteArray): ApprovedConsultation =
+    internal fun decodeFromStorage(bytes: ByteArray): ApprovedConsultation =
         DataInputStream(ByteArrayInputStream(bytes)).use { input ->
-            require(input.readInt() == FORMAT_VERSION) { "Unsupported consultation format." }
-            ApprovedConsultation(
-                id = input.readUTF(),
-                approvedAtMillis = input.readLong(),
-                patientName = input.readUTF(),
-                patientAge = input.readUTF(),
-                visitReason = input.readUTF(),
-                draft = ClinicalDraft(
-                    presentingComplaint = input.readUTF(),
-                    history = input.readUTF(),
-                    keyFindings = input.readUTF(),
-                    assessmentNotes = input.readUTF(),
-                    planNotes = input.readUTF()
-                )
-            )
+            when (val version = input.readInt()) {
+                1 -> input.decodeVersionOne()
+                FORMAT_VERSION -> input.decodeCurrentVersion()
+                else -> error("Unsupported consultation format $version.")
+            }
         }
+
+    private fun DataInputStream.decodeVersionOne(): ApprovedConsultation = ApprovedConsultation(
+        id = readUTF(),
+        approvedAtMillis = readLong(),
+        patientName = readUTF(),
+        patientAge = readUTF(),
+        visitReason = readUTF(),
+        draft = ClinicalDraft(
+            presentingComplaint = readUTF(),
+            history = readUTF(),
+            keyFindings = readUTF(),
+            assessmentNotes = readUTF(),
+            planNotes = readUTF()
+        )
+    )
+
+    private fun DataInputStream.decodeCurrentVersion(): ApprovedConsultation =
+        ApprovedConsultation(
+            id = readString(),
+            approvedAtMillis = readLong(),
+            patientName = readString(),
+            patientAge = readString(),
+            visitReason = readString(),
+            draft = ClinicalDraft(
+                patientAge = readString(),
+                presentingComplaint = readString(),
+                history = readString(),
+                keyFindings = readString(),
+                assessmentNotes = readString(),
+                planNotes = readString(),
+                reviewedTranscript = readString()
+            )
+        )
+
+    private fun DataOutputStream.writeString(value: String) {
+        val encoded = value.toByteArray(Charsets.UTF_8)
+        require(encoded.size <= MAX_STORED_STRING_BYTES) { "Consultation text is too large." }
+        writeInt(encoded.size)
+        write(encoded)
+    }
+
+    private fun DataInputStream.readString(): String {
+        val size = readInt()
+        require(size in 0..MAX_STORED_STRING_BYTES) { "Invalid consultation text length." }
+        return ByteArray(size).also(::readFully).toString(Charsets.UTF_8)
+    }
 
     companion object {
         const val DIRECTORY_NAME = "consultation_history"
         private const val FILE_EXTENSION = "clh"
-        private const val FORMAT_VERSION = 1
+        private const val FORMAT_VERSION = 2
+        private const val MAX_STORED_STRING_BYTES = 4 * 1024 * 1024
         private const val KEYSTORE = "AndroidKeyStore"
         private const val KEY_ALIAS = "carelipik-consultation-history-v1"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"

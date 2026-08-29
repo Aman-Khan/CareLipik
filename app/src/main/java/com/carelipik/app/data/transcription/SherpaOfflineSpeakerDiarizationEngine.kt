@@ -64,7 +64,8 @@ class SherpaOfflineSpeakerDiarizationEngine(
         val config = OfflineSpeakerDiarizationConfig(
             segmentation = OfflineSpeakerSegmentationModelConfig(
                 pyannote = OfflineSpeakerSegmentationPyannoteModelConfig(
-                    model = "$MODEL_DIR/$SEGMENTATION_MODEL"
+                    model = "$MODEL_DIR/$SEGMENTATION_MODEL",
+                    windowShiftRatio = SEGMENTATION_WINDOW_SHIFT_RATIO
                 ),
                 numThreads = threadCount,
                 debug = false,
@@ -80,8 +81,8 @@ class SherpaOfflineSpeakerDiarizationEngine(
                 numClusters = expectedSpeakerCount,
                 threshold = 0.5f
             ),
-            minDurationOn = 0.2f,
-            minDurationOff = 0.5f
+            minDurationOn = MIN_SPEECH_SECONDS,
+            minDurationOff = MIN_SILENCE_SECONDS
         )
         return OfflineSpeakerDiarization(context.assets, config)
     }
@@ -131,9 +132,14 @@ class SherpaOfflineSpeakerDiarizationEngine(
     private companion object {
         const val MODEL_DIR = "models/sherpa-onnx-speaker-diarization"
         const val SEGMENTATION_MODEL = "segmentation-model.onnx"
-        const val EMBEDDING_MODEL = "embedding-model.onnx"
+        const val EMBEDDING_MODEL = "nemo_en_titanet_small.onnx"
         const val MIN_TURN_SECONDS = 0.2f
-        const val MERGE_GAP_SECONDS = 0.35f
+        // Consultations often have short hand-offs. A 500 ms off-duration smoothed across the
+        // 450 ms pauses in our two-voice benchmark and merged doctor/patient speech.
+        const val MIN_SPEECH_SECONDS = 0.2f
+        const val MIN_SILENCE_SECONDS = 0.25f
+        const val MERGE_GAP_SECONDS = 0.15f
+        const val SEGMENTATION_WINDOW_SHIFT_RATIO = 0.2f
         val REQUIRED_MODELS = setOf(SEGMENTATION_MODEL, EMBEDDING_MODEL)
     }
 }

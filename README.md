@@ -12,15 +12,18 @@ development recordings, screenshots, fixtures, or tests.
 
 - Offline English transcription with MedASR.
 - Offline multilingual transcription with Whisper.
-- Hindi and Hinglish transcription through a local CareLipik proxy and Sarvam Saaras.
+- Optional online English, Hindi, and Hinglish transcription with Sarvam Saaras Batch diarization.
 - Offline two-speaker diarization.
 - Offline doctor-voice enrollment and confidence-gated Doctor/Patient role matching.
 - Manual correction of transcript text, medical terms, and speaker roles.
+- Offline transcript-backed clinical drafts that preserve every reviewed patient statement and the
+  complete reviewed transcript for doctor approval.
 - AES-GCM encrypted, app-private consultation history after final doctor approval.
 - On-demand approved-note export immediately after approval or from encrypted history as A4 PDF,
   structured JSON, an HL7 FHIR R4 document Bundle, or plain text.
 - Temporary consultation audio in the Android cache by default.
-- No cloud database, embedded provider key, or LLM.
+- Optional backend-only Gemini medical-term candidate extraction; no provider key in the APK.
+- No cloud consultation database. All AI output remains subject to doctor confirmation.
 
 ## Requirements
 
@@ -29,10 +32,16 @@ development recordings, screenshots, fixtures, or tests.
 - Android SDK Platform-Tools for `adb`.
 - Android Studio's bundled Gradle JDK, or another compatible configured `JAVA_HOME`.
 - A phone with USB debugging enabled or an Android emulator.
-- For online Hindi/Hinglish testing only: macOS Keychain and a Sarvam API key.
+- For online transcription testing: macOS Keychain and a Sarvam API key.
+- For online medical-term extraction: a Gemini API key stored in macOS Keychain.
 
 Model binaries are intentionally ignored by Git. Obtain them through the repository download
 scripts rather than committing them.
+
+The local diarization path uses Sherpa-ONNX 1.13.6 on CPU with Pyannote Segmentation 3.0,
+NeMo TitaNet Small speaker embeddings, and fixed two-cluster fast clustering. Gemini is not used
+for diarization: it receives transcript text only for optional medical-term candidate extraction
+and cannot observe acoustic speaker changes.
 
 ## Clone and open
 
@@ -52,7 +61,7 @@ Android Studio normally generates an untracked `local.properties` containing the
 sdk.dir=/Users/your-name/Library/Android/sdk
 ```
 
-For local Hindi/Hinglish backend testing, add the non-secret local URL:
+For local online transcription and clinical-analysis testing, add the non-secret local URL:
 
 ```properties
 carelipik.transcriptionBackendUrl=http://127.0.0.1:8787
@@ -69,6 +78,7 @@ Download the required ignored model assets from the repository root:
 ./scripts/download-medasr-model.sh
 ./scripts/download-whisper-model.sh
 ./tools/offline_speaker_diarization/setup.sh
+./tools/offline_speaker_diarization/setup.sh --check
 ```
 
 The expected ignored asset directories are under:
@@ -106,18 +116,27 @@ Install the debug build with:
 ./gradlew installDebug
 ```
 
-## Hindi and Hinglish local backend setup
+## Online transcription and clinical-analysis setup
 
-The Android app never contains the Sarvam credential. A local development proxy reads it from
-macOS Keychain, calls Sarvam, and removes its temporary upload file.
+The Android app never contains Sarvam or Gemini credentials. A local development proxy reads them
+from macOS Keychain. Audio upload files are removed after submission, clinical transcript bodies
+are not logged, and API responses are marked `no-store`.
 
-### 1. Store the key securely
+### 1. Store provider keys securely
 
 ```sh
 ./tools/local_transcription_backend/store_sarvam_key.sh
 ```
 
-Run the script again when the key needs to be replaced.
+For online medical-term analysis, also store the Gemini key:
+
+```sh
+./tools/local_transcription_backend/store_gemini_key.sh
+```
+
+The terminal invokes macOS Keychain. Paste secrets only into the Keychain prompt, never into
+source files, `local.properties`, chat messages, screenshots, or shell-history command arguments.
+Run the relevant script again when a key needs to be replaced.
 
 ### 2. Start exactly one backend
 
@@ -134,10 +153,11 @@ curl http://127.0.0.1:8787/health
 Expected response:
 
 ```json
-{"status": "ok"}
+{"status": "ok", "clinical_entity_extraction": true}
 ```
 
-This confirms the Mac server is healthy but does not prove that Android can reach it.
+`clinical_entity_extraction` is `false` when the Gemini key is absent; Saaras transcription can
+still work. This health response confirms the Mac server but does not prove Android can reach it.
 
 ### 3. Make ADB available
 
@@ -191,15 +211,63 @@ emulator, or restarting ADB.
 
 On the recording screen:
 
-1. Choose **Hindi** for mostly Hindi speech or **Hinglish** for mixed Hindi/English.
-2. Select **Hindi & Hinglish (Saaras)**.
+1. Choose **English**, **Hindi**, or **Hinglish** for the recorded conversation.
+2. Select **Online multilingual (Saaras)** when reliable online speaker separation is needed.
 3. Confirm online-processing consent.
 4. Submit only synthetic test audio.
 5. Keep the backend running until the transcript completes.
 
 Doctor-profile language preferences provide recommendations; they do not select the language for
 the current recording. The transcript screen's `Selected mode` label shows what was actually sent.
-Hinglish uses `mode=codemix`; Hindi uses `mode=transcribe`.
+Hinglish uses `mode=codemix`; English and Hindi use `mode=transcribe`. Saaras Batch is requested
+with `with_diarization=true` and `num_speakers=2`. The app preserves the provider's chronological
+speaker turns and timestamps. If exactly two usable voices are not returned, it shows the full
+transcript with a warning instead of presenting unreliable Doctor/Patient labels.
+
+After transcription, the backend can send the transcript text to Gemini for structured medical
+term candidates. The backend rejects any candidate whose `source_text` is not an exact transcript
+span. The model is not permitted to diagnose, prescribe, or invent terminology codes. Every term
+must be confirmed by the doctor. Editing the transcript invalidates the previous AI offsets; tap
+**Analyze again** to refresh candidates.
+
+### 6. Phone verification by component
+
+For Saaras diarization:
+
+1. Import a synthetic two-voice WAV from `tools/synthetic_test_audio/output/`.
+2. Choose the matching language and **Online multilingual (Saaras)**.
+3. Confirm online consent and create the transcript.
+4. Verify the conversation view alternates between exactly two speaker labels at every known turn.
+5. Assign Doctor and Patient manually and swap them once to verify correction remains available.
+6. Compare every turn against the fixture's JSON reference; merely seeing two speaker IDs is not
+   sufficient verification.
+
+For local diarization on a physical phone:
+
+1. Run `./tools/offline_speaker_diarization/setup.sh --check`, rebuild, and install the app.
+2. Choose English with **Offline medical English (MedASR)** or **Offline multilingual
+   (Whisper)**. No backend, API key, or Gemini connection is involved.
+3. Record or import a synthetic consultation with two clearly different voices and short pauses.
+4. Verify every expected hand-off, not merely that two speaker IDs appear somewhere.
+5. If a doctor voice was not enrolled, expect neutral Speaker 1/Speaker 2 identities and assign
+   Doctor/Patient manually. Acoustic clustering cannot infer occupations from a voice.
+6. Correct or swap any wrong role in review and confirm the correction is retained.
+
+The device benchmark requires at least 14 of 16 known alternating turns and requires the first
+two turns to be different speakers. On the connected iQOO I2501/SM8850, the accepted Pyannote +
+TitaNet configuration processed the 112.6-second synthetic fixture in 11.4-12.9 seconds across
+the final validation runs. Real rooms, overlapping speech, microphone distance, and similar voices
+still require separate phone recordings and doctor review.
+
+For Gemini term extraction:
+
+1. Confirm `/health` reports `clinical_entity_extraction: true`.
+2. Submit a synthetic consultation containing symptoms, negation, history, allergies, Indian
+   medicine brands, generic medicines, strength, and frequency.
+3. Confirm highlighted candidates refer to exact visible transcript text.
+4. Verify negated and historical statements are not presented as new diagnoses.
+5. Correct one suggested term, tap **Analyze again**, and confirm the updated offsets are used.
+6. Confirm all candidates still require doctor acceptance before continuing.
 
 ## Common problems
 
@@ -247,11 +315,52 @@ while submitting:
 
 ```sh
 ./tools/local_transcription_backend/store_sarvam_key.sh
+./tools/local_transcription_backend/store_gemini_key.sh
 ./tools/local_transcription_backend/run.sh
 ```
 
-HTTP `401` or `403` responses point to the provider credential or account. Port and connection
-errors occur before provider authentication.
+HTTP `401` or `403` responses point to the corresponding provider credential or account. A
+successful Saaras transcription does not prove that Gemini is configured; check the health
+capability field. Port and connection errors occur before provider authentication.
+
+### Two speakers appear inside one block
+
+First confirm which engine was selected. MedASR and Whisper use the fully local Pyannote + TitaNet
+acoustic diarizer; Gemini does not repair or assign their speaker turns. Re-run the model setup
+script and rebuild if its `--check` fails. Avoid simultaneous speech, place the phone between both
+speakers, and leave a short pause at hand-offs. Without doctor enrollment, Speaker 1 and Speaker 2
+remain anonymous until manually assigned.
+
+When connectivity and consent are available, **Online multilingual (Saaras)** is the preferred
+fallback for provider-side diarization. Saaras diarization is a Batch API feature; the non-batch
+REST/streaming endpoints do not return speaker turns. If Saaras returns fewer than two usable
+speaker IDs, CareLipik intentionally keeps a continuous transcript and displays a warning rather
+than guessing speaker boundaries.
+
+### Medical terms or medicine salts are missing
+
+Check that `/health` reports `clinical_entity_extraction: true`, then use **Analyze again** after
+any transcript edit. Gemini results are multilingual AI candidates, not an authoritative Indian
+drug database. Production verification of Indian brands and salts still requires a licensed,
+versioned NRCeS Common Drug Codes for India terminology service. SNOMED CT, CDCI, RxNorm, ICD, and
+LOINC identifiers must never be accepted solely because an LLM generated them.
+
+### Clinical draft or report is missing transcript details
+
+Current builds generate an offline transcript-backed draft. Patient-labelled statements are
+copied verbatim into editable sections, a bounded `N years old` patient statement can prefill the
+age candidate, and the complete reviewed transcript is stored with the approved note. PDF, JSON,
+FHIR, plain text, and encrypted history all include that source appendix.
+
+The structured sections are still a doctor-controlled organization layer; they are not an
+autonomous diagnosis or summary. Correct ASR substitutions such as `cuff`/`golf` for `cough`
+before continuing. CareLipik presents known confusion fixes as suggestions and never silently
+changes the transcript.
+
+Records approved by an older prototype cannot be repaired automatically: those records stored
+only the hard-coded sample draft, and consultation audio was discarded after approval. If the
+original imported synthetic WAV still exists, process it as a new consultation with the current
+build.
 
 ### Quick recovery sequence
 
@@ -269,11 +378,15 @@ backend URL changed.
 
 - Enrollment audio and consultation history stay in app-private storage.
 - Approved consultation records are encrypted with AES-GCM using an Android Keystore key.
+- New approved records retain the doctor-reviewed transcript inside the encrypted on-device
+  consultation record so exports can include a complete source appendix.
 - Consultation audio is kept in app-private cache and discarded after successful approval.
 - Exports are generated on demand in app-private cache, use ID-based filenames, exclude audio,
   expire after 24 hours, and are shared through a temporary read-only content URI.
 - Voice enrollment and consultation history are excluded from cloud backup and device transfer.
-- Online transcription requires explicit consent.
+- Online audio transcription and transcript-based medical-term analysis require explicit consent.
+- Provider keys stay in the backend/Keychain and are never embedded in Android.
+- AI candidates are not diagnoses or verified medical codes and require doctor confirmation.
 - Development recordings must never contain real patient information.
 
 ## Project structure

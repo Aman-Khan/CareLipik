@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
 import com.carelipik.app.data.transcription.RuleBasedTranscriptReviewAnalyzer
 import com.carelipik.app.domain.transcription.TranscriptionLanguage
+import com.carelipik.app.domain.transcription.TranscriptionEngineOption
 import com.carelipik.app.domain.transcription.TranscriptSegment
 import com.carelipik.app.ui.screens.transcript.TranscriptScreen
 import com.carelipik.app.ui.screens.transcript.TranscriptStatus
@@ -38,6 +39,7 @@ class TranscriptTermReviewTest {
                     onTranscriptChanged = {},
                     onConfirmConcern = {},
                     onApplySuggestion = {},
+                    onAnalyzeTermsOnline = {},
                     onViewModeChanged = {},
                     onSpeakerRoleAssigned = { _, _ -> },
                     onRetry = {},
@@ -74,6 +76,7 @@ class TranscriptTermReviewTest {
                     onTranscriptChanged = {},
                     onConfirmConcern = {},
                     onApplySuggestion = {},
+                    onAnalyzeTermsOnline = {},
                     onViewModeChanged = {},
                     onSpeakerRoleAssigned = { _, _ -> },
                     onRetry = {},
@@ -88,5 +91,38 @@ class TranscriptTermReviewTest {
         composeRule.onNodeWithText("Confirm detected speakers")
             .performScrollTo()
             .assertIsDisplayed()
+    }
+
+    @Test
+    fun onlineTranscript_showsClinicalAnalysisControlAndSafetyWarning() {
+        composeRule.setContent {
+            CareLipikTheme {
+                TranscriptScreen(
+                    uiState = TranscriptUiState(
+                        status = TranscriptStatus.Ready,
+                        transcript = "Patient takes Dolo 650.",
+                        engine = TranscriptionEngineOption.SaarasHindiHinglish,
+                        clinicalAnalysisSource = "Gemini",
+                        clinicalAnalysisWarning =
+                            "Medicine salts and terminology codes require doctor verification."
+                    ),
+                    onTranscriptChanged = {},
+                    onConfirmConcern = {},
+                    onApplySuggestion = {},
+                    onAnalyzeTermsOnline = {},
+                    onViewModeChanged = {},
+                    onSpeakerRoleAssigned = { _, _ -> },
+                    onRetry = {},
+                    onBack = {},
+                    onContinue = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Gemini term analysis").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Analyze again").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText(
+            "Medicine salts and terminology codes require doctor verification."
+        ).performScrollTo().assertIsDisplayed()
     }
 }

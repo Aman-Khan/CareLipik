@@ -52,11 +52,13 @@ fun DoctorReviewScreen(
         if (uiState.missingSections.isNotEmpty()) {
             MissingInformationCard(uiState.missingSections)
         }
+        ReviewSection("Patient age from transcript", uiState.draft.patientAge)
         ReviewSection("Presenting complaint", uiState.draft.presentingComplaint)
         ReviewSection("History", uiState.draft.history)
         ReviewSection("Key findings", uiState.draft.keyFindings)
         ReviewSection("Assessment notes", uiState.draft.assessmentNotes)
         ReviewSection("Plan notes", uiState.draft.planNotes)
+        ReviewSection("Complete reviewed transcript", uiState.draft.reviewedTranscript)
         ConfirmationCard(
             isConfirmed = uiState.hasConfirmedReview,
             error = uiState.confirmationError,

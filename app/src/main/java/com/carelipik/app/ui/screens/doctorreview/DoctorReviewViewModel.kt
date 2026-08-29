@@ -49,8 +49,10 @@ class DoctorReviewViewModel(
             id = newId(),
             approvedAtMillis = currentTimeMillis(),
             patientName = patient.patientName.trim(),
-            patientAge = patient.age.trim(),
-            visitReason = patient.visitReason.trim(),
+            patientAge = patient.age.trim().ifBlank { _uiState.value.draft.patientAge.trim() },
+            visitReason = patient.visitReason.trim().ifBlank {
+                _uiState.value.draft.presentingComplaint.trim()
+            },
             draft = _uiState.value.draft
         )
         if (processAsynchronously) {

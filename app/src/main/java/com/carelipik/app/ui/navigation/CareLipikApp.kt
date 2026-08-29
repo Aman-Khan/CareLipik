@@ -142,6 +142,7 @@ fun CareLipikApp(
                 onTranscriptChanged = activeTranscriptViewModel::setTranscript,
                 onConfirmConcern = activeTranscriptViewModel::confirmConcern,
                 onApplySuggestion = activeTranscriptViewModel::applySuggestedReplacement,
+                onAnalyzeTermsOnline = activeTranscriptViewModel::analyzeTermsOnline,
                 onViewModeChanged = activeTranscriptViewModel::setViewMode,
                 onSpeakerRoleAssigned = activeTranscriptViewModel::assignSpeakerRole,
                 onRetry = activeTranscriptViewModel::retry,
@@ -156,6 +157,7 @@ fun CareLipikApp(
             )
             ConsultationDestination.ClinicalDraft -> ClinicalDraftScreen(
                 uiState = clinicalDraftUiState,
+                onPatientAgeChanged = clinicalDraftViewModel::setPatientAge,
                 onPresentingComplaintChanged = clinicalDraftViewModel::setPresentingComplaint,
                 onHistoryChanged = clinicalDraftViewModel::setHistory,
                 onKeyFindingsChanged = clinicalDraftViewModel::setKeyFindings,

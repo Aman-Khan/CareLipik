@@ -7,6 +7,7 @@
 -->
 <full-backup-content>
     <exclude domain="file" path="consultation_history/" />
+    <exclude domain="file" path="approved_consultation_reports/" />
     <exclude domain="file" path="doctor_voice/" />
     <!--
    <include domain="sharedpref" path="."/>

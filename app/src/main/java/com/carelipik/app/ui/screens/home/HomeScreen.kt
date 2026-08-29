@@ -39,6 +39,7 @@ fun HomeScreen(
     onStartConsultation: () -> Unit,
     onOpenProfile: () -> Unit,
     onOpenHistory: () -> Unit,
+    onOpenConsultation: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -60,6 +61,7 @@ fun HomeScreen(
         RecentConsultations(
             consultations = uiState.recentConsultations,
             onOpenHistory = onOpenHistory,
+            onOpenConsultation = onOpenConsultation,
             onStartConsultation = onStartConsultation
         )
         Text(
@@ -309,6 +311,7 @@ private fun QuickActionCard(
 private fun RecentConsultations(
     consultations: List<ConsultationSummaryUi>,
     onOpenHistory: () -> Unit,
+    onOpenConsultation: (String) -> Unit,
     onStartConsultation: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -337,7 +340,10 @@ private fun RecentConsultations(
             EmptyConsultationCard(onStartConsultation = onStartConsultation)
         } else {
             consultations.take(3).forEach { consultation ->
-                ConsultationSummaryCard(consultation = consultation)
+                ConsultationSummaryCard(
+                    consultation = consultation,
+                    onClick = { onOpenConsultation(consultation.id) }
+                )
             }
         }
     }
@@ -383,9 +389,15 @@ private fun EmptyConsultationCard(onStartConsultation: () -> Unit) {
 }
 
 @Composable
-private fun ConsultationSummaryCard(consultation: ConsultationSummaryUi) {
+private fun ConsultationSummaryCard(
+    consultation: ConsultationSummaryUi,
+    onClick: () -> Unit
+) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("home_recent_${consultation.id}"),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
@@ -403,6 +415,17 @@ private fun ConsultationSummaryCard(consultation: ConsultationSummaryUi) {
                     text = consultation.dateLabel,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = consultation.visitReason,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = consultation.noteFormatLabel,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
             Text(

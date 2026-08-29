@@ -25,8 +25,8 @@ development recordings, screenshots, fixtures, or tests.
 - A separate prescribed-medicine and dosage section whose entries must each be verified by the
   doctor before final approval.
 - AES-GCM encrypted, app-private consultation history after final doctor approval.
-- On-demand approved-note export immediately after approval or from encrypted history as A4 PDF,
-  structured JSON, an HL7 FHIR R4 document Bundle, or plain text.
+- Approved report files linked to consultation history as encrypted A4 PDF, structured JSON, HL7
+  FHIR R4 Bundle, or plain text, with open, share, regenerate, and delete controls.
 - Temporary consultation audio in the Android cache by default.
 - Optional backend-only Gemini medical-term extraction and structured-note drafting; no provider
   key in the APK.
@@ -315,6 +315,10 @@ For clinical report generation and English translation:
    prescribed medicines, coverage warnings, and the complete conversation log are present.
 9. Generate PDF, structured JSON, FHIR R4, and plain text. Confirm each contains the selected note
    format and medicine details but no audio path.
+10. Return to consultation history and confirm each generated format appears under **Saved
+    reports** with **Open report**, **Share report**, and **Delete saved report** controls.
+11. Force-stop and reopen CareLipik, then confirm the encrypted report links remain available.
+12. Delete the consultation and confirm all of its linked report artifacts are removed.
 
 For a fresh-consultation reset:
 
@@ -444,10 +448,14 @@ backend URL changed.
 - New approved records retain patient details, the selected clinical-note format, doctor-reviewed
   prescribed medicines, coverage warnings, and the complete reviewed conversation log inside the
   encrypted on-device consultation record.
+- Generated approved reports are encrypted separately with AES-GCM and linked by consultation ID.
+  One current artifact is retained per export format; regenerating that format replaces its older
+  encrypted artifact.
 - Consultation audio is kept in app-private cache and discarded after successful approval.
-- Exports are generated on demand in app-private cache, use ID-based filenames, exclude audio,
-  expire after 24 hours, and are shared through a temporary read-only content URI.
-- Voice enrollment and consultation history are excluded from cloud backup and device transfer.
+- Opening or sharing a saved report decrypts a short-lived copy into app-private cache and exposes
+  it through a temporary read-only content URI. No report contains consultation audio.
+- Voice enrollment, consultation history, and encrypted report artifacts are excluded from cloud
+  backup and device transfer.
 - Online audio transcription, transcript-based medical-term analysis, and Gemini note generation
   require explicit consent.
 - Provider keys stay in the backend/Keychain and are never embedded in Android.
@@ -483,11 +491,24 @@ approved item from encrypted history. It offers:
 
 The clinical note structure is selected before doctor approval; the export screen then selects the
 file format. For example, one approved H&P note can be exported as PDF, JSON, FHIR, or plain text.
+Each generated file is stored as an encrypted artifact linked to that approved consultation. The
+history detail screen can reopen, share, regenerate, or delete each format. Deleting a consultation
+also deletes its linked reports. Readable cache copies are temporary; the persistent copy remains
+encrypted until explicitly deleted.
+
+Approved consultations created before this feature remain readable, but their older temporary
+exports are not migrated. Open the consultation and generate each required format once to create
+its encrypted report link.
+
+Phone check for history: approve a synthetic consultation, return to Home, and confirm it appears
+under **Recent consultations** without restarting the app. Open **Consultations** and confirm the
+history page has no workflow step counter, newest records appear first, and each card shows its
+approval state, visit reason, note format, and age. Open a record to generate, reopen, share, or
+delete its linked reports; deleting the consultation must remove those reports as well.
 
 FHIR support is base R4 interoperability output, not certification for a national, hospital, or
 vendor-specific profile. Validate it against the receiving system's implementation guide and
-terminology requirements before production import. No export contains consultation audio. Export
-files remain temporary until the user explicitly shares or saves them outside CareLipik.
+terminology requirements before production import. No export contains consultation audio.
 
 ## Development rules
 

@@ -4,7 +4,9 @@ data class ConsultationSummaryUi(
     val id: String,
     val patientLabel: String,
     val dateLabel: String,
-    val statusLabel: String
+    val visitReason: String,
+    val noteFormatLabel: String,
+    val statusLabel: String = "Approved"
 )
 
 data class HomeUiState(

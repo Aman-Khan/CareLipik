@@ -7,6 +7,7 @@ import androidx.compose.ui.test.performClick
 import com.carelipik.app.data.audio.FakeConsultationRecorder
 import com.carelipik.app.domain.transcription.TranscriptionLanguage
 import com.carelipik.app.ui.navigation.CareLipikApp
+import com.carelipik.app.ui.screens.home.HomeViewModel
 import com.carelipik.app.ui.screens.patientdetails.PatientDetailsViewModel
 import com.carelipik.app.ui.screens.recording.RecordingUiState
 import com.carelipik.app.ui.screens.recording.RecordingViewModel
@@ -38,9 +39,11 @@ class NewConsultationResetTest {
             setTranscriptionLanguage(TranscriptionLanguage.Hinglish)
             setOnlineProcessingConsent(true)
         }
+        val homeViewModel = HomeViewModel()
         composeRule.setContent {
             CareLipikTheme {
                 CareLipikApp(
+                    homeViewModel = homeViewModel,
                     welcomeViewModel = welcomeViewModel,
                     patientDetailsViewModel = patientViewModel,
                     recordingViewModel = recordingViewModel

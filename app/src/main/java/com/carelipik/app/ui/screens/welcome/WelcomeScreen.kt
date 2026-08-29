@@ -15,6 +15,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,6 +28,7 @@ import androidx.compose.ui.unit.dp
 fun WelcomeScreen(
     uiState: WelcomeUiState,
     onConsentChanged: (Boolean) -> Unit,
+    onBack: () -> Unit,
     onContinue: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -38,9 +40,12 @@ fun WelcomeScreen(
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        Text(text = "CareLipik", style = MaterialTheme.typography.displaySmall)
+        TextButton(onClick = onBack) {
+            Text("Back to home")
+        }
+        Text(text = "Recording consent", style = MaterialTheme.typography.displaySmall)
         Text(
-            text = "An offline clinical-scribe prototype that helps turn a consultation into a draft for doctor review.",
+            text = "Confirm consent before entering patient details or recording this consultation.",
             style = MaterialTheme.typography.bodyLarge
         )
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -73,7 +78,7 @@ fun WelcomeScreen(
             }
         }
         Text(
-            "Privacy: this prototype processes information locally on this device. It does not send consultation information to a cloud service.",
+            "Privacy: processing stays on this device unless you explicitly select an online transcription engine later. Online processing requires separate confirmation.",
             style = MaterialTheme.typography.bodyMedium
         )
         Button(

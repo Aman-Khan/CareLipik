@@ -6,9 +6,25 @@ import org.junit.Test
 
 class CareLipikNavigatorTest {
     @Test
-    fun nextFromWelcome_opensPatientDetails() {
+    fun initialDestination_isHome() {
         val navigator = CareLipikNavigator()
 
+        assertEquals(ConsultationDestination.Home, navigator.currentDestination)
+    }
+
+    @Test
+    fun startConsultation_opensRecordingConsent() {
+        val navigator = CareLipikNavigator()
+
+        navigator.startConsultation()
+
+        assertEquals(ConsultationDestination.Welcome, navigator.currentDestination)
+    }
+
+    @Test
+    fun nextFromWelcome_opensPatientDetails() {
+        val navigator = CareLipikNavigator()
+        navigator.startConsultation()
         navigator.navigateToNext()
 
         assertEquals(ConsultationDestination.PatientDetails, navigator.currentDestination)
@@ -17,10 +33,36 @@ class CareLipikNavigatorTest {
     @Test
     fun backFromPatientDetails_returnsToWelcome() {
         val navigator = CareLipikNavigator()
+        navigator.startConsultation()
         navigator.navigateToNext()
 
         navigator.navigateBack()
 
         assertEquals(ConsultationDestination.Welcome, navigator.currentDestination)
+    }
+
+    @Test
+    fun backFromConsent_returnsHome() {
+        val navigator = CareLipikNavigator()
+        navigator.startConsultation()
+
+        navigator.navigateBack()
+
+        assertEquals(ConsultationDestination.Home, navigator.currentDestination)
+    }
+
+    @Test
+    fun profileAndHistory_openFromHomeAndReturnHome() {
+        val navigator = CareLipikNavigator()
+
+        navigator.openDoctorProfile()
+        assertEquals(ConsultationDestination.DoctorProfile, navigator.currentDestination)
+        navigator.navigateBack()
+        assertEquals(ConsultationDestination.Home, navigator.currentDestination)
+
+        navigator.openConsultationHistory()
+        assertEquals(ConsultationDestination.ConsultationHistory, navigator.currentDestination)
+        navigator.navigateBack()
+        assertEquals(ConsultationDestination.Home, navigator.currentDestination)
     }
 }

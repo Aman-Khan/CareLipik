@@ -5,20 +5,50 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.carelipik.app.domain.model.ConsultationDestination
 
-/** Minimal route holder for the fixed, local consultation flow. */
+/** Route holder that keeps top-level app navigation separate from the consultation flow. */
 class CareLipikNavigator {
-    var currentDestination by mutableStateOf(ConsultationDestination.Welcome)
+    var currentDestination by mutableStateOf(ConsultationDestination.Home)
         private set
 
+    fun startConsultation() {
+        currentDestination = ConsultationDestination.Welcome
+    }
+
+    fun openDoctorProfile() {
+        currentDestination = ConsultationDestination.DoctorProfile
+    }
+
+    fun openConsultationHistory() {
+        currentDestination = ConsultationDestination.ConsultationHistory
+    }
+
     fun navigateToNext() {
-        val destinations = ConsultationDestination.entries
-        val nextIndex = (destinations.indexOf(currentDestination) + 1) % destinations.size
-        currentDestination = destinations[nextIndex]
+        currentDestination = when (currentDestination) {
+            ConsultationDestination.Home -> ConsultationDestination.Welcome
+            ConsultationDestination.DoctorProfile,
+            ConsultationDestination.ConsultationHistory -> ConsultationDestination.Home
+            ConsultationDestination.Welcome -> ConsultationDestination.PatientDetails
+            ConsultationDestination.PatientDetails -> ConsultationDestination.ConsultationRecording
+            ConsultationDestination.ConsultationRecording -> ConsultationDestination.Transcript
+            ConsultationDestination.Transcript -> ConsultationDestination.ClinicalDraft
+            ConsultationDestination.ClinicalDraft -> ConsultationDestination.DoctorReview
+            ConsultationDestination.DoctorReview -> ConsultationDestination.Export
+            ConsultationDestination.Export -> ConsultationDestination.Home
+        }
     }
 
     fun navigateBack() {
-        val destinations = ConsultationDestination.entries
-        val previousIndex = (destinations.indexOf(currentDestination) - 1).coerceAtLeast(0)
-        currentDestination = destinations[previousIndex]
+        currentDestination = when (currentDestination) {
+            ConsultationDestination.Home -> ConsultationDestination.Home
+            ConsultationDestination.DoctorProfile,
+            ConsultationDestination.ConsultationHistory,
+            ConsultationDestination.Welcome -> ConsultationDestination.Home
+            ConsultationDestination.PatientDetails -> ConsultationDestination.Welcome
+            ConsultationDestination.ConsultationRecording -> ConsultationDestination.PatientDetails
+            ConsultationDestination.Transcript -> ConsultationDestination.ConsultationRecording
+            ConsultationDestination.ClinicalDraft -> ConsultationDestination.Transcript
+            ConsultationDestination.DoctorReview -> ConsultationDestination.ClinicalDraft
+            ConsultationDestination.Export -> ConsultationDestination.DoctorReview
+        }
     }
 }

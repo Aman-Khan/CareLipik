@@ -11,13 +11,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.carelipik.app.domain.model.ConsultationDestination
-import com.carelipik.app.ui.screens.placeholder.PlaceholderScreen
 import com.carelipik.app.ui.screens.clinicaldraft.ClinicalDraftScreen
 import com.carelipik.app.ui.screens.clinicaldraft.ClinicalDraftViewModel
 import com.carelipik.app.ui.screens.doctorreview.DoctorReviewScreen
 import com.carelipik.app.ui.screens.doctorreview.DoctorReviewViewModel
+import com.carelipik.app.ui.screens.doctorprofile.DoctorProfileScreen
+import com.carelipik.app.ui.screens.doctorprofile.DoctorProfileViewModel
+import com.carelipik.app.ui.screens.home.HomeScreen
+import com.carelipik.app.ui.screens.home.HomeViewModel
 import com.carelipik.app.ui.screens.patientdetails.PatientDetailsScreen
 import com.carelipik.app.ui.screens.patientdetails.PatientDetailsViewModel
+import com.carelipik.app.ui.screens.placeholder.PlaceholderScreen
+import com.carelipik.app.ui.screens.placeholder.UpcomingFeatureScreen
 import com.carelipik.app.ui.screens.recording.RecordingScreen
 import com.carelipik.app.ui.screens.recording.RecordingViewModel
 import com.carelipik.app.ui.screens.transcript.TranscriptScreen
@@ -27,6 +32,8 @@ import com.carelipik.app.ui.screens.welcome.WelcomeViewModel
 
 @Composable
 fun CareLipikApp(
+    homeViewModel: HomeViewModel = viewModel(),
+    doctorProfileViewModel: DoctorProfileViewModel = viewModel(),
     welcomeViewModel: WelcomeViewModel = viewModel(),
     patientDetailsViewModel: PatientDetailsViewModel = viewModel(),
     recordingViewModel: RecordingViewModel? = null,
@@ -41,6 +48,8 @@ fun CareLipikApp(
     val activeTranscriptViewModel = transcriptViewModel ?: viewModel(
         factory = TranscriptViewModel.Factory(context)
     )
+    val homeUiState by homeViewModel.uiState.collectAsState()
+    val doctorProfileUiState by doctorProfileViewModel.uiState.collectAsState()
     val welcomeUiState by welcomeViewModel.uiState.collectAsState()
     val patientDetailsUiState by patientDetailsViewModel.uiState.collectAsState()
     val recordingUiState by activeRecordingViewModel.uiState.collectAsState()
@@ -51,9 +60,39 @@ fun CareLipikApp(
 
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
         when (navigator.currentDestination) {
+            ConsultationDestination.Home -> HomeScreen(
+                uiState = homeUiState,
+                onStartConsultation = navigator::startConsultation,
+                onOpenProfile = navigator::openDoctorProfile,
+                onOpenHistory = navigator::openConsultationHistory,
+                modifier = Modifier.padding(innerPadding)
+            )
+            ConsultationDestination.DoctorProfile -> DoctorProfileScreen(
+                uiState = doctorProfileUiState,
+                onFullNameChanged = doctorProfileViewModel::setFullName,
+                onSpecialtyChanged = doctorProfileViewModel::setSpecialty,
+                onRegistrationNumberChanged = doctorProfileViewModel::setRegistrationNumber,
+                onClinicNameChanged = doctorProfileViewModel::setClinicName,
+                onPreferredLanguageChanged = doctorProfileViewModel::togglePreferredLanguage,
+                onProcessingPreferenceChanged = doctorProfileViewModel::setProcessingPreference,
+                onBack = navigator::navigateBack,
+                onSave = {
+                    doctorProfileViewModel.saveProfile()?.let { profile ->
+                        homeViewModel.applyDoctorProfile(profile)
+                        navigator.navigateBack()
+                    }
+                },
+                modifier = Modifier.padding(innerPadding)
+            )
+            ConsultationDestination.ConsultationHistory -> UpcomingFeatureScreen(
+                destination = navigator.currentDestination,
+                onBack = navigator::navigateBack,
+                modifier = Modifier.padding(innerPadding)
+            )
             ConsultationDestination.Welcome -> WelcomeScreen(
                 uiState = welcomeUiState,
                 onConsentChanged = welcomeViewModel::setRecordingConsent,
+                onBack = navigator::navigateBack,
                 onContinue = navigator::navigateToNext,
                 modifier = Modifier.padding(innerPadding)
             )

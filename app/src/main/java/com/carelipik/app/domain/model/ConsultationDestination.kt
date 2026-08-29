@@ -1,8 +1,11 @@
 package com.carelipik.app.domain.model
 
-/** Routes for the local consultation workflow. */
+/** Top-level destinations and routes for the local consultation workflow. */
 enum class ConsultationDestination(val title: String) {
-    Welcome("Welcome"),
+    Home("Home"),
+    DoctorProfile("Doctor profile"),
+    ConsultationHistory("Consultation history"),
+    Welcome("Recording consent"),
     PatientDetails("Patient details"),
     ConsultationRecording("Consultation recording"),
     Transcript("Transcript"),

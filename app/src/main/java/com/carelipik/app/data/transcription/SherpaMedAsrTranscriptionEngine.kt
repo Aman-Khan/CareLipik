@@ -5,6 +5,7 @@ import com.carelipik.app.domain.transcription.AudioTranscriptionEngine
 import com.carelipik.app.domain.transcription.TranscriptionEngineOption
 import com.carelipik.app.domain.transcription.TranscriptionLanguage
 import com.carelipik.app.domain.transcription.TranscriptionResult
+import com.carelipik.app.domain.transcription.SpeakerDiarizationEngine
 import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.OfflineMedAsrCtcModelConfig
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
@@ -14,7 +15,8 @@ import java.io.File
 
 /** English-only on-device transcription adapted for medical speech. */
 class SherpaMedAsrTranscriptionEngine(
-    private val context: Context
+    private val context: Context,
+    private val diarizationEngine: SpeakerDiarizationEngine? = null
 ) : AudioTranscriptionEngine {
     override val option: TranscriptionEngineOption = TranscriptionEngineOption.MedAsrEnglish
 
@@ -29,32 +31,40 @@ class SherpaMedAsrTranscriptionEngine(
         val samples = PcmWaveAudio.readMono16Khz(File(audioPath))
         require(samples.isNotEmpty()) { "The recording contains no audio." }
         createRecognizer().useRecognizer { recognizer ->
-            val transcript = PcmWaveAudio.chunks(samples, MAX_CHUNK_SAMPLES)
-                .mapNotNull { chunk ->
-                    recognizer.createStream().let { stream ->
-                        try {
-                            stream.acceptWaveform(chunk, PcmWaveAudio.sampleRate)
-                            recognizer.decode(stream)
-                            recognizer.getResult(stream).text.trim().ifBlank { null }
-                        } finally {
-                            stream.release()
-                        }
-                    }
-                }
-                .joinToString(separator = "\n\n")
-            require(transcript.isNotBlank()) {
+            val payload = OfflineDiarizedTranscription.transcribe(
+                samples = samples,
+                sampleRate = PcmWaveAudio.sampleRate,
+                diarizationEngine = diarizationEngine,
+                recognize = { audio -> recognize(recognizer, audio) }
+            )
+            require(payload.transcript.isNotBlank()) {
                 "No speech was detected. Check the recording and try again."
             }
-            transcript
+            payload
         }
     }.fold(
-        onSuccess = { TranscriptionResult.Success(it) },
+        onSuccess = { TranscriptionResult.Success(it.transcript, it.segments) },
         onFailure = { error ->
             TranscriptionResult.Failure(
                 error.message ?: "Medical English transcription could not be completed."
             )
         }
     )
+
+    private fun recognize(recognizer: OfflineRecognizer, samples: FloatArray): String =
+        PcmWaveAudio.chunks(samples, MAX_CHUNK_SAMPLES)
+            .mapNotNull { chunk ->
+                recognizer.createStream().let { stream ->
+                    try {
+                        stream.acceptWaveform(chunk, PcmWaveAudio.sampleRate)
+                        recognizer.decode(stream)
+                        recognizer.getResult(stream).text.trim().ifBlank { null }
+                    } finally {
+                        stream.release()
+                    }
+                }
+            }
+            .joinToString(separator = " ")
 
     private fun createRecognizer(): OfflineRecognizer {
         val modelConfig = OfflineModelConfig(

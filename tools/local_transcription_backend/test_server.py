@@ -11,6 +11,7 @@ from server import (
     TranscriptionConfig,
     create_server,
     normalize_clinical_entities,
+    normalize_clinical_note,
     normalize_provider_result,
 )
 
@@ -35,6 +36,7 @@ class FakeBatchClient:
 class FakeClinicalClient:
     def __init__(self) -> None:
         self.request = None
+        self.note_request = None
 
     def analyze(self, transcript, language_code):
         self.request = (transcript, language_code)
@@ -58,6 +60,26 @@ class FakeClinicalClient:
                     "verification_status": "doctor_confirmation_required",
                 }
             ],
+        }
+
+    def generate_note(self, **request):
+        self.note_request = request
+        return {
+            "note_format": request["note_format"],
+            "output_language": request["output_language"],
+            "specialty_name": request["specialty_name"],
+            "sections": [
+                {
+                    "id": "subjective",
+                    "title": "Subjective",
+                    "content": "Patient reports a synthetic cough.",
+                    "source_turn_ids": ["T2"],
+                }
+            ],
+            "prescribed_medications": [],
+            "coverage_warnings": [],
+            "source": "gemini",
+            "doctor_approval_required": True,
         }
 
 
@@ -259,6 +281,98 @@ class LocalBackendTest(unittest.TestCase):
         self.assertEqual(200, response.status)
         self.assertEqual(("I take Dolo 650.", "en-IN"), clinical_client.request)
         self.assertEqual("MEDICATION", result["entities"][0]["category"])
+
+    def test_clinical_note_normalization_requires_evidence_and_covers_patient_turns(self):
+        transcript = (
+            "Doctor: What brought you in?\n\n"
+            "Patient: I have a cough.\n\n"
+            "Doctor: Take SyntheticMed 5 mg once daily for three days.\n\n"
+            "Patient: I also feel dizzy."
+        )
+
+        normalized = normalize_clinical_note(
+            transcript=transcript,
+            result={
+                "sections": [
+                    {
+                        "id": "subjective",
+                        "content": "Patient reports cough.",
+                        "source_turn_ids": ["T2"],
+                    },
+                    {
+                        "id": "assessment",
+                        "content": "Invented diagnosis",
+                        "source_turn_ids": ["BAD"],
+                    },
+                ],
+                "prescribed_medications": [
+                    {
+                        "name": "SyntheticMed",
+                        "generic_name": "",
+                        "strength": "5 mg",
+                        "dose": "5 mg",
+                        "route": "",
+                        "frequency": "once daily",
+                        "duration": "three days",
+                        "instructions": "",
+                        "source_turn_ids": ["T3"],
+                    },
+                    {
+                        "name": "PatientCurrentMed",
+                        "generic_name": "",
+                        "strength": "",
+                        "dose": "",
+                        "route": "",
+                        "frequency": "",
+                        "duration": "",
+                        "instructions": "",
+                        "source_turn_ids": ["T2"],
+                    },
+                ],
+            },
+            note_format="Soap",
+            output_language="English",
+            specialty_name="General medicine",
+        )
+
+        self.assertEqual("", normalized["sections"][2]["content"])
+        self.assertEqual("SyntheticMed", normalized["prescribed_medications"][0]["name"])
+        self.assertEqual(1, len(normalized["prescribed_medications"]))
+        self.assertFalse(normalized["prescribed_medications"][0]["doctor_reviewed"])
+        self.assertEqual(
+            ["Patient turn T4 is not represented in the generated note."],
+            normalized["coverage_warnings"],
+        )
+
+    def test_clinical_note_endpoint_forwards_reviewed_context(self):
+        batch_client = FakeBatchClient()
+        clinical_client = FakeClinicalClient()
+        body = json.dumps(
+            {
+                "transcript": "Doctor: Question\n\nPatient: Synthetic cough",
+                "language_code": "hi-Latn-IN",
+                "note_format": "Soap",
+                "output_language": "English",
+                "specialty_name": "General medicine",
+                "patient_age": "47",
+                "visit_reason": "Synthetic cough",
+            }
+        ).encode("utf-8")
+
+        with running_server_with_clinical(batch_client, clinical_client) as base_url:
+            request = urllib.request.Request(
+                f"{base_url}/v1/clinical-note-drafts",
+                data=body,
+                method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(request) as response:
+                result = json.load(response)
+
+        self.assertEqual(200, response.status)
+        self.assertEqual("hi-Latn-IN", clinical_client.note_request["language_code"])
+        self.assertEqual("English", clinical_client.note_request["output_language"])
+        self.assertTrue(result["doctor_approval_required"])
 
 
 @contextmanager

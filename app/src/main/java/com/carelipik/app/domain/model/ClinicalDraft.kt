@@ -7,7 +7,15 @@ data class ClinicalDraft(
     val keyFindings: String = "",
     val assessmentNotes: String = "",
     val planNotes: String = "",
-    val reviewedTranscript: String = ""
+    val reviewedTranscript: String = "",
+    val noteFormat: ClinicalNoteFormat = ClinicalNoteFormat.Soap,
+    val noteLanguage: ClinicalNoteLanguage = ClinicalNoteLanguage.Original,
+    val specialtyName: String = "",
+    val structuredSections: List<ClinicalNoteSection> = emptyList(),
+    val medications: List<MedicationDraft> = emptyList(),
+    val coverageWarnings: List<String> = emptyList(),
+    val generationSource: ClinicalNoteGenerationSource =
+        ClinicalNoteGenerationSource.OfflineTranscript
 ) {
     val hasContent: Boolean
         get() = listOf(
@@ -15,7 +23,19 @@ data class ClinicalDraft(
             history,
             keyFindings,
             assessmentNotes,
-            planNotes,
-            reviewedTranscript
-        ).any(String::isNotBlank)
+            planNotes
+        ).any(String::isNotBlank) ||
+            structuredSections.any { it.content.isNotBlank() } ||
+            medications.any { it.hasContent }
+
+    val effectiveSections: List<ClinicalNoteSection>
+        get() = structuredSections.ifEmpty {
+            listOf(
+                ClinicalNoteSection("presenting_complaint", "Presenting complaint", presentingComplaint),
+                ClinicalNoteSection("history", "History", history),
+                ClinicalNoteSection("key_findings", "Key findings", keyFindings),
+                ClinicalNoteSection("assessment", "Assessment notes", assessmentNotes),
+                ClinicalNoteSection("plan", "Plan notes", planNotes)
+            )
+        }
 }

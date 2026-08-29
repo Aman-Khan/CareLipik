@@ -45,7 +45,7 @@ fun CareLipikApp(
     patientDetailsViewModel: PatientDetailsViewModel = viewModel(),
     recordingViewModel: RecordingViewModel? = null,
     transcriptViewModel: TranscriptViewModel? = null,
-    clinicalDraftViewModel: ClinicalDraftViewModel = viewModel(),
+    clinicalDraftViewModel: ClinicalDraftViewModel? = null,
     doctorReviewViewModel: DoctorReviewViewModel? = null,
     consultationHistoryViewModel: ConsultationHistoryViewModel? = null,
     consultationExportViewModel: ConsultationExportViewModel? = null
@@ -53,6 +53,9 @@ fun CareLipikApp(
     val context = LocalContext.current
     val activeRecordingViewModel = recordingViewModel ?: viewModel(
         factory = RecordingViewModel.Factory(context)
+    )
+    val activeClinicalDraftViewModel = clinicalDraftViewModel ?: viewModel(
+        factory = ClinicalDraftViewModel.Factory(context)
     )
     val activeTranscriptViewModel = transcriptViewModel ?: viewModel(
         factory = TranscriptViewModel.Factory(context)
@@ -77,7 +80,7 @@ fun CareLipikApp(
     val patientDetailsUiState by patientDetailsViewModel.uiState.collectAsState()
     val recordingUiState by activeRecordingViewModel.uiState.collectAsState()
     val transcriptUiState by activeTranscriptViewModel.uiState.collectAsState()
-    val clinicalDraftUiState by clinicalDraftViewModel.uiState.collectAsState()
+    val clinicalDraftUiState by activeClinicalDraftViewModel.uiState.collectAsState()
     val doctorReviewUiState by activeDoctorReviewViewModel.uiState.collectAsState()
     val consultationHistoryUiState by activeConsultationHistoryViewModel.uiState.collectAsState()
     val consultationExportUiState by activeConsultationExportViewModel.uiState.collectAsState()
@@ -87,7 +90,16 @@ fun CareLipikApp(
         when (navigator.currentDestination) {
             ConsultationDestination.Home -> HomeScreen(
                 uiState = homeUiState,
-                onStartConsultation = navigator::startConsultation,
+                onStartConsultation = {
+                    welcomeViewModel.resetForNewConsultation()
+                    patientDetailsViewModel.resetForNewConsultation()
+                    activeRecordingViewModel.resetForNewConsultation()
+                    activeTranscriptViewModel.resetForNewConsultation()
+                    activeClinicalDraftViewModel.resetForNewConsultation()
+                    activeDoctorReviewViewModel.resetForNewConsultation()
+                    activeConsultationExportViewModel.resetForNewConsultation()
+                    navigator.startConsultation()
+                },
                 onOpenProfile = navigator::openDoctorProfile,
                 onOpenHistory = navigator::openConsultationHistory,
                 modifier = Modifier.padding(innerPadding)
@@ -149,7 +161,14 @@ fun CareLipikApp(
                 onBack = navigator::navigateBack,
                 onContinue = {
                     if (activeTranscriptViewModel.validateForContinue()) {
-                        clinicalDraftViewModel.generate(activeTranscriptViewModel.transcriptText())
+                        val patient = patientDetailsViewModel.currentDetails()
+                        activeClinicalDraftViewModel.generate(
+                            transcript = activeTranscriptViewModel.transcriptText(),
+                            language = transcriptUiState.language,
+                            specialtyName = doctorProfileUiState.specialty,
+                            patientAge = patient.age,
+                            visitReason = patient.visitReason
+                        )
                         navigator.navigateToNext()
                     }
                 },
@@ -157,17 +176,24 @@ fun CareLipikApp(
             )
             ConsultationDestination.ClinicalDraft -> ClinicalDraftScreen(
                 uiState = clinicalDraftUiState,
-                onPatientAgeChanged = clinicalDraftViewModel::setPatientAge,
-                onPresentingComplaintChanged = clinicalDraftViewModel::setPresentingComplaint,
-                onHistoryChanged = clinicalDraftViewModel::setHistory,
-                onKeyFindingsChanged = clinicalDraftViewModel::setKeyFindings,
-                onAssessmentNotesChanged = clinicalDraftViewModel::setAssessmentNotes,
-                onPlanNotesChanged = clinicalDraftViewModel::setPlanNotes,
-                onRetry = clinicalDraftViewModel::retry,
+                onPatientAgeChanged = activeClinicalDraftViewModel::setPatientAge,
+                onNoteFormatSelected = activeClinicalDraftViewModel::selectNoteFormat,
+                onNoteLanguageSelected = activeClinicalDraftViewModel::selectNoteLanguage,
+                onSpecialtyNameChanged = activeClinicalDraftViewModel::setSpecialtyName,
+                onSectionChanged = activeClinicalDraftViewModel::setSectionContent,
+                onOnlineGenerationConsentChanged =
+                    activeClinicalDraftViewModel::setOnlineGenerationConsent,
+                onGenerateWithGemini = activeClinicalDraftViewModel::generateWithGemini,
+                onAddMedication = activeClinicalDraftViewModel::addMedication,
+                onMedicationChanged = activeClinicalDraftViewModel::updateMedication,
+                onRemoveMedication = activeClinicalDraftViewModel::removeMedication,
+                onRetry = activeClinicalDraftViewModel::retry,
                 onBack = navigator::navigateBack,
                 onContinue = {
-                    if (clinicalDraftViewModel.validateForContinue()) {
-                        activeDoctorReviewViewModel.loadDraft(clinicalDraftViewModel.currentDraft())
+                    if (activeClinicalDraftViewModel.validateForContinue()) {
+                        activeDoctorReviewViewModel.loadDraft(
+                            activeClinicalDraftViewModel.currentDraft()
+                        )
                         navigator.navigateToNext()
                     }
                 },

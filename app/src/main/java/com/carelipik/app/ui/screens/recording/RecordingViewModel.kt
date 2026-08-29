@@ -106,6 +106,13 @@ class RecordingViewModel(
         _uiState.value = RecordingUiState()
     }
 
+    /** Clears temporary audio and all recording choices at a consultation boundary. */
+    fun resetForNewConsultation() {
+        recorder.discard()
+        timerJob?.cancel()
+        _uiState.value = RecordingUiState()
+    }
+
     fun togglePlayback() {
         if (!_uiState.value.hasSavedAudio) return
         if (_uiState.value.isPlaying) recorder.stopPlayback() else recorder.play()

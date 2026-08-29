@@ -46,4 +46,16 @@ class PatientDetailsViewModelTest {
 
         assertEquals("42", viewModel.uiState.value.age)
     }
+
+    @Test
+    fun newConsultation_clearsPreviousPatientDetails() {
+        val viewModel = PatientDetailsViewModel()
+        viewModel.setPatientName("Previous synthetic reference")
+        viewModel.setAge("47")
+        viewModel.setVisitReason("Previous synthetic visit")
+
+        viewModel.resetForNewConsultation()
+
+        assertEquals(PatientDetailsUiState(), viewModel.uiState.value)
+    }
 }

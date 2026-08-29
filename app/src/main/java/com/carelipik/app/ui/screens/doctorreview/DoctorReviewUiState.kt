@@ -8,13 +8,9 @@ data class DoctorReviewUiState(
     val hasAttemptedApproval: Boolean = false
 ) {
     val missingSections: List<String>
-        get() = buildList {
-            if (draft.presentingComplaint.isBlank()) add("Presenting complaint")
-            if (draft.history.isBlank()) add("History")
-            if (draft.keyFindings.isBlank()) add("Key findings")
-            if (draft.assessmentNotes.isBlank()) add("Assessment notes")
-            if (draft.planNotes.isBlank()) add("Plan notes")
-        }
+        get() = draft.effectiveSections
+            .filter { it.content.isBlank() }
+            .map { it.title }
 
     val confirmationError: String?
         get() = if (hasAttemptedApproval && !hasConfirmedReview) {
@@ -23,6 +19,15 @@ data class DoctorReviewUiState(
             null
         }
 
+    val medicationError: String?
+        get() = when {
+            draft.medications.any { !it.hasContent } ->
+                "Complete or remove every medicine entry before approval"
+            draft.medications.any { !it.isDoctorReviewed } ->
+                "Every prescribed medicine and dosage requires doctor verification"
+            else -> null
+        }
+
     val canApprove: Boolean
-        get() = draft.hasContent && hasConfirmedReview
+        get() = draft.hasContent && hasConfirmedReview && medicationError == null
 }

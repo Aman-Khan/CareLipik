@@ -69,6 +69,49 @@ class TranscriptViewModelTest {
         assertEquals(TranscriptionLanguage.Hinglish, engine.receivedLanguage)
     }
 
+    @Test
+    fun possibleRecognitionError_blocksContinueUntilDoctorChoosesCorrection() {
+        val viewModel = TranscriptViewModel(
+            engineResolver = resolver(
+                StubEngine(TranscriptionResult.Success("I have had cup for three days."))
+            ),
+            processAsynchronously = false
+        )
+
+        viewModel.transcribe("/private/recording.wav")
+
+        val concern = viewModel.uiState.value.pendingConcerns.single()
+        assertEquals("cough", concern.suggestedReplacement)
+        assertFalse(viewModel.validateForContinue())
+        assertEquals(
+            "Confirm or correct every highlighted term before continuing",
+            viewModel.uiState.value.transcriptError
+        )
+
+        viewModel.applySuggestedReplacement(concern.id)
+
+        assertEquals("I have had cough for three days.", viewModel.transcriptText())
+        assertTrue(viewModel.uiState.value.pendingConcerns.isEmpty())
+        assertTrue(viewModel.validateForContinue())
+    }
+
+    @Test
+    fun recognizedMedicalTerm_requiresExplicitDoctorConfirmation() {
+        val viewModel = TranscriptViewModel(
+            engineResolver = resolver(StubEngine(TranscriptionResult.Success("Mild fever."))),
+            processAsynchronously = false
+        )
+
+        viewModel.transcribe("/private/recording.wav")
+
+        val concern = viewModel.uiState.value.pendingConcerns.single()
+        assertFalse(viewModel.uiState.value.canContinue)
+        viewModel.confirmConcern(concern.id)
+
+        assertTrue(viewModel.uiState.value.canContinue)
+        assertEquals(1, viewModel.uiState.value.confirmedConcernCount)
+    }
+
     private class StubEngine(
         private val result: TranscriptionResult
     ) : AudioTranscriptionEngine {

@@ -99,6 +99,8 @@ fun CareLipikApp(
             ConsultationDestination.Transcript -> TranscriptScreen(
                 uiState = transcriptUiState,
                 onTranscriptChanged = activeTranscriptViewModel::setTranscript,
+                onConfirmConcern = activeTranscriptViewModel::confirmConcern,
+                onApplySuggestion = activeTranscriptViewModel::applySuggestedReplacement,
                 onRetry = activeTranscriptViewModel::retry,
                 onBack = navigator::navigateBack,
                 onContinue = {

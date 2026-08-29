@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import android.content.Context
 import com.carelipik.app.data.transcription.FakeAudioTranscriptionEngine
 import com.carelipik.app.data.transcription.CareLipikTranscriptionEngineResolver
+import com.carelipik.app.data.transcription.RuleBasedTranscriptReviewAnalyzer
+import com.carelipik.app.domain.transcription.TranscriptReviewAnalyzer
 import com.carelipik.app.domain.transcription.TranscriptionEngineOption
 import com.carelipik.app.domain.transcription.TranscriptionEngineResolver
 import com.carelipik.app.domain.transcription.TranscriptionResult
@@ -22,6 +24,7 @@ class TranscriptViewModel(
     private val engineResolver: TranscriptionEngineResolver = TranscriptionEngineResolver {
         FakeAudioTranscriptionEngine()
     },
+    private val reviewAnalyzer: TranscriptReviewAnalyzer = RuleBasedTranscriptReviewAnalyzer(),
     private val processAsynchronously: Boolean = true
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(TranscriptUiState())
@@ -66,10 +69,62 @@ class TranscriptViewModel(
 
     fun setTranscript(transcript: String) {
         _uiState.update {
+            val concerns = reviewAnalyzer.analyze(transcript, it.language)
             it.copy(
                 status = TranscriptStatus.Ready,
                 transcript = transcript,
-                errorMessage = null
+                errorMessage = null,
+                concerns = concerns,
+                confirmedConcernIds = it.confirmedConcernIds.intersect(
+                    concerns.mapTo(mutableSetOf()) { concern -> concern.id }
+                )
+            )
+        }
+    }
+
+    fun confirmConcern(concernId: String) {
+        _uiState.update { state ->
+            if (state.concerns.none { it.id == concernId }) state else state.copy(
+                confirmedConcernIds = state.confirmedConcernIds + concernId
+            )
+        }
+    }
+
+    fun applySuggestedReplacement(concernId: String) {
+        _uiState.update { state ->
+            val concern = state.concerns.firstOrNull { it.id == concernId } ?: return@update state
+            val replacement = concern.suggestedReplacement ?: return@update state
+            if (
+                concern.startIndex !in 0..state.transcript.length ||
+                concern.endIndexExclusive !in 0..state.transcript.length ||
+                concern.startIndex >= concern.endIndexExclusive
+            ) {
+                return@update state
+            }
+            val updatedTranscript = state.transcript.replaceRange(
+                concern.startIndex,
+                concern.endIndexExclusive,
+                replacement
+            )
+            val updatedConcerns = reviewAnalyzer.analyze(updatedTranscript, state.language)
+            val replacementEnd = concern.startIndex + replacement.length
+            val replacementConcern = updatedConcerns.firstOrNull {
+                it.startIndex == concern.startIndex &&
+                    it.endIndexExclusive == replacementEnd &&
+                    it.text.equals(replacement, ignoreCase = true)
+            }
+            state.copy(
+                transcript = updatedTranscript,
+                concerns = updatedConcerns,
+                confirmedConcernIds = buildSet {
+                    addAll(
+                        state.confirmedConcernIds.intersect(
+                            updatedConcerns.mapTo(mutableSetOf()) { it.id }
+                        )
+                    )
+                    replacementConcern?.id?.let(::add)
+                },
+                hasAttemptedContinue = false
             )
         }
     }
@@ -99,7 +154,8 @@ class TranscriptViewModel(
                 status = TranscriptStatus.Ready,
                 transcript = result.transcript,
                 language = sourceLanguage,
-                engine = sourceEngine
+                engine = sourceEngine,
+                concerns = reviewAnalyzer.analyze(result.transcript, sourceLanguage)
             )
             is TranscriptionResult.Failure -> TranscriptUiState(
                 status = TranscriptStatus.Error,

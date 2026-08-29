@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -39,7 +40,7 @@ import com.carelipik.app.ui.screens.welcome.WelcomeViewModel
 @Composable
 fun CareLipikApp(
     homeViewModel: HomeViewModel? = null,
-    doctorProfileViewModel: DoctorProfileViewModel = viewModel(),
+    doctorProfileViewModel: DoctorProfileViewModel? = null,
     doctorVoiceEnrollmentViewModel: DoctorVoiceEnrollmentViewModel? = null,
     welcomeViewModel: WelcomeViewModel = viewModel(),
     patientDetailsViewModel: PatientDetailsViewModel = viewModel(),
@@ -53,6 +54,9 @@ fun CareLipikApp(
     val context = LocalContext.current
     val activeHomeViewModel = homeViewModel ?: viewModel(
         factory = HomeViewModel.Factory(context)
+    )
+    val activeDoctorProfileViewModel = doctorProfileViewModel ?: viewModel(
+        factory = DoctorProfileViewModel.Factory(context)
     )
     val activeRecordingViewModel = recordingViewModel ?: viewModel(
         factory = RecordingViewModel.Factory(context)
@@ -76,7 +80,8 @@ fun CareLipikApp(
         factory = ConsultationExportViewModel.Factory(context)
     )
     val homeUiState by activeHomeViewModel.uiState.collectAsState()
-    val doctorProfileUiState by doctorProfileViewModel.uiState.collectAsState()
+    val doctorProfileUiState by activeDoctorProfileViewModel.uiState.collectAsState()
+    val savedDoctorProfile by activeDoctorProfileViewModel.savedProfile.collectAsState()
     val doctorVoiceEnrollmentUiState by
         activeDoctorVoiceEnrollmentViewModel.uiState.collectAsState()
     val welcomeUiState by welcomeViewModel.uiState.collectAsState()
@@ -88,6 +93,10 @@ fun CareLipikApp(
     val consultationHistoryUiState by activeConsultationHistoryViewModel.uiState.collectAsState()
     val consultationExportUiState by activeConsultationExportViewModel.uiState.collectAsState()
     val navigator = remember { CareLipikNavigator() }
+
+    LaunchedEffect(savedDoctorProfile) {
+        savedDoctorProfile?.let(activeHomeViewModel::applyDoctorProfile)
+    }
 
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
         when (navigator.currentDestination) {
@@ -123,18 +132,18 @@ fun CareLipikApp(
             ConsultationDestination.DoctorProfile -> DoctorProfileScreen(
                 uiState = doctorProfileUiState,
                 voiceUiState = doctorVoiceEnrollmentUiState,
-                onFullNameChanged = doctorProfileViewModel::setFullName,
-                onSpecialtyChanged = doctorProfileViewModel::setSpecialty,
-                onRegistrationNumberChanged = doctorProfileViewModel::setRegistrationNumber,
-                onClinicNameChanged = doctorProfileViewModel::setClinicName,
-                onPreferredLanguageChanged = doctorProfileViewModel::togglePreferredLanguage,
-                onProcessingPreferenceChanged = doctorProfileViewModel::setProcessingPreference,
+                onFullNameChanged = activeDoctorProfileViewModel::setFullName,
+                onSpecialtyChanged = activeDoctorProfileViewModel::setSpecialty,
+                onRegistrationNumberChanged = activeDoctorProfileViewModel::setRegistrationNumber,
+                onClinicNameChanged = activeDoctorProfileViewModel::setClinicName,
+                onPreferredLanguageChanged = activeDoctorProfileViewModel::togglePreferredLanguage,
+                onProcessingPreferenceChanged = activeDoctorProfileViewModel::setProcessingPreference,
                 onStartVoiceSample = activeDoctorVoiceEnrollmentViewModel::startRecording,
                 onStopVoiceSample = activeDoctorVoiceEnrollmentViewModel::stopAndSave,
                 onDeleteVoiceSample = activeDoctorVoiceEnrollmentViewModel::deleteSample,
                 onBack = navigator::navigateBack,
                 onSave = {
-                    doctorProfileViewModel.saveProfile()?.let { profile ->
+                    activeDoctorProfileViewModel.saveProfile { profile ->
                         activeHomeViewModel.applyDoctorProfile(profile)
                         navigator.navigateBack()
                     }

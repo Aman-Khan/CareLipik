@@ -11,7 +11,9 @@ data class DoctorProfileUiState(
     val clinicName: String = "",
     val preferredLanguages: Set<TranscriptionLanguage> = setOf(TranscriptionLanguage.English),
     val processingPreference: ProcessingPreference = ProcessingPreference.SmartHybrid,
-    val hasAttemptedSave: Boolean = false
+    val hasAttemptedSave: Boolean = false,
+    val isLoading: Boolean = false,
+    val saveError: String? = null
 ) {
     val fullNameError: String?
         get() = if (hasAttemptedSave && fullName.isBlank()) {
@@ -38,4 +40,15 @@ data class DoctorProfileUiState(
         preferredLanguages = preferredLanguages,
         processingPreference = processingPreference
     )
+
+    companion object {
+        fun fromProfile(profile: DoctorProfile) = DoctorProfileUiState(
+            fullName = profile.fullName,
+            specialty = profile.specialty,
+            registrationNumber = profile.registrationNumber,
+            clinicName = profile.clinicName,
+            preferredLanguages = profile.preferredLanguages,
+            processingPreference = profile.processingPreference
+        )
+    }
 }

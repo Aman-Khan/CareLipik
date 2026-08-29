@@ -1,6 +1,8 @@
 package com.carelipik.app.ui.screens.doctorprofile
 
+import com.carelipik.app.domain.model.DoctorProfile
 import com.carelipik.app.domain.model.ProcessingPreference
+import com.carelipik.app.domain.repository.DoctorProfileRepository
 import com.carelipik.app.domain.transcription.TranscriptionLanguage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -8,6 +10,32 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DoctorProfileViewModelTest {
+    @Test
+    fun savedProfile_isRestoredAndSubsequentEditsArePersisted() {
+        val original = DoctorProfile(
+            fullName = "Asha Mehta",
+            specialty = "General medicine",
+            registrationNumber = "DMC-123",
+            clinicName = "Care Clinic",
+            preferredLanguages = setOf(TranscriptionLanguage.English),
+            processingPreference = ProcessingPreference.PrivateOnDevice
+        )
+        val repository = FakeDoctorProfileRepository(original)
+        val viewModel = DoctorProfileViewModel(
+            repository = repository,
+            processAsynchronously = false
+        )
+
+        assertEquals("Asha Mehta", viewModel.uiState.value.fullName)
+        assertEquals(original, viewModel.savedProfile.value)
+
+        viewModel.setClinicName("Updated Care Clinic")
+        viewModel.saveProfile()
+
+        assertEquals("Updated Care Clinic", repository.profile?.clinicName)
+        assertEquals("Updated Care Clinic", viewModel.savedProfile.value?.clinicName)
+    }
+
     @Test
     fun saveProfile_requiresDoctorName() {
         val viewModel = DoctorProfileViewModel()
@@ -63,5 +91,15 @@ class DoctorProfileViewModelTest {
         viewModel.togglePreferredLanguage(TranscriptionLanguage.Auto)
 
         assertTrue(TranscriptionLanguage.Auto !in viewModel.uiState.value.preferredLanguages)
+    }
+
+    private class FakeDoctorProfileRepository(
+        var profile: DoctorProfile? = null
+    ) : DoctorProfileRepository {
+        override suspend fun load(): DoctorProfile? = profile
+
+        override suspend fun save(profile: DoctorProfile) {
+            this.profile = profile
+        }
     }
 }

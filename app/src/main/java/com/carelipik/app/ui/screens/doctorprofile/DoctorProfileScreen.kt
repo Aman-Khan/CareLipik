@@ -130,7 +130,7 @@ fun DoctorProfileScreen(
         )
         Button(
             onClick = onSave,
-            enabled = voiceUiState.status !in setOf(
+            enabled = !uiState.isLoading && voiceUiState.status !in setOf(
                 DoctorVoiceEnrollmentStatus.Recording,
                 DoctorVoiceEnrollmentStatus.Saving
             ),
@@ -140,8 +140,11 @@ fun DoctorProfileScreen(
         ) {
             Text("Save profile", fontWeight = FontWeight.Bold)
         }
+        uiState.saveError?.let { message ->
+            Text(message, color = MaterialTheme.colorScheme.error)
+        }
         Text(
-            text = "Profile text currently remains available for this app session. The voice sample is stored separately in private on-device storage.",
+            text = "Profile details and the voice sample are stored separately in encrypted, private on-device storage.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)

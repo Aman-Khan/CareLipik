@@ -25,6 +25,7 @@ development recordings, screenshots, fixtures, or tests.
 - A separate prescribed-medicine and dosage section whose entries must each be verified by the
   doctor before final approval.
 - AES-GCM encrypted, app-private consultation history after final doctor approval.
+- AES-GCM encrypted doctor profile that restores after app and phone restarts.
 - Approved report files linked to consultation history as encrypted A4 PDF, structured JSON, HL7
   FHIR R4 Bundle, or plain text, with open, share, regenerate, and delete controls.
 - Temporary consultation audio in the Android cache by default.
@@ -563,6 +564,12 @@ under **Recent consultations** without restarting the app. Open **Consultations*
 history page has no workflow step counter, newest records appear first, and each card shows its
 approval state, visit reason, note format, and age. Open a record to generate, reopen, share, or
 delete its linked reports; deleting the consultation must remove those reports as well.
+
+Phone check for the doctor profile: open **Profile**, save synthetic professional details, then
+force-stop and reopen CareLipik. Confirm the Home greeting and every profile field are restored.
+The profile file is app-private, encrypted with an Android Keystore key, and excluded from cloud
+backup and device transfer. The launcher should show CareLipik's teal clinical-document icon rather
+than the default Android icon; some launchers may require returning home to refresh it.
 
 FHIR support is base R4 interoperability output, not certification for a national, hospital, or
 vendor-specific profile. Validate it against the receiving system's implementation guide and

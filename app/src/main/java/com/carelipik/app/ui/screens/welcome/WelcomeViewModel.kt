@@ -12,4 +12,8 @@ class WelcomeViewModel : ViewModel() {
     fun setRecordingConsent(isAccepted: Boolean) {
         _uiState.value = WelcomeUiState(hasRecordingConsent = isAccepted)
     }
+
+    fun resetForNewConsultation() {
+        _uiState.value = WelcomeUiState()
+    }
 }

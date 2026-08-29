@@ -65,6 +65,11 @@ fun ConsultationExportScreen(
                         consultation.visitReason.ifBlank { "No visit reason recorded" },
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Text(
+                        "Report: ${consultation.draft.noteFormat.displayName} • " +
+                            consultation.draft.noteLanguage.displayName,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }
@@ -108,7 +113,8 @@ fun ConsultationExportScreen(
                     if (uiState.status == ConsultationExportStatus.Error) {
                         "Try again"
                     } else {
-                        "Create ${uiState.selectedFormat.displayName}"
+                        "Create ${consultation?.draft?.noteFormat?.displayName.orEmpty()} as " +
+                            uiState.selectedFormat.displayName
                     }
                 )
             }
@@ -151,7 +157,11 @@ private fun ExportFormatOptions(
     onSelected: (ConsultationExportFormat) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Export format", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text(
+            "Export file format",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
+        )
         ConsultationExportFormat.entries.forEach { format ->
             Card(
                 onClick = { onSelected(format) },

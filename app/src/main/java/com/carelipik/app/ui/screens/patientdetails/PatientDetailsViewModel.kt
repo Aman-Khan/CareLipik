@@ -30,4 +30,8 @@ class PatientDetailsViewModel : ViewModel() {
     }
 
     fun currentDetails(): PatientDetailsUiState = _uiState.value
+
+    fun resetForNewConsultation() {
+        _uiState.value = PatientDetailsUiState()
+    }
 }

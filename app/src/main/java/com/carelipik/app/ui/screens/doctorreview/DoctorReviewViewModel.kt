@@ -34,6 +34,10 @@ class DoctorReviewViewModel(
         _uiState.update { it.copy(hasConfirmedReview = isConfirmed) }
     }
 
+    fun resetForNewConsultation() {
+        _uiState.value = DoctorReviewUiState()
+    }
+
     fun validateApproval(): Boolean {
         _uiState.update { it.copy(hasAttemptedApproval = true) }
         return _uiState.value.canApprove

@@ -108,13 +108,33 @@ private class ConsultationPdfLayout(private val document: PdfDocument) {
         this.consultation = consultation
         startPage(consultation)
         patientSummary(consultation)
-        section("Presenting complaint", consultation.draft.presentingComplaint)
-        section("History", consultation.draft.history)
-        section("Key findings", consultation.draft.keyFindings)
-        section("Assessment notes", consultation.draft.assessmentNotes)
-        section("Plan notes", consultation.draft.planNotes)
         section(
-            "Complete reviewed transcript",
+            "Clinical note format",
+            buildString {
+                append(consultation.draft.noteFormat.displayName)
+                append(" • ${consultation.draft.noteLanguage.displayName}")
+                if (consultation.draft.specialtyName.isNotBlank()) {
+                    append(" • ${consultation.draft.specialtyName}")
+                }
+            }
+        )
+        consultation.draft.effectiveSections.forEach { noteSection ->
+            section(noteSection.title, noteSection.content)
+        }
+        section(
+            "Prescribed medicines and dosages",
+            consultation.draft.medications.joinToString("\n") { medication ->
+                "• ${medication.displayText()}"
+            }.ifBlank { "No prescribed medicines documented" }
+        )
+        if (consultation.draft.coverageWarnings.isNotEmpty()) {
+            section(
+                "Transcript coverage warnings reviewed at approval",
+                consultation.draft.coverageWarnings.joinToString("\n") { "• $it" }
+            )
+        }
+        section(
+            "Complete reviewed conversation log",
             consultation.draft.reviewedTranscript.ifBlank { "Not available for this older record" }
         )
         finishPage()
@@ -133,7 +153,15 @@ private class ConsultationPdfLayout(private val document: PdfDocument) {
             color = TEAL
         })
         if (pageNumber == 1) {
-            canvas.drawText("Doctor-approved clinical note", LEFT_MARGIN, 78f, titlePaint)
+            val reportTitle = consultation.pdfTitle()
+            canvas.drawText(
+                reportTitle,
+                LEFT_MARGIN,
+                78f,
+                TextPaint(titlePaint).apply {
+                    if (reportTitle.length > 36) textSize = 16f
+                }
+            )
             canvas.drawText(
                 "Approved ${formatDate(consultation.approvedAtMillis)}",
                 LEFT_MARGIN,
@@ -142,7 +170,12 @@ private class ConsultationPdfLayout(private val document: PdfDocument) {
             )
             y = 122f
         } else {
-            canvas.drawText("Clinical note - continued", LEFT_MARGIN, 70f, sectionPaint)
+            canvas.drawText(
+                "${consultation.draft.noteFormat.displayName} - continued",
+                LEFT_MARGIN,
+                70f,
+                sectionPaint
+            )
             y = 92f
         }
     }
@@ -289,6 +322,27 @@ private class ConsultationPdfLayout(private val document: PdfDocument) {
 
     private fun formatDate(timestamp: Long): String =
         DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(timestamp))
+
+    private fun ApprovedConsultation.pdfTitle(): String {
+        val format = draft.noteFormat.displayName
+        return if (format.endsWith("note", ignoreCase = true)) {
+            "Doctor-approved $format"
+        } else {
+            "Doctor-approved $format note"
+        }
+    }
+
+    private fun com.carelipik.app.domain.model.MedicationDraft.displayText(): String =
+        buildList {
+            add(name.ifBlank { "Unnamed medicine" })
+            if (genericName.isNotBlank()) add("Generic/salt: $genericName")
+            if (strength.isNotBlank()) add("Strength: $strength")
+            if (dose.isNotBlank()) add("Dose: $dose")
+            if (route.isNotBlank()) add("Route: $route")
+            if (frequency.isNotBlank()) add("Frequency: $frequency")
+            if (duration.isNotBlank()) add("Duration: $duration")
+            if (instructions.isNotBlank()) add("Instructions: $instructions")
+        }.joinToString("; ")
 
     private companion object {
         const val PAGE_WIDTH = 595

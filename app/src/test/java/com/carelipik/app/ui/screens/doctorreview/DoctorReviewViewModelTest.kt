@@ -1,6 +1,7 @@
 package com.carelipik.app.ui.screens.doctorreview
 
 import com.carelipik.app.domain.model.ClinicalDraft
+import com.carelipik.app.domain.model.MedicationDraft
 import com.carelipik.app.data.local.FakeLocalConsultationRepository
 import com.carelipik.app.ui.screens.patientdetails.PatientDetailsUiState
 import kotlinx.coroutines.runBlocking
@@ -54,6 +55,24 @@ class DoctorReviewViewModelTest {
         viewModel.loadDraft(ClinicalDraft(history = "Updated"))
 
         assertFalse(viewModel.uiState.value.hasConfirmedReview)
+    }
+
+    @Test
+    fun unreviewedMedicine_blocksFinalApproval() {
+        val viewModel = DoctorReviewViewModel()
+        viewModel.loadDraft(
+            ClinicalDraft(
+                history = "Synthetic history",
+                medications = listOf(MedicationDraft(name = "Synthetic medicine"))
+            )
+        )
+        viewModel.setConfirmedReview(true)
+
+        assertFalse(viewModel.validateApproval())
+        assertEquals(
+            "Every prescribed medicine and dosage requires doctor verification",
+            viewModel.uiState.value.medicationError
+        )
     }
 
     @Test

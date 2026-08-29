@@ -3,6 +3,11 @@ package com.carelipik.app.data.local
 import android.content.Context
 import com.carelipik.app.domain.model.ApprovedConsultation
 import com.carelipik.app.domain.model.ClinicalDraft
+import com.carelipik.app.domain.model.ClinicalNoteFormat
+import com.carelipik.app.domain.model.ClinicalNoteGenerationSource
+import com.carelipik.app.domain.model.ClinicalNoteLanguage
+import com.carelipik.app.domain.model.ClinicalNoteSection
+import com.carelipik.app.domain.model.MedicationDraft
 import com.carelipik.app.domain.repository.ConsultationRepository
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -115,6 +120,49 @@ class EncryptedLocalConsultationRepository(context: Context) : ConsultationRepos
                 output.writeString(item.draft.assessmentNotes)
                 output.writeString(item.draft.planNotes)
                 output.writeString(item.draft.reviewedTranscript)
+                output.writeString(item.draft.noteFormat.name)
+                output.writeString(item.draft.noteLanguage.name)
+                output.writeString(item.draft.specialtyName)
+                require(item.draft.structuredSections.size <= MAX_SECTIONS) {
+                    "Too many clinical note sections."
+                }
+                output.writeInt(item.draft.structuredSections.size)
+                item.draft.structuredSections.forEach { section ->
+                    output.writeString(section.id)
+                    output.writeString(section.title)
+                    output.writeString(section.content)
+                    require(section.sourceTurnIds.size <= MAX_SOURCE_TURNS) {
+                        "Too many source turns in a clinical note section."
+                    }
+                    output.writeInt(section.sourceTurnIds.size)
+                    section.sourceTurnIds.forEach { sourceTurnId ->
+                        output.writeString(sourceTurnId)
+                    }
+                }
+                require(item.draft.medications.size <= MAX_MEDICATIONS) {
+                    "Too many prescribed medicines."
+                }
+                output.writeInt(item.draft.medications.size)
+                item.draft.medications.forEach { medication ->
+                    output.writeString(medication.name)
+                    output.writeString(medication.genericName)
+                    output.writeString(medication.strength)
+                    output.writeString(medication.dose)
+                    output.writeString(medication.route)
+                    output.writeString(medication.frequency)
+                    output.writeString(medication.duration)
+                    output.writeString(medication.instructions)
+                    output.writeString(medication.sourceEvidence)
+                    output.writeBoolean(medication.isDoctorReviewed)
+                }
+                require(item.draft.coverageWarnings.size <= MAX_COVERAGE_WARNINGS) {
+                    "Too many transcript coverage warnings."
+                }
+                output.writeInt(item.draft.coverageWarnings.size)
+                item.draft.coverageWarnings.forEach { warning ->
+                    output.writeString(warning)
+                }
+                output.writeString(item.draft.generationSource.name)
             }
             bytes.toByteArray()
         }
@@ -123,7 +171,8 @@ class EncryptedLocalConsultationRepository(context: Context) : ConsultationRepos
         DataInputStream(ByteArrayInputStream(bytes)).use { input ->
             when (val version = input.readInt()) {
                 1 -> input.decodeVersionOne()
-                FORMAT_VERSION -> input.decodeCurrentVersion()
+                2 -> input.decodeVersionTwo()
+                FORMAT_VERSION -> input.decodeVersionThree()
                 else -> error("Unsupported consultation format $version.")
             }
         }
@@ -143,7 +192,7 @@ class EncryptedLocalConsultationRepository(context: Context) : ConsultationRepos
         )
     )
 
-    private fun DataInputStream.decodeCurrentVersion(): ApprovedConsultation =
+    private fun DataInputStream.decodeVersionTwo(): ApprovedConsultation =
         ApprovedConsultation(
             id = readString(),
             approvedAtMillis = readLong(),
@@ -161,6 +210,51 @@ class EncryptedLocalConsultationRepository(context: Context) : ConsultationRepos
             )
         )
 
+    private fun DataInputStream.decodeVersionThree(): ApprovedConsultation =
+        ApprovedConsultation(
+            id = readString(),
+            approvedAtMillis = readLong(),
+            patientName = readString(),
+            patientAge = readString(),
+            visitReason = readString(),
+            draft = ClinicalDraft(
+                patientAge = readString(),
+                presentingComplaint = readString(),
+                history = readString(),
+                keyFindings = readString(),
+                assessmentNotes = readString(),
+                planNotes = readString(),
+                reviewedTranscript = readString(),
+                noteFormat = ClinicalNoteFormat.fromStorage(readString()),
+                noteLanguage = ClinicalNoteLanguage.fromStorage(readString()),
+                specialtyName = readString(),
+                structuredSections = List(readBoundedCount(MAX_SECTIONS)) {
+                    ClinicalNoteSection(
+                        id = readString(),
+                        title = readString(),
+                        content = readString(),
+                        sourceTurnIds = List(readBoundedCount(MAX_SOURCE_TURNS)) { readString() }
+                    )
+                },
+                medications = List(readBoundedCount(MAX_MEDICATIONS)) {
+                    MedicationDraft(
+                        name = readString(),
+                        genericName = readString(),
+                        strength = readString(),
+                        dose = readString(),
+                        route = readString(),
+                        frequency = readString(),
+                        duration = readString(),
+                        instructions = readString(),
+                        sourceEvidence = readString(),
+                        isDoctorReviewed = readBoolean()
+                    )
+                },
+                coverageWarnings = List(readBoundedCount(MAX_COVERAGE_WARNINGS)) { readString() },
+                generationSource = ClinicalNoteGenerationSource.fromStorage(readString())
+            )
+        )
+
     private fun DataOutputStream.writeString(value: String) {
         val encoded = value.toByteArray(Charsets.UTF_8)
         require(encoded.size <= MAX_STORED_STRING_BYTES) { "Consultation text is too large." }
@@ -174,11 +268,19 @@ class EncryptedLocalConsultationRepository(context: Context) : ConsultationRepos
         return ByteArray(size).also(::readFully).toString(Charsets.UTF_8)
     }
 
+    private fun DataInputStream.readBoundedCount(maximum: Int): Int = readInt().also { count ->
+        require(count in 0..maximum) { "Invalid consultation item count." }
+    }
+
     companion object {
         const val DIRECTORY_NAME = "consultation_history"
         private const val FILE_EXTENSION = "clh"
-        private const val FORMAT_VERSION = 2
+        private const val FORMAT_VERSION = 3
         private const val MAX_STORED_STRING_BYTES = 4 * 1024 * 1024
+        private const val MAX_SECTIONS = 32
+        private const val MAX_SOURCE_TURNS = 512
+        private const val MAX_MEDICATIONS = 100
+        private const val MAX_COVERAGE_WARNINGS = 512
         private const val KEYSTORE = "AndroidKeyStore"
         private const val KEY_ALIAS = "carelipik-consultation-history-v1"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"

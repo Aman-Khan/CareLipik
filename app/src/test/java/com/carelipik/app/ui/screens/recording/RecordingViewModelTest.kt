@@ -47,6 +47,21 @@ class RecordingViewModelTest {
     }
 
     @Test
+    fun newConsultation_discardsPreviousAudioAndSelections() {
+        val recorder = TrackingRecorder()
+        val viewModel = RecordingViewModel(recorder, useAutomaticTimer = false)
+        viewModel.startRecording()
+        viewModel.stopRecording()
+        viewModel.setTranscriptionLanguage(TranscriptionLanguage.Hinglish)
+        viewModel.setOnlineProcessingConsent(true)
+
+        viewModel.resetForNewConsultation()
+
+        assertEquals(RecordingUiState(), viewModel.uiState.value)
+        assertEquals("discard", recorder.calls.last())
+    }
+
+    @Test
     fun invalidActions_areIgnored() {
         val recorder = TrackingRecorder()
         val viewModel = RecordingViewModel(recorder, useAutomaticTimer = false)

@@ -246,6 +246,13 @@ class TranscriptViewModel(
         }
     }
 
+    fun resetForNewConsultation() {
+        sourceAudioPath = null
+        sourceLanguage = TranscriptionLanguage.English
+        sourceEngine = TranscriptionEngineOption.MedAsrEnglish
+        _uiState.value = TranscriptUiState()
+    }
+
     class Factory(context: Context) : ViewModelProvider.Factory {
         private val applicationContext = context.applicationContext
 

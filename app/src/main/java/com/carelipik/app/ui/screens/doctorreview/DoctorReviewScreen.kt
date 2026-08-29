@@ -49,16 +49,29 @@ fun DoctorReviewScreen(
             onBack = onBack
         )
         SafetyNotice()
+        ReviewSection(
+            "Note format",
+            buildString {
+                append(uiState.draft.noteFormat.displayName)
+                append(" • ${uiState.draft.noteLanguage.displayName}")
+                append(" • ${uiState.draft.generationSource.displayName}")
+            }
+        )
         if (uiState.missingSections.isNotEmpty()) {
             MissingInformationCard(uiState.missingSections)
         }
+        if (uiState.draft.coverageWarnings.isNotEmpty()) {
+            CoverageWarningCard(uiState.draft.coverageWarnings)
+        }
         ReviewSection("Patient age from transcript", uiState.draft.patientAge)
-        ReviewSection("Presenting complaint", uiState.draft.presentingComplaint)
-        ReviewSection("History", uiState.draft.history)
-        ReviewSection("Key findings", uiState.draft.keyFindings)
-        ReviewSection("Assessment notes", uiState.draft.assessmentNotes)
-        ReviewSection("Plan notes", uiState.draft.planNotes)
+        uiState.draft.effectiveSections.forEach { section ->
+            ReviewSection(section.title, section.content)
+        }
+        MedicationReview(uiState.draft.medications)
         ReviewSection("Complete reviewed transcript", uiState.draft.reviewedTranscript)
+        uiState.medicationError?.let { error ->
+            Text(error, color = MaterialTheme.colorScheme.error)
+        }
         ConfirmationCard(
             isConfirmed = uiState.hasConfirmedReview,
             error = uiState.confirmationError,
@@ -66,6 +79,63 @@ fun DoctorReviewScreen(
         )
         Button(onClick = onApprove, modifier = Modifier.fillMaxWidth()) {
             Text("Approve and continue to export")
+        }
+    }
+}
+
+@Composable
+private fun CoverageWarningCard(warnings: List<String>) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text("Transcript coverage warnings", style = MaterialTheme.typography.titleSmall)
+            warnings.forEach { Text("• $it") }
+            Text("Approval confirms that the doctor reviewed these possible omissions.")
+        }
+    }
+}
+
+@Composable
+private fun MedicationReview(medications: List<com.carelipik.app.domain.model.MedicationDraft>) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("Prescribed medicines and dosages", style = MaterialTheme.typography.titleMedium)
+            if (medications.isEmpty()) {
+                Text("No prescribed medicines documented")
+            }
+            medications.forEach { medication ->
+                val details = listOf(
+                    medication.genericName,
+                    medication.strength,
+                    medication.dose,
+                    medication.route,
+                    medication.frequency,
+                    medication.duration,
+                    medication.instructions
+                ).filter(String::isNotBlank).joinToString(" • ")
+                Text(
+                    buildString {
+                        append(medication.name.ifBlank { "Unnamed medicine" })
+                        if (details.isNotBlank()) append(" — $details")
+                        append(if (medication.isDoctorReviewed) " — Doctor verified" else " — Review required")
+                    },
+                    color = if (medication.isDoctorReviewed) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    }
+                )
+            }
         }
     }
 }

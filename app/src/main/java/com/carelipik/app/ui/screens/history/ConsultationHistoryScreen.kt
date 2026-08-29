@@ -83,19 +83,42 @@ private fun ConsultationHistoryDetail(
     ) {
         ConsultationScreenHeader(
             title = item.patientName,
-            subtitle = "Approved ${formatDate(item.approvedAtMillis)} • Age ${item.patientAge.ifBlank { "not recorded" }}",
+            subtitle = "Approved ${formatDate(item.approvedAtMillis)}",
             currentStep = 1,
             totalSteps = 1,
             onBack = onBack
         )
+        HistorySection("Patient name / reference", item.patientName)
+        HistorySection("Age", item.patientAge.ifBlank { "Not recorded" })
         HistorySection("Visit reason", item.visitReason)
-        HistorySection("Presenting complaint", item.draft.presentingComplaint)
-        HistorySection("History", item.draft.history)
-        HistorySection("Key findings", item.draft.keyFindings)
-        HistorySection("Assessment notes", item.draft.assessmentNotes)
-        HistorySection("Plan notes", item.draft.planNotes)
         HistorySection(
-            "Complete reviewed transcript",
+            "Clinical note format",
+            "${item.draft.noteFormat.displayName} • ${item.draft.noteLanguage.displayName}"
+        )
+        item.draft.effectiveSections.forEach { section ->
+            HistorySection(section.title, section.content)
+        }
+        HistorySection(
+            "Prescribed medicines and dosages",
+            item.draft.medications.joinToString("\n") { medication ->
+                buildList {
+                    add(medication.name.ifBlank { "Unnamed medicine" })
+                    if (medication.strength.isNotBlank()) add(medication.strength)
+                    if (medication.dose.isNotBlank()) add(medication.dose)
+                    if (medication.route.isNotBlank()) add(medication.route)
+                    if (medication.frequency.isNotBlank()) add(medication.frequency)
+                    if (medication.duration.isNotBlank()) add(medication.duration)
+                }.joinToString(" • ")
+            }.ifBlank { "No prescribed medicines documented" }
+        )
+        if (item.draft.coverageWarnings.isNotEmpty()) {
+            HistorySection(
+                "Transcript coverage warnings reviewed at approval",
+                item.draft.coverageWarnings.joinToString("\n") { "• $it" }
+            )
+        }
+        HistorySection(
+            "Complete reviewed conversation log",
             item.draft.reviewedTranscript.ifBlank { "Not available for this older record" }
         )
         androidx.compose.material3.Button(

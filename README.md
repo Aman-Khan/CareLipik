@@ -18,11 +18,18 @@ development recordings, screenshots, fixtures, or tests.
 - Manual correction of transcript text, medical terms, and speaker roles.
 - Offline transcript-backed clinical drafts that preserve every reviewed patient statement and the
   complete reviewed transcript for doctor approval.
+- Optional Gemini drafts in SOAP, APSO, H&P, problem-oriented, progress, DAP, BIRP, GIRP,
+  procedure, and doctor-specialty formats, with transcript-turn evidence and coverage warnings.
+- Optional English clinical-note generation from a reviewed Hindi or Hinglish transcript; the
+  original conversation log is always retained unchanged.
+- A separate prescribed-medicine and dosage section whose entries must each be verified by the
+  doctor before final approval.
 - AES-GCM encrypted, app-private consultation history after final doctor approval.
 - On-demand approved-note export immediately after approval or from encrypted history as A4 PDF,
   structured JSON, an HL7 FHIR R4 document Bundle, or plain text.
 - Temporary consultation audio in the Android cache by default.
-- Optional backend-only Gemini medical-term candidate extraction; no provider key in the APK.
+- Optional backend-only Gemini medical-term extraction and structured-note drafting; no provider
+  key in the APK.
 - No cloud consultation database. All AI output remains subject to doctor confirmation.
 
 ## Requirements
@@ -33,15 +40,16 @@ development recordings, screenshots, fixtures, or tests.
 - Android Studio's bundled Gradle JDK, or another compatible configured `JAVA_HOME`.
 - A phone with USB debugging enabled or an Android emulator.
 - For online transcription testing: macOS Keychain and a Sarvam API key.
-- For online medical-term extraction: a Gemini API key stored in macOS Keychain.
+- For online medical-term extraction or clinical-note generation: a Gemini API key stored in
+  macOS Keychain.
 
 Model binaries are intentionally ignored by Git. Obtain them through the repository download
 scripts rather than committing them.
 
 The local diarization path uses Sherpa-ONNX 1.13.6 on CPU with Pyannote Segmentation 3.0,
 NeMo TitaNet Small speaker embeddings, and fixed two-cluster fast clustering. Gemini is not used
-for diarization: it receives transcript text only for optional medical-term candidate extraction
-and cannot observe acoustic speaker changes.
+for diarization: it receives reviewed transcript text only for optional medical-term analysis or
+structured-note drafting and cannot observe acoustic speaker changes.
 
 ## Clone and open
 
@@ -128,7 +136,7 @@ are not logged, and API responses are marked `no-store`.
 ./tools/local_transcription_backend/store_sarvam_key.sh
 ```
 
-For online medical-term analysis, also store the Gemini key:
+For online medical-term analysis and structured-note generation, also store the Gemini key:
 
 ```sh
 ./tools/local_transcription_backend/store_gemini_key.sh
@@ -153,10 +161,10 @@ curl http://127.0.0.1:8787/health
 Expected response:
 
 ```json
-{"status": "ok", "clinical_entity_extraction": true}
+{"status": "ok", "clinical_entity_extraction": true, "clinical_note_generation": true}
 ```
 
-`clinical_entity_extraction` is `false` when the Gemini key is absent; Saaras transcription can
+Both Gemini capability fields are `false` when the Gemini key is absent; Saaras transcription can
 still work. This health response confirms the Mac server but does not prove Android can reach it.
 
 ### 3. Make ADB available
@@ -230,6 +238,27 @@ span. The model is not permitted to diagnose, prescribe, or invent terminology c
 must be confirmed by the doctor. Editing the transcript invalidates the previous AI offsets; tap
 **Analyze again** to refresh candidates.
 
+### Clinical note formats and English generation
+
+After the transcript and speaker roles have been reviewed, the clinical-draft screen offers SOAP,
+APSO, H&P, problem-oriented, progress, DAP, BIRP, GIRP, procedure, and doctor-specialty notes. The
+doctor selects the structure and either keeps the consultation language or requests an English
+note. English generation from Hindi or Hinglish requires Gemini and separate online consent. If
+the backend is unavailable, CareLipik retains the conservative offline draft; it does not block
+transcript review or silently invent translated text.
+
+The backend numbers every labelled Doctor/Patient turn before asking Gemini to draft. Non-empty
+sections must cite valid source turn IDs. A deterministic validator reports Patient turns that are
+not represented in any section. Evidence links and coverage warnings assist review but do not
+guarantee semantic accuracy or replace doctor verification.
+
+Gemini may return a prescribed-medicine candidate only when it cites an explicit Doctor turn. The
+backend rejects medication candidates supported only by Patient turns, such as existing medicines,
+past medicines, pharmacy suggestions, or medicines the patient did not start. Every retained entry
+starts unverified; changing its name, salt, strength, dose, route, frequency, duration, or
+instructions clears its review state. Final approval is blocked until all medicine entries are
+complete and doctor-verified.
+
 ### 6. Phone verification by component
 
 For Saaras diarization:
@@ -268,6 +297,33 @@ For Gemini term extraction:
 4. Verify negated and historical statements are not presented as new diagnoses.
 5. Correct one suggested term, tap **Analyze again**, and confirm the updated offsets are used.
 6. Confirm all candidates still require doctor acceptance before continuing.
+
+For clinical report generation and English translation:
+
+1. Use a synthetic, fully reviewed two-speaker transcript and continue to **Clinical draft**.
+2. Select each required note format and confirm its expected editable sections appear.
+3. For Hindi or Hinglish, select **English**, grant the separate transcript-upload consent, and tap
+   **Generate selected note with Gemini**.
+4. Confirm the English sections preserve negation, age, symptoms, measurements, past history,
+   allergies, and current medicines without creating a diagnosis or examination finding.
+5. Confirm each non-empty generated section shows transcript turn IDs and that an intentionally
+   omitted Patient turn produces a visible coverage warning.
+6. Include an explicit synthetic Doctor prescription. Confirm it appears separately with strength,
+   dose, route, frequency, duration, instructions, and an unchecked doctor-review control.
+7. Confirm final review is blocked until every medicine is verified.
+8. Approve, reopen the consultation from history, and confirm patient details, formatted sections,
+   prescribed medicines, coverage warnings, and the complete conversation log are present.
+9. Generate PDF, structured JSON, FHIR R4, and plain text. Confirm each contains the selected note
+   format and medicine details but no audio path.
+
+For a fresh-consultation reset:
+
+1. Enter a synthetic patient reference and select or record audio, then return to Home without
+   approving that consultation.
+2. Tap **Start a new consultation**.
+3. Confirm recording consent, patient reference, age, visit reason, selected audio, playback state,
+   transcription mode, transcript, draft, and previous export state have all been cleared.
+4. Confirm already approved encrypted history remains available and unchanged.
 
 ## Common problems
 
@@ -357,6 +413,13 @@ autonomous diagnosis or summary. Correct ASR substitutions such as `cuff`/`golf`
 before continuing. CareLipik presents known confusion fixes as suggestions and never silently
 changes the transcript.
 
+For Gemini-generated notes, review the **Transcript coverage warnings** card. Each warning names a
+Patient turn that was not cited by any generated note section. Add the missing fact to the correct
+section or regenerate after correcting the transcript. The complete reviewed conversation log is
+saved and exported even when a concise report intentionally does not repeat every conversational
+sentence. CareLipik intentionally does not write patient transcript bodies to Android or backend
+diagnostic logs.
+
 Records approved by an older prototype cannot be repaired automatically: those records stored
 only the hard-coded sample draft, and consultation audio was discarded after approval. If the
 original imported synthetic WAV still exists, process it as a new consultation with the current
@@ -378,13 +441,15 @@ backend URL changed.
 
 - Enrollment audio and consultation history stay in app-private storage.
 - Approved consultation records are encrypted with AES-GCM using an Android Keystore key.
-- New approved records retain the doctor-reviewed transcript inside the encrypted on-device
-  consultation record so exports can include a complete source appendix.
+- New approved records retain patient details, the selected clinical-note format, doctor-reviewed
+  prescribed medicines, coverage warnings, and the complete reviewed conversation log inside the
+  encrypted on-device consultation record.
 - Consultation audio is kept in app-private cache and discarded after successful approval.
 - Exports are generated on demand in app-private cache, use ID-based filenames, exclude audio,
   expire after 24 hours, and are shared through a temporary read-only content URI.
 - Voice enrollment and consultation history are excluded from cloud backup and device transfer.
-- Online audio transcription and transcript-based medical-term analysis require explicit consent.
+- Online audio transcription, transcript-based medical-term analysis, and Gemini note generation
+  require explicit consent.
 - Provider keys stay in the backend/Keychain and are never embedded in Android.
 - AI candidates are not diagnoses or verified medical codes and require doctor confirmation.
 - Development recordings must never contain real patient information.
@@ -412,8 +477,12 @@ approved item from encrypted history. It offers:
 - **Clinical note PDF**: human-readable A4 output for saving or printing.
 - **Structured JSON**: CareLipik's versioned application-interchange schema.
 - **HL7 FHIR R4 bundle**: a base R4 document Bundle whose first resource is a Composition and
-  which also includes Patient, Device, and DocumentReference resources.
+  which also includes Patient, Device, DocumentReference, and doctor-approved MedicationRequest
+  resources when prescriptions are present.
 - **Plain-text EHR note**: labelled sections designed for copying into an EHR.
+
+The clinical note structure is selected before doctor approval; the export screen then selects the
+file format. For example, one approved H&P note can be exported as PDF, JSON, FHIR, or plain text.
 
 FHIR support is base R4 interoperability output, not certification for a national, hospital, or
 vendor-specific profile. Validate it against the receiving system's implementation guide and

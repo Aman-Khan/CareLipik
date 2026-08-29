@@ -5,6 +5,9 @@ import com.carelipik.app.domain.export.ConsultationExportFormat
 import com.carelipik.app.domain.export.ConsultationExportResult
 import com.carelipik.app.domain.model.ApprovedConsultation
 import com.carelipik.app.domain.model.ClinicalDraft
+import com.carelipik.app.domain.model.ClinicalNoteFormat
+import com.carelipik.app.domain.model.ClinicalNoteSection
+import com.carelipik.app.domain.model.MedicationDraft
 import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -37,6 +40,9 @@ class AndroidConsultationStandardExporterTest {
                     val root = JSONObject(file.readText())
                     assertTrue(root.getBoolean("doctorApproved"))
                     assertFalse(root.getBoolean("includesConsultationAudio"))
+                    val note = root.getJSONObject("clinicalNote")
+                    assertEquals("Procedure", note.getString("format"))
+                    assertEquals(1, note.getJSONArray("prescribedMedications").length())
                 }
                 ConsultationExportFormat.FhirR4Bundle -> {
                     val root = JSONObject(file.readText())
@@ -45,6 +51,15 @@ class AndroidConsultationStandardExporterTest {
                     assertTrue(root.has("identifier"))
                     assertTrue(root.has("timestamp"))
                     val entries = root.getJSONArray("entry")
+                    val fullUrls = (0 until entries.length()).map { index ->
+                        entries.getJSONObject(index).getString("fullUrl")
+                    }
+                    assertTrue(fullUrls.all { value ->
+                        value.startsWith("urn:uuid:") &&
+                            runCatching { java.util.UUID.fromString(value.removePrefix("urn:uuid:")) }
+                                .isSuccess
+                    })
+                    assertEquals(fullUrls.size, fullUrls.distinct().size)
                     assertEquals(
                         "Composition",
                         entries.getJSONObject(0).getJSONObject("resource").getString("resourceType")
@@ -73,7 +88,21 @@ class AndroidConsultationStandardExporterTest {
             history = "Synthetic history",
             keyFindings = "Synthetic findings",
             assessmentNotes = "Synthetic assessment",
-            planNotes = "Synthetic plan"
+            planNotes = "Synthetic plan",
+            noteFormat = ClinicalNoteFormat.Procedure,
+            structuredSections = listOf(
+                ClinicalNoteSection("indication", "Indication", "Synthetic indication"),
+                ClinicalNoteSection("procedure", "Procedure performed", "Synthetic procedure"),
+                ClinicalNoteSection("aftercare", "Aftercare and follow-up", "Synthetic aftercare")
+            ),
+            medications = listOf(
+                MedicationDraft(
+                    name = "Synthetic medicine",
+                    dose = "One tablet",
+                    isDoctorReviewed = true
+                )
+            ),
+            reviewedTranscript = "Doctor: Synthetic procedure discussion"
         )
     )
 }

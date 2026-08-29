@@ -52,6 +52,10 @@ class ConsultationExportViewModel(
         )
     }
 
+    fun resetForNewConsultation() {
+        _uiState.value = ConsultationExportUiState()
+    }
+
     fun selectFormat(format: ConsultationExportFormat) {
         if (_uiState.value.status == ConsultationExportStatus.Generating) return
         _uiState.value = _uiState.value.copy(

@@ -5,6 +5,8 @@ import com.carelipik.app.domain.transcription.TranscriptionLanguage
 import com.carelipik.app.domain.transcription.TranscriptionEngineOption
 import com.carelipik.app.domain.transcription.TranscriptionEngineResolver
 import com.carelipik.app.domain.transcription.TranscriptionResult
+import com.carelipik.app.domain.transcription.TranscriptSegment
+import com.carelipik.app.domain.transcription.SpeakerRole
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -110,6 +112,41 @@ class TranscriptViewModelTest {
 
         assertTrue(viewModel.uiState.value.canContinue)
         assertEquals(1, viewModel.uiState.value.confirmedConcernCount)
+    }
+
+    @Test
+    fun structuredSegments_requireRoleMappingAndProduceDoctorPatientTranscript() {
+        val viewModel = TranscriptViewModel(
+            engineResolver = resolver(
+                StubEngine(
+                    TranscriptionResult.Success(
+                        transcript = "Speaker 1: Good morning\n\nSpeaker 2: Hello doctor",
+                        segments = listOf(
+                            TranscriptSegment("speaker-1", "Good morning"),
+                            TranscriptSegment("speaker-2", "Hello doctor")
+                        )
+                    )
+                )
+            ),
+            processAsynchronously = false
+        )
+
+        viewModel.transcribe("/private/recording.wav")
+
+        assertTrue(viewModel.uiState.value.canShowConversation)
+        assertEquals(listOf("speaker-1", "speaker-2"), viewModel.uiState.value.pendingSpeakerIds)
+        assertFalse(viewModel.uiState.value.canContinue)
+
+        viewModel.assignSpeakerRole("speaker-1", SpeakerRole.Doctor)
+        viewModel.setViewMode(TranscriptViewMode.Conversation)
+
+        assertEquals(SpeakerRole.Patient, viewModel.uiState.value.speakerRoles["speaker-2"])
+        assertEquals(TranscriptViewMode.Conversation, viewModel.uiState.value.viewMode)
+        assertEquals(
+            "Doctor: Good morning\n\nPatient: Hello doctor",
+            viewModel.transcriptText()
+        )
+        assertTrue(viewModel.uiState.value.canContinue)
     }
 
     private class StubEngine(

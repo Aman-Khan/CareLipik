@@ -101,6 +101,8 @@ fun CareLipikApp(
                 onTranscriptChanged = activeTranscriptViewModel::setTranscript,
                 onConfirmConcern = activeTranscriptViewModel::confirmConcern,
                 onApplySuggestion = activeTranscriptViewModel::applySuggestedReplacement,
+                onViewModeChanged = activeTranscriptViewModel::setViewMode,
+                onSpeakerRoleAssigned = activeTranscriptViewModel::assignSpeakerRole,
                 onRetry = activeTranscriptViewModel::retry,
                 onBack = navigator::navigateBack,
                 onContinue = {

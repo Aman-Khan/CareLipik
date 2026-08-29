@@ -7,6 +7,10 @@ import android.content.Context
 import com.carelipik.app.data.transcription.FakeAudioTranscriptionEngine
 import com.carelipik.app.data.transcription.CareLipikTranscriptionEngineResolver
 import com.carelipik.app.data.transcription.RuleBasedTranscriptReviewAnalyzer
+import com.carelipik.app.data.transcription.LabelledTranscriptSegmentParser
+import com.carelipik.app.domain.transcription.SpeakerRole
+import com.carelipik.app.domain.transcription.TranscriptSegment
+import com.carelipik.app.domain.transcription.TranscriptSegmentParser
 import com.carelipik.app.domain.transcription.TranscriptReviewAnalyzer
 import com.carelipik.app.domain.transcription.TranscriptionEngineOption
 import com.carelipik.app.domain.transcription.TranscriptionEngineResolver
@@ -25,6 +29,7 @@ class TranscriptViewModel(
         FakeAudioTranscriptionEngine()
     },
     private val reviewAnalyzer: TranscriptReviewAnalyzer = RuleBasedTranscriptReviewAnalyzer(),
+    private val segmentParser: TranscriptSegmentParser = LabelledTranscriptSegmentParser(),
     private val processAsynchronously: Boolean = true
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(TranscriptUiState())
@@ -70,6 +75,7 @@ class TranscriptViewModel(
     fun setTranscript(transcript: String) {
         _uiState.update {
             val concerns = reviewAnalyzer.analyze(transcript, it.language)
+            val segments = segmentParser.parse(transcript)
             it.copy(
                 status = TranscriptStatus.Ready,
                 transcript = transcript,
@@ -77,8 +83,46 @@ class TranscriptViewModel(
                 concerns = concerns,
                 confirmedConcernIds = it.confirmedConcernIds.intersect(
                     concerns.mapTo(mutableSetOf()) { concern -> concern.id }
-                )
+                ),
+                segments = segments,
+                speakerRoles = rolesFor(segments, it.speakerRoles),
+                viewMode = if (segments.hasMultipleSpeakers()) {
+                    it.viewMode
+                } else {
+                    TranscriptViewMode.FullTranscript
+                }
             )
+        }
+    }
+
+    fun setViewMode(viewMode: TranscriptViewMode) {
+        _uiState.update { state ->
+            if (viewMode == TranscriptViewMode.Conversation && !state.canShowConversation) {
+                state
+            } else {
+                state.copy(viewMode = viewMode)
+            }
+        }
+    }
+
+    fun assignSpeakerRole(speakerId: String, role: SpeakerRole) {
+        if (role == SpeakerRole.Unassigned) return
+        _uiState.update { state ->
+            if (speakerId !in state.speakerIds) return@update state
+            val updatedRoles = state.speakerRoles.toMutableMap()
+            updatedRoles.entries
+                .filter { it.key != speakerId && it.value == role }
+                .forEach { updatedRoles[it.key] = SpeakerRole.Unassigned }
+            updatedRoles[speakerId] = role
+            if (state.speakerIds.size == 2) {
+                val otherSpeaker = state.speakerIds.first { it != speakerId }
+                updatedRoles[otherSpeaker] = when (role) {
+                    SpeakerRole.Doctor -> SpeakerRole.Patient
+                    SpeakerRole.Patient -> SpeakerRole.Doctor
+                    SpeakerRole.Unassigned -> SpeakerRole.Unassigned
+                }
+            }
+            state.copy(speakerRoles = updatedRoles, hasAttemptedContinue = false)
         }
     }
 
@@ -107,6 +151,7 @@ class TranscriptViewModel(
                 replacement
             )
             val updatedConcerns = reviewAnalyzer.analyze(updatedTranscript, state.language)
+            val updatedSegments = segmentParser.parse(updatedTranscript)
             val replacementEnd = concern.startIndex + replacement.length
             val replacementConcern = updatedConcerns.firstOrNull {
                 it.startIndex == concern.startIndex &&
@@ -124,6 +169,13 @@ class TranscriptViewModel(
                     )
                     replacementConcern?.id?.let(::add)
                 },
+                segments = updatedSegments,
+                speakerRoles = rolesFor(updatedSegments, state.speakerRoles),
+                viewMode = if (updatedSegments.hasMultipleSpeakers()) {
+                    state.viewMode
+                } else {
+                    TranscriptViewMode.FullTranscript
+                },
                 hasAttemptedContinue = false
             )
         }
@@ -134,7 +186,16 @@ class TranscriptViewModel(
         return _uiState.value.canContinue
     }
 
-    fun transcriptText(): String = _uiState.value.transcript
+    fun transcriptText(): String {
+        val state = _uiState.value
+        if (state.segments.isEmpty() || state.pendingSpeakerIds.isNotEmpty()) {
+            return state.transcript
+        }
+        return state.segments.joinToString(separator = "\n\n") { segment ->
+            val role = state.speakerRoles[segment.speakerId] ?: SpeakerRole.Unassigned
+            "${role.displayName}: ${segment.transcript}"
+        }
+    }
 
     class Factory(context: Context) : ViewModelProvider.Factory {
         private val applicationContext = context.applicationContext
@@ -155,7 +216,11 @@ class TranscriptViewModel(
                 transcript = result.transcript,
                 language = sourceLanguage,
                 engine = sourceEngine,
-                concerns = reviewAnalyzer.analyze(result.transcript, sourceLanguage)
+                concerns = reviewAnalyzer.analyze(result.transcript, sourceLanguage),
+                segments = result.segments.ifEmpty { segmentParser.parse(result.transcript) },
+                speakerRoles = rolesFor(
+                    result.segments.ifEmpty { segmentParser.parse(result.transcript) }
+                )
             )
             is TranscriptionResult.Failure -> TranscriptUiState(
                 status = TranscriptStatus.Error,
@@ -165,4 +230,21 @@ class TranscriptViewModel(
             )
         }
     }
+
+    private fun rolesFor(
+        segments: List<TranscriptSegment>,
+        existing: Map<String, SpeakerRole> = emptyMap()
+    ): Map<String, SpeakerRole> = segments
+        .map { it.speakerId }
+        .distinct()
+        .associateWith { speakerId ->
+            when (speakerId) {
+                "doctor" -> SpeakerRole.Doctor
+                "patient" -> SpeakerRole.Patient
+                else -> existing[speakerId] ?: SpeakerRole.Unassigned
+            }
+        }
+
+    private fun List<TranscriptSegment>.hasMultipleSpeakers(): Boolean =
+        map { it.speakerId }.distinct().size >= 2
 }

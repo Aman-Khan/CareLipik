@@ -4,6 +4,7 @@ import com.carelipik.app.domain.transcription.AudioTranscriptionEngine
 import com.carelipik.app.domain.transcription.TranscriptionEngineOption
 import com.carelipik.app.domain.transcription.TranscriptionLanguage
 import com.carelipik.app.domain.transcription.TranscriptionResult
+import com.carelipik.app.domain.transcription.TranscriptSegment
 
 /** Hindi and code-mixed Hindi/English transcription through the CareLipik backend. */
 class SaarasTranscriptionEngine(
@@ -45,22 +46,32 @@ class SaarasTranscriptionEngine(
 
     private fun RemoteTranscriptionResult.Success.toTranscriptionResult(): TranscriptionResult {
         val speakerLabels = linkedMapOf<String, Int>()
-        val diarizedTranscript = segments
+        val structuredSegments = segments
             .filter { it.transcript.isNotBlank() }
-            .joinToString(separator = "\n\n") { segment ->
+            .map { segment ->
                 val speakerNumber = speakerLabels.getOrPut(segment.speakerId) {
                     speakerLabels.size + 1
                 }
-                "Speaker $speakerNumber: ${segment.transcript.trim()}"
+                TranscriptSegment(
+                    speakerId = "speaker-$speakerNumber",
+                    transcript = segment.transcript.trim()
+                )
             }
+        val diarizedTranscript = structuredSegments.joinToString(separator = "\n\n") { segment ->
+            "${segment.speakerId.toDisplayLabel()}: ${segment.transcript}"
+        }
         val reviewText = diarizedTranscript.ifBlank { transcript.trim() }
         return if (reviewText.isBlank()) {
             TranscriptionResult.Failure(
                 "No speech was detected. Check the recording and try again."
             )
         } else {
-            TranscriptionResult.Success(reviewText)
+            TranscriptionResult.Success(reviewText, structuredSegments)
         }
+    }
+
+    private fun String.toDisplayLabel(): String = split('-').joinToString(" ") { part ->
+        part.replaceFirstChar(Char::uppercase)
     }
 
     private companion object {

@@ -2,6 +2,7 @@ package com.carelipik.app.data.transcription
 
 import com.carelipik.app.domain.transcription.TranscriptionLanguage
 import com.carelipik.app.domain.transcription.TranscriptionResult
+import com.carelipik.app.domain.transcription.TranscriptSegment
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -52,9 +53,14 @@ class SaarasTranscriptionEngineTest {
 
         assertEquals(
             TranscriptionResult.Success(
-                "Speaker 1: नमस्ते\n\n" +
+                transcript = "Speaker 1: नमस्ते\n\n" +
                     "Speaker 2: मुझे तीन दिन से खांसी है\n\n" +
-                    "Speaker 1: क्या बुखार भी है?"
+                    "Speaker 1: क्या बुखार भी है?",
+                segments = listOf(
+                    TranscriptSegment("speaker-1", "नमस्ते"),
+                    TranscriptSegment("speaker-2", "मुझे तीन दिन से खांसी है"),
+                    TranscriptSegment("speaker-1", "क्या बुखार भी है?")
+                )
             ),
             result
         )

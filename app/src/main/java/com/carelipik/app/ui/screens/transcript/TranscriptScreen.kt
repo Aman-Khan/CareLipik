@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -19,6 +20,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,6 +38,8 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.carelipik.app.domain.transcription.TranscriptConcern
 import com.carelipik.app.domain.transcription.TranscriptConcernType
+import com.carelipik.app.domain.transcription.SpeakerRole
+import com.carelipik.app.domain.transcription.TranscriptSegment
 import com.carelipik.app.ui.components.ConsultationScreenHeader
 
 @Composable
@@ -42,6 +48,8 @@ fun TranscriptScreen(
     onTranscriptChanged: (String) -> Unit,
     onConfirmConcern: (String) -> Unit,
     onApplySuggestion: (String) -> Unit,
+    onViewModeChanged: (TranscriptViewMode) -> Unit,
+    onSpeakerRoleAssigned: (String, SpeakerRole) -> Unit,
     onRetry: () -> Unit,
     onBack: () -> Unit,
     onContinue: () -> Unit,
@@ -84,27 +92,34 @@ fun TranscriptScreen(
                         onApplySuggestion = onApplySuggestion
                     )
                 }
-                OutlinedTextField(
-                    value = uiState.transcript,
-                    onValueChange = onTranscriptChanged,
-                    label = { Text("Edit full transcript") },
-                    supportingText = {
-                        Text(
-                            uiState.transcriptError ?: when {
-                                uiState.pendingConcerns.isNotEmpty() ->
-                                    "Review ${uiState.pendingConcerns.size} highlighted " +
-                                        pluralize(uiState.pendingConcerns.size, "term", "terms") +
-                                        " above."
-                                uiState.concerns.isNotEmpty() ->
-                                    "All highlighted terms have been reviewed."
-                                else -> "Speaker labels and transcript text can be corrected here."
-                            }
-                        )
-                    },
-                    isError = uiState.transcriptError != null,
-                    minLines = 12,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                if (uiState.canShowConversation) {
+                    TranscriptViewModeSelector(
+                        selectedMode = uiState.viewMode,
+                        onModeChanged = onViewModeChanged
+                    )
+                    SpeakerRoleReviewPanel(
+                        speakerIds = uiState.speakerIds,
+                        speakerRoles = uiState.speakerRoles,
+                        onSpeakerRoleAssigned = onSpeakerRoleAssigned
+                    )
+                } else {
+                    UnsegmentedTranscriptNotice()
+                }
+                when (uiState.viewMode) {
+                    TranscriptViewMode.FullTranscript -> OutlinedTextField(
+                        value = uiState.transcript,
+                        onValueChange = onTranscriptChanged,
+                        label = { Text("Edit full transcript") },
+                        supportingText = { Text(reviewSupportingText(uiState)) },
+                        isError = uiState.transcriptError != null,
+                        minLines = 12,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    TranscriptViewMode.Conversation -> ConversationTranscript(
+                        segments = uiState.segments,
+                        speakerRoles = uiState.speakerRoles
+                    )
+                }
                 Button(
                     onClick = onContinue,
                     enabled = uiState.canContinue,
@@ -112,7 +127,11 @@ fun TranscriptScreen(
                 ) {
                     Text(
                         if (uiState.pendingConcerns.isEmpty()) {
-                            "Continue to clinical draft"
+                            if (uiState.pendingSpeakerIds.isEmpty()) {
+                                "Continue to clinical draft"
+                            } else {
+                                "Identify speakers to continue"
+                            }
                         } else {
                             "Review highlighted terms to continue"
                         }
@@ -122,6 +141,185 @@ fun TranscriptScreen(
         }
     }
 }
+
+@Composable
+private fun TranscriptViewModeSelector(
+    selectedMode: TranscriptViewMode,
+    onModeChanged: (TranscriptViewMode) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = "Transcript layout",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold
+        )
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            TranscriptViewMode.entries.forEachIndexed { index, mode ->
+                SegmentedButton(
+                    selected = selectedMode == mode,
+                    onClick = { onModeChanged(mode) },
+                    shape = SegmentedButtonDefaults.itemShape(
+                        index = index,
+                        count = TranscriptViewMode.entries.size
+                    ),
+                    label = {
+                        Text(
+                            if (mode == TranscriptViewMode.FullTranscript) {
+                                "Full transcript"
+                            } else {
+                                "Conversation"
+                            }
+                        )
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpeakerRoleReviewPanel(
+    speakerIds: List<String>,
+    speakerRoles: Map<String, SpeakerRole>,
+    onSpeakerRoleAssigned: (String, SpeakerRole) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "Confirm detected speakers",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "The engine separated voices but cannot know who is the doctor. " +
+                        "Confirm the roles before using the transcript.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+            speakerIds.forEach { speakerId ->
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = speakerDisplayName(speakerId),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                        listOf(SpeakerRole.Doctor, SpeakerRole.Patient).forEachIndexed { index, role ->
+                            SegmentedButton(
+                                selected = speakerRoles[speakerId] == role,
+                                onClick = { onSpeakerRoleAssigned(speakerId, role) },
+                                shape = SegmentedButtonDefaults.itemShape(index = index, count = 2),
+                                label = { Text(role.displayName) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun UnsegmentedTranscriptNotice() {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer
+    ) {
+        Text(
+            text = "This engine returned one continuous transcript, so speaker chat is not " +
+                "available yet. You can edit and review the full transcript below.",
+            modifier = Modifier.padding(14.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer
+        )
+    }
+}
+
+@Composable
+private fun ConversationTranscript(
+    segments: List<TranscriptSegment>,
+    speakerRoles: Map<String, SpeakerRole>
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        segments.forEach { segment ->
+            val role = speakerRoles[segment.speakerId] ?: SpeakerRole.Unassigned
+            ConversationBubble(segment = segment, role = role)
+        }
+        Text(
+            text = "Switch to Full transcript to edit wording or speaker labels.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun ConversationBubble(segment: TranscriptSegment, role: SpeakerRole) {
+    Row(modifier = Modifier.fillMaxWidth()) {
+        if (role == SpeakerRole.Doctor) Spacer(modifier = Modifier.weight(0.16f))
+        Surface(
+            modifier = Modifier.weight(if (role == SpeakerRole.Unassigned) 1f else 0.84f),
+            shape = RoundedCornerShape(18.dp),
+            color = when (role) {
+                SpeakerRole.Doctor -> MaterialTheme.colorScheme.primaryContainer
+                SpeakerRole.Patient -> MaterialTheme.colorScheme.secondaryContainer
+                SpeakerRole.Unassigned -> MaterialTheme.colorScheme.surfaceVariant
+            }
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = if (role == SpeakerRole.Unassigned) {
+                        speakerDisplayName(segment.speakerId)
+                    } else {
+                        role.displayName
+                    },
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = when (role) {
+                        SpeakerRole.Doctor -> MaterialTheme.colorScheme.onPrimaryContainer
+                        SpeakerRole.Patient -> MaterialTheme.colorScheme.onSecondaryContainer
+                        SpeakerRole.Unassigned -> MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+                Text(text = segment.transcript, style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+        if (role == SpeakerRole.Patient) Spacer(modifier = Modifier.weight(0.16f))
+    }
+}
+
+private fun reviewSupportingText(uiState: TranscriptUiState): String =
+    uiState.transcriptError ?: when {
+        uiState.pendingSpeakerIds.isNotEmpty() ->
+            "Confirm the doctor and patient speakers above."
+        uiState.pendingConcerns.isNotEmpty() ->
+            "Review ${uiState.pendingConcerns.size} highlighted " +
+                pluralize(uiState.pendingConcerns.size, "term", "terms") + " above."
+        uiState.concerns.isNotEmpty() -> "All highlighted terms have been reviewed."
+        else -> "Speaker labels and transcript text can be corrected here."
+    }
+
+private fun speakerDisplayName(speakerId: String): String = speakerId
+    .split('-', '_')
+    .joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
 
 @Composable
 private fun TranscriptTermReviewPanel(

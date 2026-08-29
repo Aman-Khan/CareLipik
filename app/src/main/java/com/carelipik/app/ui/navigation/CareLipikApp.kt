@@ -38,7 +38,7 @@ import com.carelipik.app.ui.screens.welcome.WelcomeViewModel
 
 @Composable
 fun CareLipikApp(
-    homeViewModel: HomeViewModel = viewModel(),
+    homeViewModel: HomeViewModel? = null,
     doctorProfileViewModel: DoctorProfileViewModel = viewModel(),
     doctorVoiceEnrollmentViewModel: DoctorVoiceEnrollmentViewModel? = null,
     welcomeViewModel: WelcomeViewModel = viewModel(),
@@ -51,6 +51,9 @@ fun CareLipikApp(
     consultationExportViewModel: ConsultationExportViewModel? = null
 ) {
     val context = LocalContext.current
+    val activeHomeViewModel = homeViewModel ?: viewModel(
+        factory = HomeViewModel.Factory(context)
+    )
     val activeRecordingViewModel = recordingViewModel ?: viewModel(
         factory = RecordingViewModel.Factory(context)
     )
@@ -72,7 +75,7 @@ fun CareLipikApp(
     val activeConsultationExportViewModel = consultationExportViewModel ?: viewModel(
         factory = ConsultationExportViewModel.Factory(context)
     )
-    val homeUiState by homeViewModel.uiState.collectAsState()
+    val homeUiState by activeHomeViewModel.uiState.collectAsState()
     val doctorProfileUiState by doctorProfileViewModel.uiState.collectAsState()
     val doctorVoiceEnrollmentUiState by
         activeDoctorVoiceEnrollmentViewModel.uiState.collectAsState()
@@ -101,7 +104,20 @@ fun CareLipikApp(
                     navigator.startConsultation()
                 },
                 onOpenProfile = navigator::openDoctorProfile,
-                onOpenHistory = navigator::openConsultationHistory,
+                onOpenHistory = {
+                    activeConsultationHistoryViewModel.closeDetail()
+                    activeConsultationHistoryViewModel.refresh()
+                    navigator.openConsultationHistory()
+                },
+                onOpenConsultation = { consultationId ->
+                    activeConsultationHistoryViewModel.select(consultationId) { wasSelected ->
+                        if (wasSelected) {
+                            navigator.openConsultationHistory()
+                        } else {
+                            activeHomeViewModel.refreshRecentConsultations()
+                        }
+                    }
+                },
                 modifier = Modifier.padding(innerPadding)
             )
             ConsultationDestination.DoctorProfile -> DoctorProfileScreen(
@@ -119,7 +135,7 @@ fun CareLipikApp(
                 onBack = navigator::navigateBack,
                 onSave = {
                     doctorProfileViewModel.saveProfile()?.let { profile ->
-                        homeViewModel.applyDoctorProfile(profile)
+                        activeHomeViewModel.applyDoctorProfile(profile)
                         navigator.navigateBack()
                     }
                 },
@@ -132,11 +148,23 @@ fun CareLipikApp(
                     activeConsultationExportViewModel.load(consultation)
                     navigator.openExportFromHistory()
                 },
+                onOpenReport = { artifact ->
+                    activeConsultationHistoryViewModel.prepareReport(artifact) { exportedFile ->
+                        openClinicalReport(context, exportedFile)
+                    }
+                },
+                onShareReport = { artifact ->
+                    activeConsultationHistoryViewModel.prepareReport(artifact) { exportedFile ->
+                        shareClinicalReport(context, exportedFile)
+                    }
+                },
+                onDeleteReport = activeConsultationHistoryViewModel::deleteReport,
                 onDelete = activeConsultationHistoryViewModel::delete,
                 onBack = {
                     if (consultationHistoryUiState.selected != null) {
                         activeConsultationHistoryViewModel.closeDetail()
                     } else {
+                        activeHomeViewModel.refreshRecentConsultations()
                         navigator.navigateBack()
                     }
                 },
@@ -209,6 +237,7 @@ fun CareLipikApp(
                         onSaved = { consultation ->
                             activeRecordingViewModel.discardRecording()
                             activeConsultationHistoryViewModel.refresh()
+                            activeHomeViewModel.refreshRecentConsultations()
                             activeConsultationExportViewModel.load(consultation)
                             navigator.navigateToNext()
                         }
@@ -265,25 +294,52 @@ fun CareLipikApp(
                 onGenerate = activeConsultationExportViewModel::generate,
                 onShare = {
                     consultationExportUiState.exportedFile?.let { exportedFile ->
-                        val uri = FileProvider.getUriForFile(
-                            context,
-                            "${context.packageName}.fileprovider",
-                            File(exportedFile.localPath)
-                        )
-                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                            type = exportedFile.mimeType
-                            putExtra(Intent.EXTRA_STREAM, uri)
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-                        context.startActivity(
-                            Intent.createChooser(shareIntent, "Share clinical note")
-                        )
+                        shareClinicalReport(context, exportedFile)
                     }
                 },
-                onBack = navigator::navigateBack,
-                onFinish = navigator::finishExport,
+                onBack = {
+                    activeConsultationHistoryViewModel.refreshSelectedReports()
+                    navigator.navigateBack()
+                },
+                onFinish = {
+                    activeHomeViewModel.refreshRecentConsultations()
+                    navigator.finishExport()
+                },
                 modifier = Modifier.padding(innerPadding)
             )
         }
     }
+}
+
+private fun shareClinicalReport(
+    context: android.content.Context,
+    exportedFile: com.carelipik.app.domain.export.ExportedConsultationFile
+) {
+    val uri = FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        File(exportedFile.localPath)
+    )
+    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+        type = exportedFile.mimeType
+        putExtra(Intent.EXTRA_STREAM, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(shareIntent, "Share clinical report"))
+}
+
+private fun openClinicalReport(
+    context: android.content.Context,
+    exportedFile: com.carelipik.app.domain.export.ExportedConsultationFile
+) {
+    val uri = FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        File(exportedFile.localPath)
+    )
+    val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(uri, exportedFile.mimeType)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(viewIntent, "Open clinical report"))
 }

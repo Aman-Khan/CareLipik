@@ -6,6 +6,7 @@
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="file" path="consultation_history/" />
+        <exclude domain="file" path="approved_consultation_reports/" />
         <exclude domain="file" path="doctor_voice/" />
         <!-- TODO: Use <include> and <exclude> to control what is backed up.
         <include .../>
@@ -14,6 +15,7 @@
     </cloud-backup>
     <device-transfer>
         <exclude domain="file" path="consultation_history/" />
+        <exclude domain="file" path="approved_consultation_reports/" />
         <exclude domain="file" path="doctor_voice/" />
     </device-transfer>
     <!--

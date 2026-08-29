@@ -45,7 +45,7 @@ fun ConsultationExportScreen(
     ) {
         ConsultationScreenHeader(
             title = "Export approved note",
-            subtitle = "Create a temporary file only when you need to save or share it.",
+            subtitle = "Generate an encrypted report linked to this consultation history.",
             currentStep = 7,
             totalSteps = 7,
             onBack = onBack,
@@ -95,6 +95,8 @@ fun ConsultationExportScreen(
                 displayName = uiState.exportedFile?.displayName.orEmpty(),
                 sizeBytes = uiState.exportedFile?.sizeBytes ?: 0L,
                 formatName = uiState.exportedFile?.format?.displayName.orEmpty(),
+                isSavedToHistory = uiState.savedArtifact != null,
+                persistenceWarning = uiState.persistenceWarning,
                 onShare = onShare
             )
             ConsultationExportStatus.Error -> Text(
@@ -143,8 +145,9 @@ private fun PrivacyCard() {
         ) {
             Text("Share carefully", fontWeight = FontWeight.Bold)
             Text(
-                "Exports contain sensitive clinical information. CareLipik creates them in " +
-                    "private cache and never includes consultation audio."
+                "Exports contain sensitive clinical information. CareLipik stores an encrypted " +
+                    "copy with approved history and creates a temporary readable copy only for " +
+                    "opening or sharing. Consultation audio is never included."
             )
         }
     }
@@ -192,6 +195,8 @@ private fun GeneratedExportCard(
     displayName: String,
     sizeBytes: Long,
     formatName: String,
+    isSavedToHistory: Boolean,
+    persistenceWarning: String?,
     onShare: () -> Unit
 ) {
     Card(
@@ -207,6 +212,18 @@ private fun GeneratedExportCard(
             Text("$formatName ready", fontWeight = FontWeight.Bold)
             Text(displayName, style = MaterialTheme.typography.bodySmall)
             Text("${(sizeBytes / 1_024L).coerceAtLeast(1L)} KB")
+            Text(
+                if (isSavedToHistory) {
+                    "Encrypted copy saved with consultation history"
+                } else {
+                    persistenceWarning ?: "History copy is unavailable"
+                },
+                color = if (isSavedToHistory) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.error
+                }
+            )
             Button(
                 onClick = onShare,
                 modifier = Modifier.fillMaxWidth().testTag("share_consultation_export")

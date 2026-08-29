@@ -6,6 +6,8 @@ import com.carelipik.app.domain.export.ConsultationStandardExporter
 import com.carelipik.app.domain.export.ExportedConsultationFile
 import com.carelipik.app.domain.model.ApprovedConsultation
 import com.carelipik.app.domain.model.ClinicalDraft
+import com.carelipik.app.domain.repository.ConsultationReportArtifact
+import com.carelipik.app.domain.repository.ConsultationReportRepository
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -65,6 +67,28 @@ class ConsultationExportViewModelTest {
         assertEquals(ConsultationExportFormat.PlainText, viewModel.uiState.value.exportedFile?.format)
     }
 
+    @Test
+    fun generatedReport_isPersistedAndLinkedToApprovedConsultation() {
+        val reportRepository = CapturingReportRepository()
+        val viewModel = ConsultationExportViewModel(
+            exporter = CapturingExporter(successResult(ConsultationExportFormat.StructuredJson)),
+            reportRepository = reportRepository,
+            processAsynchronously = false
+        )
+        val consultation = approvedConsultation()
+        viewModel.load(consultation)
+        viewModel.selectFormat(ConsultationExportFormat.StructuredJson)
+
+        viewModel.generate()
+
+        assertEquals(consultation.id, reportRepository.savedConsultationId)
+        assertEquals(
+            ConsultationExportFormat.StructuredJson,
+            viewModel.uiState.value.savedArtifact?.format
+        )
+        assertNull(viewModel.uiState.value.persistenceWarning)
+    }
+
     private class CapturingExporter(
         private val result: ConsultationExportResult
     ) : ConsultationStandardExporter {
@@ -79,6 +103,35 @@ class ConsultationExportViewModelTest {
             receivedFormat = format
             return result
         }
+    }
+
+    private class CapturingReportRepository : ConsultationReportRepository {
+        var savedConsultationId: String? = null
+
+        override suspend fun list(consultationId: String): List<ConsultationReportArtifact> =
+            emptyList()
+
+        override suspend fun save(
+            consultationId: String,
+            exportedFile: ExportedConsultationFile
+        ): ConsultationReportArtifact {
+            savedConsultationId = consultationId
+            return ConsultationReportArtifact(
+                consultationId = consultationId,
+                format = exportedFile.format,
+                generatedAtMillis = 456L,
+                displayName = exportedFile.displayName,
+                sizeBytes = exportedFile.sizeBytes
+            )
+        }
+
+        override suspend fun materialize(
+            artifact: ConsultationReportArtifact
+        ): ExportedConsultationFile = error("Not used")
+
+        override suspend fun delete(artifact: ConsultationReportArtifact) = Unit
+
+        override suspend fun deleteForConsultation(consultationId: String) = Unit
     }
 
     private fun approvedConsultation() = ApprovedConsultation(

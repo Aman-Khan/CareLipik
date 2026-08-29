@@ -17,6 +17,7 @@ development recordings, screenshots, fixtures, or tests.
 - Offline doctor-voice enrollment and confidence-gated Doctor/Patient role matching.
 - Manual correction of transcript text, medical terms, and speaker roles.
 - AES-GCM encrypted, app-private consultation history after final doctor approval.
+- On-demand A4 PDF export immediately after approval or from encrypted history.
 - Temporary consultation audio in the Android cache by default.
 - No cloud database, embedded provider key, or LLM.
 
@@ -268,6 +269,8 @@ backend URL changed.
 - Enrollment audio and consultation history stay in app-private storage.
 - Approved consultation records are encrypted with AES-GCM using an Android Keystore key.
 - Consultation audio is kept in app-private cache and discarded after successful approval.
+- Export PDFs are generated on demand in app-private cache, use ID-based filenames, exclude audio,
+  and are shared through a temporary read-only content URI.
 - Voice enrollment and consultation history are excluded from cloud backup and device transfer.
 - Online transcription requires explicit consent.
 - Development recordings must never contain real patient information.

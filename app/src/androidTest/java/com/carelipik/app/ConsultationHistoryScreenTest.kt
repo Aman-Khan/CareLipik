@@ -47,6 +47,7 @@ class ConsultationHistoryScreenTest {
                         openedId = it
                         selected = item
                     },
+                    onExport = {},
                     onDelete = { deletedId = it },
                     onBack = {}
                 )

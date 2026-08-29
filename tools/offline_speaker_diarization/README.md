@@ -23,6 +23,7 @@ When models are installed, Whisper and MedASR run diarization first and transcri
 detected speaker turn locally. If the models are missing or diarization fails, transcription
 continues in the existing unsegmented mode rather than blocking the consultation.
 
-Speaker diarization assigns anonymous `Speaker 1` and `Speaker 2` labels. It does not know
-which voice belongs to the doctor until the doctor confirms the roles. Voice enrollment and
-automatic doctor matching are a separate later component.
+Speaker diarization initially assigns anonymous `Speaker 1` and `Speaker 2` labels. When a doctor
+voice sample is enrolled, CareLipik compares local speaker embeddings and assigns Doctor/Patient
+roles only when both similarity and confidence-margin gates pass. Uncertain matches remain
+unassigned, and every automatic role can still be corrected manually.

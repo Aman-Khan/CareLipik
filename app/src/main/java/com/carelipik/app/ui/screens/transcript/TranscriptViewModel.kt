@@ -16,6 +16,7 @@ import com.carelipik.app.domain.transcription.TranscriptionEngineOption
 import com.carelipik.app.domain.transcription.TranscriptionEngineResolver
 import com.carelipik.app.domain.transcription.TranscriptionResult
 import com.carelipik.app.domain.transcription.TranscriptionLanguage
+import com.carelipik.app.domain.voice.DoctorVoiceRoleMatchResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -219,8 +220,10 @@ class TranscriptViewModel(
                 concerns = reviewAnalyzer.analyze(result.transcript, sourceLanguage),
                 segments = result.segments.ifEmpty { segmentParser.parse(result.transcript) },
                 speakerRoles = rolesFor(
-                    result.segments.ifEmpty { segmentParser.parse(result.transcript) }
-                )
+                    segments = result.segments.ifEmpty { segmentParser.parse(result.transcript) },
+                    doctorVoiceMatch = result.doctorVoiceMatch
+                ),
+                doctorVoiceMatch = result.doctorVoiceMatch
             )
             is TranscriptionResult.Failure -> TranscriptUiState(
                 status = TranscriptStatus.Error,
@@ -233,14 +236,19 @@ class TranscriptViewModel(
 
     private fun rolesFor(
         segments: List<TranscriptSegment>,
-        existing: Map<String, SpeakerRole> = emptyMap()
+        existing: Map<String, SpeakerRole> = emptyMap(),
+        doctorVoiceMatch: DoctorVoiceRoleMatchResult? = null
     ): Map<String, SpeakerRole> = segments
         .map { it.speakerId }
         .distinct()
         .associateWith { speakerId ->
-            when (speakerId) {
-                "doctor" -> SpeakerRole.Doctor
-                "patient" -> SpeakerRole.Patient
+            when {
+                doctorVoiceMatch is DoctorVoiceRoleMatchResult.Matched &&
+                    speakerId == doctorVoiceMatch.match.doctorSpeakerId -> SpeakerRole.Doctor
+                doctorVoiceMatch is DoctorVoiceRoleMatchResult.Matched &&
+                    segments.map { it.speakerId }.distinct().size == 2 -> SpeakerRole.Patient
+                speakerId == "doctor" -> SpeakerRole.Doctor
+                speakerId == "patient" -> SpeakerRole.Patient
                 else -> existing[speakerId] ?: SpeakerRole.Unassigned
             }
         }

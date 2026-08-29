@@ -3,7 +3,7 @@ package com.carelipik.app.data.transcription
 import java.io.File
 import java.io.RandomAccessFile
 
-internal object PcmWaveAudio {
+object PcmWaveAudio {
     const val sampleRate = 16_000
 
     fun readMono16Khz(file: File): FloatArray {

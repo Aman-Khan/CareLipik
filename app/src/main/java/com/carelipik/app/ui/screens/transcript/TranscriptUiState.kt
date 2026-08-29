@@ -5,6 +5,7 @@ import com.carelipik.app.domain.transcription.TranscriptionEngineOption
 import com.carelipik.app.domain.transcription.TranscriptConcern
 import com.carelipik.app.domain.transcription.TranscriptSegment
 import com.carelipik.app.domain.transcription.SpeakerRole
+import com.carelipik.app.domain.voice.DoctorVoiceRoleMatchResult
 
 enum class TranscriptStatus {
     Idle,
@@ -29,6 +30,7 @@ data class TranscriptUiState(
     val confirmedConcernIds: Set<String> = emptySet(),
     val segments: List<TranscriptSegment> = emptyList(),
     val speakerRoles: Map<String, SpeakerRole> = emptyMap(),
+    val doctorVoiceMatch: DoctorVoiceRoleMatchResult? = null,
     val viewMode: TranscriptViewMode = TranscriptViewMode.FullTranscript
 ) {
     val pendingConcerns: List<TranscriptConcern>

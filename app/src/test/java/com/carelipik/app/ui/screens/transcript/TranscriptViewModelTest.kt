@@ -7,6 +7,8 @@ import com.carelipik.app.domain.transcription.TranscriptionEngineResolver
 import com.carelipik.app.domain.transcription.TranscriptionResult
 import com.carelipik.app.domain.transcription.TranscriptSegment
 import com.carelipik.app.domain.transcription.SpeakerRole
+import com.carelipik.app.domain.voice.DoctorVoiceRoleMatch
+import com.carelipik.app.domain.voice.DoctorVoiceRoleMatchResult
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -147,6 +149,35 @@ class TranscriptViewModelTest {
             viewModel.transcriptText()
         )
         assertTrue(viewModel.uiState.value.canContinue)
+    }
+
+    @Test
+    fun confidentDoctorVoiceMatch_assignsRolesAndStillAllowsManualCorrection() {
+        val viewModel = TranscriptViewModel(
+            engineResolver = resolver(
+                StubEngine(
+                    TranscriptionResult.Success(
+                        transcript = "Speaker 1: Hello\n\nSpeaker 2: Good morning",
+                        segments = listOf(
+                            TranscriptSegment("speaker-1", "Hello"),
+                            TranscriptSegment("speaker-2", "Good morning")
+                        ),
+                        doctorVoiceMatch = DoctorVoiceRoleMatchResult.Matched(
+                            DoctorVoiceRoleMatch("speaker-2", 0.8f, 0.84f, 0.2f)
+                        )
+                    )
+                )
+            ),
+            processAsynchronously = false
+        )
+
+        viewModel.transcribe("/private/recording.wav")
+
+        assertEquals(SpeakerRole.Doctor, viewModel.uiState.value.speakerRoles["speaker-2"])
+        assertEquals(SpeakerRole.Patient, viewModel.uiState.value.speakerRoles["speaker-1"])
+        viewModel.assignSpeakerRole("speaker-1", SpeakerRole.Doctor)
+        assertEquals(SpeakerRole.Doctor, viewModel.uiState.value.speakerRoles["speaker-1"])
+        assertEquals(SpeakerRole.Patient, viewModel.uiState.value.speakerRoles["speaker-2"])
     }
 
     private class StubEngine(

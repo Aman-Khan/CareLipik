@@ -6,6 +6,7 @@ import com.carelipik.app.domain.transcription.TranscriptionEngineOption
 import com.carelipik.app.domain.transcription.TranscriptionLanguage
 import com.carelipik.app.domain.transcription.TranscriptionResult
 import com.carelipik.app.domain.transcription.SpeakerDiarizationEngine
+import com.carelipik.app.domain.voice.DoctorVoiceRoleMatcher
 import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.OfflineMedAsrCtcModelConfig
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
@@ -16,7 +17,8 @@ import java.io.File
 /** English-only on-device transcription adapted for medical speech. */
 class SherpaMedAsrTranscriptionEngine(
     private val context: Context,
-    private val diarizationEngine: SpeakerDiarizationEngine? = null
+    private val diarizationEngine: SpeakerDiarizationEngine? = null,
+    private val doctorVoiceRoleMatcher: DoctorVoiceRoleMatcher? = null
 ) : AudioTranscriptionEngine {
     override val option: TranscriptionEngineOption = TranscriptionEngineOption.MedAsrEnglish
 
@@ -35,6 +37,7 @@ class SherpaMedAsrTranscriptionEngine(
                 samples = samples,
                 sampleRate = PcmWaveAudio.sampleRate,
                 diarizationEngine = diarizationEngine,
+                doctorVoiceRoleMatcher = doctorVoiceRoleMatcher,
                 recognize = { audio -> recognize(recognizer, audio) }
             )
             require(payload.transcript.isNotBlank()) {
@@ -43,7 +46,9 @@ class SherpaMedAsrTranscriptionEngine(
             payload
         }
     }.fold(
-        onSuccess = { TranscriptionResult.Success(it.transcript, it.segments) },
+        onSuccess = {
+            TranscriptionResult.Success(it.transcript, it.segments, it.doctorVoiceMatch)
+        },
         onFailure = { error ->
             TranscriptionResult.Failure(
                 error.message ?: "Medical English transcription could not be completed."

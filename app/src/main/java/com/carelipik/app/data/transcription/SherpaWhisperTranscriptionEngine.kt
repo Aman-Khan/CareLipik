@@ -6,6 +6,7 @@ import com.carelipik.app.domain.transcription.TranscriptionResult
 import com.carelipik.app.domain.transcription.TranscriptionLanguage
 import com.carelipik.app.domain.transcription.TranscriptionEngineOption
 import com.carelipik.app.domain.transcription.SpeakerDiarizationEngine
+import com.carelipik.app.domain.voice.DoctorVoiceRoleMatcher
 import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
@@ -16,7 +17,8 @@ import java.io.File
 /** On-device multilingual Whisper transcription. No audio or text leaves the phone. */
 class SherpaWhisperTranscriptionEngine(
     private val context: Context,
-    private val diarizationEngine: SpeakerDiarizationEngine? = null
+    private val diarizationEngine: SpeakerDiarizationEngine? = null,
+    private val doctorVoiceRoleMatcher: DoctorVoiceRoleMatcher? = null
 ) : AudioTranscriptionEngine {
     override val option: TranscriptionEngineOption = TranscriptionEngineOption.WhisperMultilingual
 
@@ -32,6 +34,7 @@ class SherpaWhisperTranscriptionEngine(
                 samples = samples,
                 sampleRate = PcmWaveAudio.sampleRate,
                 diarizationEngine = diarizationEngine,
+                doctorVoiceRoleMatcher = doctorVoiceRoleMatcher,
                 recognize = { audio -> recognize(recognizer, audio) }
             )
             require(payload.transcript.isNotBlank()) {
@@ -40,7 +43,9 @@ class SherpaWhisperTranscriptionEngine(
             payload
         }
     }.fold(
-        onSuccess = { TranscriptionResult.Success(it.transcript, it.segments) },
+        onSuccess = {
+            TranscriptionResult.Success(it.transcript, it.segments, it.doctorVoiceMatch)
+        },
         onFailure = { error ->
             TranscriptionResult.Failure(
                 error.message ?: "Offline transcription could not be completed."

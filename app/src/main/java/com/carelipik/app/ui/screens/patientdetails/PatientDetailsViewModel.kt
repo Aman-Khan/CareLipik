@@ -28,4 +28,6 @@ class PatientDetailsViewModel : ViewModel() {
         _uiState.update { it.copy(hasAttemptedContinue = true) }
         return _uiState.value.canContinue
     }
+
+    fun currentDetails(): PatientDetailsUiState = _uiState.value
 }

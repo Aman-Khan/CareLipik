@@ -20,10 +20,11 @@ import com.carelipik.app.ui.screens.doctorprofile.DoctorProfileViewModel
 import com.carelipik.app.ui.screens.doctorprofile.DoctorVoiceEnrollmentViewModel
 import com.carelipik.app.ui.screens.home.HomeScreen
 import com.carelipik.app.ui.screens.home.HomeViewModel
+import com.carelipik.app.ui.screens.history.ConsultationHistoryScreen
+import com.carelipik.app.ui.screens.history.ConsultationHistoryViewModel
 import com.carelipik.app.ui.screens.patientdetails.PatientDetailsScreen
 import com.carelipik.app.ui.screens.patientdetails.PatientDetailsViewModel
 import com.carelipik.app.ui.screens.placeholder.PlaceholderScreen
-import com.carelipik.app.ui.screens.placeholder.UpcomingFeatureScreen
 import com.carelipik.app.ui.screens.recording.RecordingScreen
 import com.carelipik.app.ui.screens.recording.RecordingViewModel
 import com.carelipik.app.ui.screens.transcript.TranscriptScreen
@@ -41,7 +42,8 @@ fun CareLipikApp(
     recordingViewModel: RecordingViewModel? = null,
     transcriptViewModel: TranscriptViewModel? = null,
     clinicalDraftViewModel: ClinicalDraftViewModel = viewModel(),
-    doctorReviewViewModel: DoctorReviewViewModel = viewModel()
+    doctorReviewViewModel: DoctorReviewViewModel? = null,
+    consultationHistoryViewModel: ConsultationHistoryViewModel? = null
 ) {
     val context = LocalContext.current
     val activeRecordingViewModel = recordingViewModel ?: viewModel(
@@ -53,6 +55,12 @@ fun CareLipikApp(
     val activeDoctorVoiceEnrollmentViewModel = doctorVoiceEnrollmentViewModel ?: viewModel(
         factory = DoctorVoiceEnrollmentViewModel.Factory(context)
     )
+    val activeDoctorReviewViewModel = doctorReviewViewModel ?: viewModel(
+        factory = DoctorReviewViewModel.Factory(context)
+    )
+    val activeConsultationHistoryViewModel = consultationHistoryViewModel ?: viewModel(
+        factory = ConsultationHistoryViewModel.Factory(context)
+    )
     val homeUiState by homeViewModel.uiState.collectAsState()
     val doctorProfileUiState by doctorProfileViewModel.uiState.collectAsState()
     val doctorVoiceEnrollmentUiState by
@@ -62,7 +70,8 @@ fun CareLipikApp(
     val recordingUiState by activeRecordingViewModel.uiState.collectAsState()
     val transcriptUiState by activeTranscriptViewModel.uiState.collectAsState()
     val clinicalDraftUiState by clinicalDraftViewModel.uiState.collectAsState()
-    val doctorReviewUiState by doctorReviewViewModel.uiState.collectAsState()
+    val doctorReviewUiState by activeDoctorReviewViewModel.uiState.collectAsState()
+    val consultationHistoryUiState by activeConsultationHistoryViewModel.uiState.collectAsState()
     val navigator = remember { CareLipikNavigator() }
 
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
@@ -95,9 +104,17 @@ fun CareLipikApp(
                 },
                 modifier = Modifier.padding(innerPadding)
             )
-            ConsultationDestination.ConsultationHistory -> UpcomingFeatureScreen(
-                destination = navigator.currentDestination,
-                onBack = navigator::navigateBack,
+            ConsultationDestination.ConsultationHistory -> ConsultationHistoryScreen(
+                uiState = consultationHistoryUiState,
+                onOpen = activeConsultationHistoryViewModel::select,
+                onDelete = activeConsultationHistoryViewModel::delete,
+                onBack = {
+                    if (consultationHistoryUiState.selected != null) {
+                        activeConsultationHistoryViewModel.closeDetail()
+                    } else {
+                        navigator.navigateBack()
+                    }
+                },
                 modifier = Modifier.padding(innerPadding)
             )
             ConsultationDestination.Welcome -> WelcomeScreen(
@@ -135,7 +152,7 @@ fun CareLipikApp(
                 onBack = navigator::navigateBack,
                 onContinue = {
                     if (clinicalDraftViewModel.validateForContinue()) {
-                        doctorReviewViewModel.loadDraft(clinicalDraftViewModel.currentDraft())
+                        activeDoctorReviewViewModel.loadDraft(clinicalDraftViewModel.currentDraft())
                         navigator.navigateToNext()
                     }
                 },
@@ -143,12 +160,17 @@ fun CareLipikApp(
             )
             ConsultationDestination.DoctorReview -> DoctorReviewScreen(
                 uiState = doctorReviewUiState,
-                onConfirmationChanged = doctorReviewViewModel::setConfirmedReview,
+                onConfirmationChanged = activeDoctorReviewViewModel::setConfirmedReview,
                 onBack = navigator::navigateBack,
                 onApprove = {
-                    if (doctorReviewViewModel.validateApproval()) {
-                        navigator.navigateToNext()
-                    }
+                    activeDoctorReviewViewModel.approve(
+                        patient = patientDetailsViewModel.currentDetails(),
+                        onSaved = {
+                            activeRecordingViewModel.discardRecording()
+                            activeConsultationHistoryViewModel.refresh()
+                            navigator.navigateToNext()
+                        }
+                    )
                 },
                 modifier = Modifier.padding(innerPadding)
             )

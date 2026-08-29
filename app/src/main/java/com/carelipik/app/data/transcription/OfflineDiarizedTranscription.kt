@@ -3,12 +3,15 @@ package com.carelipik.app.data.transcription
 import com.carelipik.app.domain.transcription.SpeakerDiarizationEngine
 import com.carelipik.app.domain.transcription.SpeakerDiarizationResult
 import com.carelipik.app.domain.transcription.TranscriptSegment
+import com.carelipik.app.domain.voice.DoctorVoiceRoleMatchResult
+import com.carelipik.app.domain.voice.DoctorVoiceRoleMatcher
 import kotlin.math.ceil
 import kotlin.math.floor
 
 internal data class OfflineTranscriptionPayload(
     val transcript: String,
-    val segments: List<TranscriptSegment> = emptyList()
+    val segments: List<TranscriptSegment> = emptyList(),
+    val doctorVoiceMatch: DoctorVoiceRoleMatchResult? = null
 )
 
 internal object OfflineDiarizedTranscription {
@@ -16,6 +19,7 @@ internal object OfflineDiarizedTranscription {
         samples: FloatArray,
         sampleRate: Int,
         diarizationEngine: SpeakerDiarizationEngine?,
+        doctorVoiceRoleMatcher: DoctorVoiceRoleMatcher? = null,
         recognize: (FloatArray) -> String
     ): OfflineTranscriptionPayload {
         val diarization = diarizationEngine?.diarize(
@@ -43,7 +47,12 @@ internal object OfflineDiarizedTranscription {
                     transcript = segments.joinToString("\n\n") { segment ->
                         "${segment.speakerId.toDisplayLabel()}: ${segment.transcript}"
                     },
-                    segments = segments
+                    segments = segments,
+                    doctorVoiceMatch = doctorVoiceRoleMatcher?.match(
+                        samples = samples,
+                        sampleRate = sampleRate,
+                        turns = diarization.turns
+                    )
                 )
             }
         }

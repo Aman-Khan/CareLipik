@@ -1,6 +1,11 @@
 package com.carelipik.app.domain.repository
 
-/** Boundary for local consultation data; a real store can replace this later. */
+import com.carelipik.app.domain.model.ApprovedConsultation
+
+/** Persists only doctor-approved consultation documentation on this device. */
 interface ConsultationRepository {
-    fun patientDisplayName(): String
+    suspend fun list(): List<ApprovedConsultation>
+    suspend fun get(id: String): ApprovedConsultation?
+    suspend fun save(consultation: ApprovedConsultation)
+    suspend fun delete(id: String)
 }

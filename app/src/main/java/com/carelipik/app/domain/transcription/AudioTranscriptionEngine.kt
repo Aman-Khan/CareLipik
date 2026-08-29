@@ -1,9 +1,12 @@
 package com.carelipik.app.domain.transcription
 
+import com.carelipik.app.domain.voice.DoctorVoiceRoleMatchResult
+
 sealed interface TranscriptionResult {
     data class Success(
         val transcript: String,
-        val segments: List<TranscriptSegment> = emptyList()
+        val segments: List<TranscriptSegment> = emptyList(),
+        val doctorVoiceMatch: DoctorVoiceRoleMatchResult? = null
     ) : TranscriptionResult
     data class Failure(val message: String) : TranscriptionResult
 }

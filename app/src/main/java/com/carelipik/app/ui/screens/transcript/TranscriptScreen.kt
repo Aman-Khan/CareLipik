@@ -40,6 +40,7 @@ import com.carelipik.app.domain.transcription.TranscriptConcern
 import com.carelipik.app.domain.transcription.TranscriptConcernType
 import com.carelipik.app.domain.transcription.SpeakerRole
 import com.carelipik.app.domain.transcription.TranscriptSegment
+import com.carelipik.app.domain.voice.DoctorVoiceRoleMatchResult
 import com.carelipik.app.ui.components.ConsultationScreenHeader
 
 @Composable
@@ -100,6 +101,7 @@ fun TranscriptScreen(
                     SpeakerRoleReviewPanel(
                         speakerIds = uiState.speakerIds,
                         speakerRoles = uiState.speakerRoles,
+                        doctorVoiceMatch = uiState.doctorVoiceMatch,
                         onSpeakerRoleAssigned = onSpeakerRoleAssigned
                     )
                 } else {
@@ -181,6 +183,7 @@ private fun TranscriptViewModeSelector(
 private fun SpeakerRoleReviewPanel(
     speakerIds: List<String>,
     speakerRoles: Map<String, SpeakerRole>,
+    doctorVoiceMatch: DoctorVoiceRoleMatchResult?,
     onSpeakerRoleAssigned: (String, SpeakerRole) -> Unit
 ) {
     Card(
@@ -201,8 +204,17 @@ private fun SpeakerRoleReviewPanel(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "The engine separated voices but cannot know who is the doctor. " +
-                        "Confirm the roles before using the transcript.",
+                    text = when (doctorVoiceMatch) {
+                        is DoctorVoiceRoleMatchResult.Matched ->
+                            "Matched the enrolled doctor voice locally. Check or correct the roles."
+                        is DoctorVoiceRoleMatchResult.Uncertain ->
+                            "The enrolled voice match was uncertain. Confirm both roles manually."
+                        DoctorVoiceRoleMatchResult.NotEnrolled ->
+                            "No doctor voice is enrolled. Confirm both roles manually."
+                        is DoctorVoiceRoleMatchResult.Unavailable ->
+                            "Automatic local matching was unavailable. Confirm both roles manually."
+                        null -> "Confirm the doctor and patient roles before using the transcript."
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer
                 )

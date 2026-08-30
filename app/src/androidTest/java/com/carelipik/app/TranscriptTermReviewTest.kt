@@ -2,6 +2,7 @@ package com.carelipik.app
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -22,6 +23,41 @@ class TranscriptTermReviewTest {
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     @Test
+    fun offlineTranscript_showsConsentGatedGeminiEnhancement() {
+        composeRule.setContent {
+            CareLipikTheme {
+                TranscriptScreen(
+                    uiState = TranscriptUiState(
+                        status = TranscriptStatus.Ready,
+                        transcript = "Patient takes paracetamol.",
+                        engine = TranscriptionEngineOption.WhisperMultilingual
+                    ),
+                    onTranscriptChanged = {},
+                    onConfirmConcern = {},
+                    onApplySuggestion = {},
+                    onOnlineAnalysisConsentChanged = {},
+                    onAnalyzeTermsOnline = {},
+                    onViewModeChanged = {},
+                    onSpeakerRoleAssigned = { _, _ -> },
+                    onRetry = {},
+                    onBack = {},
+                    onContinue = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Optional online medical-term enhancement")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Enhance terms with Gemini")
+            .performScrollTo()
+            .assertIsNotEnabled()
+        composeRule.onNodeWithText(
+            "I have consent to send this transcript for online medical-term analysis"
+        ).performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
     fun possibleRecognitionError_isHighlightedWithDoctorActions() {
         val transcript = "I have had cup for three days."
         val concerns = RuleBasedTranscriptReviewAnalyzer().analyze(
@@ -39,6 +75,7 @@ class TranscriptTermReviewTest {
                     onTranscriptChanged = {},
                     onConfirmConcern = {},
                     onApplySuggestion = {},
+                    onOnlineAnalysisConsentChanged = {},
                     onAnalyzeTermsOnline = {},
                     onViewModeChanged = {},
                     onSpeakerRoleAssigned = { _, _ -> },
@@ -76,6 +113,7 @@ class TranscriptTermReviewTest {
                     onTranscriptChanged = {},
                     onConfirmConcern = {},
                     onApplySuggestion = {},
+                    onOnlineAnalysisConsentChanged = {},
                     onAnalyzeTermsOnline = {},
                     onViewModeChanged = {},
                     onSpeakerRoleAssigned = { _, _ -> },
@@ -103,12 +141,14 @@ class TranscriptTermReviewTest {
                         transcript = "Patient takes Dolo 650.",
                         engine = TranscriptionEngineOption.SaarasHindiHinglish,
                         clinicalAnalysisSource = "Gemini",
+                        hasOnlineAnalysisConsent = true,
                         clinicalAnalysisWarning =
                             "Medicine salts and terminology codes require doctor verification."
                     ),
                     onTranscriptChanged = {},
                     onConfirmConcern = {},
                     onApplySuggestion = {},
+                    onOnlineAnalysisConsentChanged = {},
                     onAnalyzeTermsOnline = {},
                     onViewModeChanged = {},
                     onSpeakerRoleAssigned = { _, _ -> },
@@ -119,7 +159,9 @@ class TranscriptTermReviewTest {
             }
         }
 
-        composeRule.onNodeWithText("Gemini term analysis").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Gemini medical-term enhancement")
+            .performScrollTo()
+            .assertIsDisplayed()
         composeRule.onNodeWithText("Analyze again").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText(
             "Medicine salts and terminology codes require doctor verification."

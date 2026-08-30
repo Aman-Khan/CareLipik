@@ -34,6 +34,7 @@ data class TranscriptUiState(
     val speakerSeparationWarning: String? = null,
     val clinicalAnalysisSource: String? = null,
     val clinicalAnalysisWarning: String? = null,
+    val hasOnlineAnalysisConsent: Boolean = false,
     val isAnalyzingTerms: Boolean = false,
     val viewMode: TranscriptViewMode = TranscriptViewMode.FullTranscript
 ) {

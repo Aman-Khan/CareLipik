@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -49,6 +50,7 @@ fun TranscriptScreen(
     onTranscriptChanged: (String) -> Unit,
     onConfirmConcern: (String) -> Unit,
     onApplySuggestion: (String) -> Unit,
+    onOnlineAnalysisConsentChanged: (Boolean) -> Unit,
     onAnalyzeTermsOnline: () -> Unit,
     onViewModeChanged: (TranscriptViewMode) -> Unit,
     onSpeakerRoleAssigned: (String, SpeakerRole) -> Unit,
@@ -90,14 +92,14 @@ fun TranscriptScreen(
                 uiState.speakerSeparationWarning?.let { warning ->
                     SpeakerSeparationWarning(warning)
                 }
-                if (!uiState.engine.isOffline) {
-                    OnlineClinicalAnalysisPanel(
-                        source = uiState.clinicalAnalysisSource,
-                        warning = uiState.clinicalAnalysisWarning,
-                        isAnalyzing = uiState.isAnalyzingTerms,
-                        onAnalyze = onAnalyzeTermsOnline
-                    )
-                }
+                OnlineClinicalAnalysisPanel(
+                    source = uiState.clinicalAnalysisSource,
+                    warning = uiState.clinicalAnalysisWarning,
+                    hasConsent = uiState.hasOnlineAnalysisConsent,
+                    isAnalyzing = uiState.isAnalyzingTerms,
+                    onConsentChanged = onOnlineAnalysisConsentChanged,
+                    onAnalyze = onAnalyzeTermsOnline
+                )
                 if (uiState.concerns.isNotEmpty()) {
                     TranscriptTermReviewPanel(
                         uiState = uiState,
@@ -160,7 +162,9 @@ fun TranscriptScreen(
 private fun OnlineClinicalAnalysisPanel(
     source: String?,
     warning: String?,
+    hasConsent: Boolean,
     isAnalyzing: Boolean,
+    onConsentChanged: (Boolean) -> Unit,
     onAnalyze: () -> Unit
 ) {
     Surface(
@@ -173,24 +177,40 @@ private fun OnlineClinicalAnalysisPanel(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = if (source == null) "Online medical term analysis" else "$source term analysis",
+                text = if (source == null) {
+                    "Optional online medical-term enhancement"
+                } else {
+                    "$source medical-term enhancement"
+                },
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = warning ?: "Candidate terms are extracted online and must be confirmed by the doctor.",
+                text = warning ?: "Gemini can find additional medicine and disease candidates. " +
+                    "Only the reviewed transcript is sent; consultation audio is never sent.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onTertiaryContainer
             )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = hasConsent,
+                    onCheckedChange = onConsentChanged,
+                    enabled = !isAnalyzing
+                )
+                Text(
+                    "I have consent to send this transcript for online medical-term analysis",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
             OutlinedButton(
                 onClick = onAnalyze,
-                enabled = !isAnalyzing,
+                enabled = hasConsent && !isAnalyzing,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (isAnalyzing) {
                     CircularProgressIndicator(modifier = Modifier.padding(4.dp))
                 } else {
-                    Text(if (source == null) "Analyze medical terms" else "Analyze again")
+                    Text(if (source == null) "Enhance terms with Gemini" else "Analyze again")
                 }
             }
         }
@@ -484,8 +504,14 @@ private fun TranscriptTermReviewPanel(
                 )
             }
             Text(
-                text = "This is a local wording check, not an ASR confidence score or a diagnosis. " +
-                    "Always compare highlighted text with the recording.",
+                text = if (uiState.clinicalAnalysisSource == null) {
+                    "This is a local wording check, not an ASR confidence score or a diagnosis. " +
+                        "Always compare highlighted text with the recording."
+                } else {
+                    "Highlights combine local wording checks with " +
+                        "${uiState.clinicalAnalysisSource} candidates. They are not a diagnosis. " +
+                        "Always compare highlighted text with the recording."
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

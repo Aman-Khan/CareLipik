@@ -185,7 +185,7 @@ class TranscriptViewModelTest {
     }
 
     @Test
-    fun onlineEngine_usesCloudCandidatesAndRequiresDoctorConfirmation() {
+    fun onlineEngine_waitsForConsentBeforeUsingCloudCandidates() {
         val cloudConcern = TranscriptConcern(
             id = "cloud:MEDICATION:7:dolo 650",
             text = "Dolo 650",
@@ -194,6 +194,7 @@ class TranscriptViewModelTest {
             type = TranscriptConcernType.MedicalTerm,
             reason = "AI medication candidate; doctor confirmation required."
         )
+        var analysisRequests = 0
         val viewModel = TranscriptViewModel(
             engineResolver = resolver(
                 StubEngine(
@@ -202,6 +203,7 @@ class TranscriptViewModelTest {
                 )
             ),
             onlineReviewAnalyzer = OnlineTranscriptReviewAnalyzer { _, _ ->
+                analysisRequests += 1
                 OnlineTranscriptReviewResult.Success(
                     concerns = listOf(cloudConcern),
                     sourceName = "Gemini",
@@ -217,11 +219,134 @@ class TranscriptViewModelTest {
             TranscriptionEngineOption.SaarasHindiHinglish
         )
 
+        assertTrue(viewModel.uiState.value.concerns.isEmpty())
+        assertEquals(0, analysisRequests)
+        viewModel.analyzeTermsOnline()
+        assertEquals(0, analysisRequests)
+        assertEquals(
+            "Confirm consent before sending the reviewed transcript for online analysis.",
+            viewModel.uiState.value.clinicalAnalysisWarning
+        )
+
+        viewModel.setOnlineAnalysisConsent(true)
+        viewModel.analyzeTermsOnline()
+
+        assertEquals(1, analysisRequests)
         assertEquals(listOf(cloudConcern), viewModel.uiState.value.concerns)
         assertEquals("Gemini", viewModel.uiState.value.clinicalAnalysisSource)
         assertFalse(viewModel.uiState.value.canContinue)
         viewModel.confirmConcern(cloudConcern.id)
         assertTrue(viewModel.uiState.value.canContinue)
+    }
+
+    @Test
+    fun offlineEngine_canUseGeminiAndMergesLocalRecognitionCorrections() {
+        val transcript = "I have cuff and take Dolo 650."
+        val medicineStart = transcript.indexOf("Dolo 650")
+        val cloudConcern = TranscriptConcern(
+            id = "cloud:MEDICATION:$medicineStart:dolo 650",
+            text = "Dolo 650",
+            startIndex = medicineStart,
+            endIndexExclusive = medicineStart + "Dolo 650".length,
+            type = TranscriptConcernType.MedicalTerm,
+            reason = "AI medication candidate; doctor confirmation required."
+        )
+        val viewModel = TranscriptViewModel(
+            engineResolver = resolver(StubEngine(TranscriptionResult.Success(transcript))),
+            onlineReviewAnalyzer = OnlineTranscriptReviewAnalyzer { _, _ ->
+                OnlineTranscriptReviewResult.Success(
+                    concerns = listOf(cloudConcern),
+                    sourceName = "Gemini",
+                    codesVerified = false
+                )
+            },
+            processAsynchronously = false
+        )
+
+        viewModel.transcribe(
+            "/private/recording.wav",
+            TranscriptionLanguage.English,
+            TranscriptionEngineOption.WhisperMultilingual
+        )
+        viewModel.setOnlineAnalysisConsent(true)
+        viewModel.analyzeTermsOnline()
+
+        assertEquals(listOf("cuff", "Dolo 650"), viewModel.uiState.value.concerns.map { it.text })
+        assertEquals(
+            "cough",
+            viewModel.uiState.value.concerns.first { it.text == "cuff" }.suggestedReplacement
+        )
+        assertEquals("Gemini", viewModel.uiState.value.clinicalAnalysisSource)
+    }
+
+    @Test
+    fun failedOnlineEnhancement_keepsOfflineReviewSuggestions() {
+        val viewModel = TranscriptViewModel(
+            engineResolver = resolver(
+                StubEngine(TranscriptionResult.Success("I have cuff for two days."))
+            ),
+            onlineReviewAnalyzer = OnlineTranscriptReviewAnalyzer { _, _ ->
+                OnlineTranscriptReviewResult.Failure("Gemini quota was exhausted.")
+            },
+            processAsynchronously = false
+        )
+
+        viewModel.transcribe(
+            "/private/recording.wav",
+            TranscriptionLanguage.English,
+            TranscriptionEngineOption.WhisperMultilingual
+        )
+        val offlineConcerns = viewModel.uiState.value.concerns
+        viewModel.setOnlineAnalysisConsent(true)
+        viewModel.analyzeTermsOnline()
+
+        assertEquals(offlineConcerns, viewModel.uiState.value.concerns)
+        assertTrue(
+            viewModel.uiState.value.clinicalAnalysisWarning
+                ?.contains("Gemini quota was exhausted") == true
+        )
+    }
+
+    @Test
+    fun transcriptEdit_removesStaleOnlineCandidatesAndRequestsReanalysis() {
+        val transcript = "Patient takes Dolo 650."
+        val medicineStart = transcript.indexOf("Dolo 650")
+        val viewModel = TranscriptViewModel(
+            engineResolver = resolver(StubEngine(TranscriptionResult.Success(transcript))),
+            onlineReviewAnalyzer = OnlineTranscriptReviewAnalyzer { _, _ ->
+                OnlineTranscriptReviewResult.Success(
+                    concerns = listOf(
+                        TranscriptConcern(
+                            id = "cloud:MEDICATION:$medicineStart:dolo 650",
+                            text = "Dolo 650",
+                            startIndex = medicineStart,
+                            endIndexExclusive = medicineStart + "Dolo 650".length,
+                            type = TranscriptConcernType.MedicalTerm,
+                            reason = "AI medication candidate; doctor confirmation required."
+                        )
+                    ),
+                    sourceName = "Gemini",
+                    codesVerified = false
+                )
+            },
+            processAsynchronously = false
+        )
+
+        viewModel.transcribe(
+            "/private/recording.wav",
+            TranscriptionLanguage.English,
+            TranscriptionEngineOption.WhisperMultilingual
+        )
+        viewModel.setOnlineAnalysisConsent(true)
+        viewModel.analyzeTermsOnline()
+        viewModel.setTranscript("Patient takes paracetamol 500 mg.")
+
+        assertEquals(null, viewModel.uiState.value.clinicalAnalysisSource)
+        assertTrue(viewModel.uiState.value.concerns.none { it.text == "Dolo 650" })
+        assertTrue(
+            viewModel.uiState.value.clinicalAnalysisWarning
+                ?.contains("Run online medical term analysis again") == true
+        )
     }
 
     private class StubEngine(

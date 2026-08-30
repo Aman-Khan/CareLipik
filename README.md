@@ -29,8 +29,8 @@ development recordings, screenshots, fixtures, or tests.
 - Approved report files linked to consultation history as encrypted A4 PDF, structured JSON, HL7
   FHIR R4 Bundle, or plain text, with open, share, regenerate, and delete controls.
 - Temporary consultation audio in the Android cache by default.
-- Optional backend-only Gemini medical-term extraction and structured-note drafting; no provider
-  key in the APK.
+- Optional consent-gated Gemini medical-term enhancement for transcripts produced by Whisper,
+  MedASR, or Saaras, plus structured-note drafting; no provider key in the APK.
 - No cloud consultation database. All AI output remains subject to doctor confirmation.
 
 ## Requirements
@@ -61,6 +61,126 @@ cd CareLipik-Hackathon
 
 Open the repository root in Android Studio and allow Gradle sync to complete. Do not commit
 `local.properties`, model binaries, API keys, recordings, signing files, or patient information.
+
+## Start here: complete setup from a fresh clone
+
+CareLipik has two supported operating paths. The fully offline path needs no backend and no API
+key. The optional online features use the Mac development backend because provider keys must never
+be embedded in the APK.
+
+| Feature | Runs where | Backend | Required key |
+| --- | --- | --- | --- |
+| Whisper transcription | Android phone | No | None |
+| MedASR transcription | Android phone | No | None |
+| Pyannote + TitaNet diarization | Android phone | No | None |
+| Doctor voice matching | Android phone | No | None |
+| Saaras transcription + diarization | Sarvam through local proxy | Yes | Sarvam |
+| Gemini medical-term enhancement | Gemini through local proxy | Yes | Gemini |
+| Gemini structured/English note | Gemini through local proxy | Yes | Gemini |
+
+### A. One-time Android and model setup
+
+From the repository root on macOS:
+
+```sh
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+export PATH="$PATH:$HOME/Library/Android/sdk/platform-tools"
+
+./scripts/download-medasr-model.sh
+./scripts/download-whisper-model.sh
+./tools/offline_speaker_diarization/setup.sh
+./tools/offline_speaker_diarization/setup.sh --check
+
+./gradlew test
+./gradlew lint
+./gradlew assembleDebug
+```
+
+Create or confirm the untracked `local.properties` file:
+
+```properties
+sdk.dir=/Users/your-name/Library/Android/sdk
+carelipik.transcriptionBackendUrl=http://127.0.0.1:8787
+```
+
+The backend URL is harmless when using only offline modes. The app attempts to contact it only for
+an explicitly selected and consented online operation.
+
+### B. Fully offline phone run
+
+No Sarvam key, Gemini key, Python server, internet connection, or `adb reverse` is required:
+
+```sh
+adb devices
+./gradlew installDebug
+```
+
+Open CareLipik and select **Offline medical English (MedASR)** or **Offline multilingual
+(Whisper)**. Use only synthetic test audio during development.
+
+### C. One-time optional online setup
+
+The development backend requires macOS, `/usr/bin/python3`, internet access, and macOS Keychain.
+Store provider keys through the secure prompts:
+
+```sh
+./tools/local_transcription_backend/store_sarvam_key.sh
+./tools/local_transcription_backend/store_gemini_key.sh
+```
+
+Create Sarvam credentials in the [official Sarvam dashboard](https://dashboard.sarvam.ai/key-management)
+and Gemini credentials in [Google AI Studio](https://aistudio.google.com/app/apikey). Sarvam is
+needed only for Saaras. Gemini is needed only for online term enhancement and Gemini-generated
+clinical notes. Either key may be omitted when its features are not needed.
+
+### D. Every online development session
+
+Terminal 1 — keep the backend running:
+
+```sh
+./tools/local_transcription_backend/run.sh
+```
+
+Terminal 2 — connect the authorized phone, verify the complete boundary, then install:
+
+```sh
+./tools/local_transcription_backend/connect_android.sh
+./tools/local_transcription_backend/status.sh
+./gradlew installDebug
+```
+
+Repeat `connect_android.sh` after reconnecting the phone, restarting ADB, or restarting the
+emulator. `status.sh` should show the phone as `device`, a `tcp:8787` reverse mapping, and the
+expected backend capabilities.
+
+### E. Replace an expired or quota-exhausted provider key
+
+Running a storage script updates macOS Keychain, but a running backend keeps its old in-memory key.
+Always restart it:
+
+```sh
+./tools/local_transcription_backend/store_gemini_key.sh
+./tools/local_transcription_backend/stop.sh
+./tools/local_transcription_backend/run.sh
+```
+
+Use `store_sarvam_key.sh` instead for Sarvam. A healthy `/health` response confirms that a key was
+loaded; it does not prove provider validity, billing, or remaining quota. Only a real synthetic
+provider request validates those conditions.
+
+### F. Script reference
+
+| Script | Purpose |
+| --- | --- |
+| `scripts/download-medasr-model.sh` | Downloads ignored MedASR assets |
+| `scripts/download-whisper-model.sh` | Downloads ignored Whisper assets |
+| `tools/offline_speaker_diarization/setup.sh` | Installs/checks ignored local diarization assets |
+| `tools/local_transcription_backend/store_sarvam_key.sh` | Adds or replaces the Sarvam Keychain credential |
+| `tools/local_transcription_backend/store_gemini_key.sh` | Adds or replaces the Gemini Keychain credential |
+| `tools/local_transcription_backend/run.sh` | Starts or reuses the backend on port 8787 |
+| `tools/local_transcription_backend/stop.sh` | Stops only the backend process managed by the script |
+| `tools/local_transcription_backend/connect_android.sh` | Checks device authorization and creates `adb reverse` |
+| `tools/local_transcription_backend/status.sh` | Reports keys, backend health, devices, and reverse mappings without printing secrets |
 
 ## Local Android configuration
 
@@ -292,7 +412,9 @@ speaker turns and timestamps. If exactly two usable voices are not returned, it 
 transcript with a warning instead of presenting unreliable Doctor/Patient labels.
 
 After transcription, the backend can send the transcript text to Gemini for structured medical
-term candidates. The backend rejects any candidate whose `source_text` is not an exact transcript
+term candidates after separate consent. This option is available for Whisper, MedASR, and Saaras
+transcripts. Offline ASR-error suggestions are retained and merged with Gemini candidates rather
+than replaced. The backend rejects any candidate whose `source_text` is not an exact transcript
 span. The model is not permitted to diagnose, prescribe, or invent terminology codes. Every term
 must be confirmed by the doctor. Editing the transcript invalidates the previous AI offsets; tap
 **Analyze again** to refresh candidates.
@@ -435,6 +557,7 @@ while submitting:
 ```sh
 ./tools/local_transcription_backend/store_sarvam_key.sh
 ./tools/local_transcription_backend/store_gemini_key.sh
+./tools/local_transcription_backend/stop.sh
 ./tools/local_transcription_backend/run.sh
 ```
 

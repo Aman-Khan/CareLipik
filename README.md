@@ -709,3 +709,5 @@ terminology requirements before production import. No export contains consultati
 - Do not commit secrets, local configuration, model binaries, patient data, or recordings.
 
 See [`AGENTS.md`](AGENTS.md) for the complete repository guidelines.
+
+[`Presentation`](https://drive.google.com/file/d/1pT_5gudn0GTlpnxekA1Mbfcwol3dJ193/view?usp=sharing)

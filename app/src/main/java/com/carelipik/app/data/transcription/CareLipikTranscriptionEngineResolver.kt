@@ -6,8 +6,11 @@ import com.carelipik.app.domain.transcription.AudioTranscriptionEngine
 import com.carelipik.app.domain.transcription.TranscriptionEngineOption
 import com.carelipik.app.domain.transcription.TranscriptionEngineResolver
 import com.carelipik.app.data.voice.SherpaDoctorVoiceRoleMatcher
+import com.carelipik.app.data.local.DeviceApiKeyProvider
+import com.carelipik.app.domain.repository.ApiProvider
 
 class CareLipikTranscriptionEngineResolver(context: Context) : TranscriptionEngineResolver {
+    private val deviceApiKeyProvider = DeviceApiKeyProvider(context.applicationContext)
     private val diarizationEngine = SherpaOfflineSpeakerDiarizationEngine(
         context.applicationContext
     )
@@ -19,9 +22,15 @@ class CareLipikTranscriptionEngineResolver(context: Context) : TranscriptionEngi
             doctorVoiceRoleMatcher
         ),
         SaarasTranscriptionEngine(
-            HttpRemoteTranscriptionGateway(
-                backendBaseUrl = BuildConfig.TRANSCRIPTION_BACKEND_URL,
-                allowInsecureLocalhost = BuildConfig.DEBUG
+            PreferDeviceKeyTranscriptionGateway(
+                hasDeviceKey = { deviceApiKeyProvider.get(ApiProvider.Sarvam) != null },
+                direct = DirectSarvamTranscriptionGateway(
+                    apiKey = { deviceApiKeyProvider.get(ApiProvider.Sarvam) }
+                ),
+                fallback = HttpRemoteTranscriptionGateway(
+                    backendBaseUrl = BuildConfig.TRANSCRIPTION_BACKEND_URL,
+                    allowInsecureLocalhost = BuildConfig.DEBUG
+                )
             )
         ),
         SherpaWhisperTranscriptionEngine(

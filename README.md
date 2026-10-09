@@ -30,7 +30,8 @@ development recordings, screenshots, fixtures, or tests.
   FHIR R4 Bundle, or plain text, with open, share, regenerate, and delete controls.
 - Temporary consultation audio in the Android cache by default.
 - Optional consent-gated Gemini medical-term enhancement for transcripts produced by Whisper,
-  MedASR, or Saaras, plus structured-note drafting; no provider key in the APK.
+  MedASR, or Saaras, plus structured-note drafting. Keys can be entered at runtime and encrypted
+  with Android Keystore; they are never compiled into the APK.
 - No cloud consultation database. All AI output remains subject to doctor confirmation.
 
 ## Requirements
@@ -40,9 +41,9 @@ development recordings, screenshots, fixtures, or tests.
 - Android SDK Platform-Tools for `adb`.
 - Android Studio's bundled Gradle JDK, or another compatible configured `JAVA_HOME`.
 - A phone with USB debugging enabled or an Android emulator.
-- For online transcription testing: macOS Keychain and a Sarvam API key.
-- For online medical-term extraction or clinical-note generation: a Gemini API key stored in
-  macOS Keychain.
+- For direct online transcription: a Sarvam API key entered in the app.
+- For direct medical-term extraction or clinical-note generation: a Gemini API key entered in
+  the app. The local Mac proxy remains available as a development fallback.
 
 Model binaries are intentionally ignored by Git. Obtain them through the repository download
 scripts rather than committing them.
@@ -64,9 +65,10 @@ Open the repository root in Android Studio and allow Gradle sync to complete. Do
 
 ## Start here: complete setup from a fresh clone
 
-CareLipik has two supported operating paths. The fully offline path needs no backend and no API
-key. The optional online features use the Mac development backend because provider keys must never
-be embedded in the APK.
+CareLipik has three supported operating paths. The fully offline path needs no backend and no API
+key. For a phone-only demo, provider keys can be entered at runtime and stored in Android
+Keystore-backed encrypted files. The Mac development proxy remains available as a safer fallback
+that keeps provider credentials off the phone.
 
 | Feature | Runs where | Backend | Required key |
 | --- | --- | --- | --- |
@@ -74,9 +76,9 @@ be embedded in the APK.
 | MedASR transcription | Android phone | No | None |
 | Pyannote + TitaNet diarization | Android phone | No | None |
 | Doctor voice matching | Android phone | No | None |
-| Saaras transcription + diarization | Sarvam through local proxy | Yes | Sarvam |
-| Gemini medical-term enhancement | Gemini through local proxy | Yes | Gemini |
-| Gemini structured/English note | Gemini through local proxy | Yes | Gemini |
+| Saaras transcription + diarization | Sarvam, direct or proxy | Optional | Sarvam |
+| Gemini medical-term enhancement | Gemini, direct or proxy | Optional | Gemini |
+| Gemini structured/English note | Gemini, direct or proxy | Optional | Gemini |
 
 ### A. One-time Android and model setup
 
@@ -118,7 +120,24 @@ adb devices
 Open CareLipik and select **Offline medical English (MedASR)** or **Offline multilingual
 (Whisper)**. Use only synthetic test audio during development.
 
-### C. One-time optional online setup
+### C. Phone-only online setup (no Mac server)
+
+1. Install and open the app.
+2. Open **Doctor profile** and find **Online service keys**.
+3. Paste the Sarvam and/or Gemini key and tap **Save securely**.
+4. Return to the consultation flow and explicitly consent to each online operation.
+
+The plaintext field is cleared immediately after saving. Each key is encrypted with AES-GCM using
+a non-exportable Android Keystore key, stored in app-private storage, excluded from Android backup
+and device transfer, and removed by uninstalling the app or tapping **Remove**. CareLipik reads a
+key only when making the corresponding HTTPS request and does not log it.
+
+This is suitable for a controlled prototype where the doctor supplies their own restricted key.
+It is not equivalent to server-side secret custody: malware, a rooted/compromised phone, or runtime
+instrumentation may still recover a key while it is in use. Apply provider-side quota and API
+restrictions and rotate keys. For production deployments, prefer the HTTPS backend/proxy path.
+
+### D. Optional Mac development-proxy setup
 
 The development backend requires macOS, `/usr/bin/python3`, internet access, and macOS Keychain.
 Store provider keys through the secure prompts:
@@ -133,7 +152,7 @@ and Gemini credentials in [Google AI Studio](https://aistudio.google.com/app/api
 needed only for Saaras. Gemini is needed only for online term enhancement and Gemini-generated
 clinical notes. Either key may be omitted when its features are not needed.
 
-### D. Every online development session
+### E. Every proxy-backed online development session
 
 Terminal 1 — keep the backend running:
 
@@ -153,7 +172,7 @@ Repeat `connect_android.sh` after reconnecting the phone, restarting ADB, or res
 emulator. `status.sh` should show the phone as `device`, a `tcp:8787` reverse mapping, and the
 expected backend capabilities.
 
-### E. Replace an expired or quota-exhausted provider key
+### F. Replace an expired or quota-exhausted proxy key
 
 Running a storage script updates macOS Keychain, but a running backend keeps its old in-memory key.
 Always restart it:
@@ -168,7 +187,7 @@ Use `store_sarvam_key.sh` instead for Sarvam. A healthy `/health` response confi
 loaded; it does not prove provider validity, billing, or remaining quota. Only a real synthetic
 provider request validates those conditions.
 
-### F. Script reference
+### G. Script reference
 
 | Script | Purpose |
 | --- | --- |
@@ -247,9 +266,10 @@ Install the debug build with:
 
 ## Online transcription and clinical-analysis setup
 
-The Android app never contains Sarvam or Gemini credentials. A local development proxy reads them
-from macOS Keychain. Audio upload files are removed after submission, clinical transcript bodies
-are not logged, and API responses are marked `no-store`.
+The Android app never compiles Sarvam or Gemini credentials into its APK. It can either read a
+runtime-entered key from Keystore-backed encrypted app-private storage and call the provider
+directly, or use the local development proxy, which reads keys from macOS Keychain. Audio and
+transcript data is sent only after the existing explicit consent controls.
 
 ### Complete one-time checklist
 
@@ -640,7 +660,8 @@ backend URL changed.
   backup and device transfer.
 - Online audio transcription, transcript-based medical-term analysis, and Gemini note generation
   require explicit consent.
-- Provider keys stay in the backend/Keychain and are never embedded in Android.
+- Provider keys are never embedded in Android. Runtime-entered phone keys are Keystore-encrypted,
+  app-private, and backup-excluded; the proxy option keeps keys entirely off the phone.
 - AI candidates are not diagnoses or verified medical codes and require doctor confirmation.
 - Development recordings must never contain real patient information.
 

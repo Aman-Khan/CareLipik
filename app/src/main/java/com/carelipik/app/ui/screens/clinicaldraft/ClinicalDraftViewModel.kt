@@ -5,6 +5,10 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import android.content.Context
 import com.carelipik.app.data.extraction.HttpGeminiClinicalNoteGenerationEngine
+import com.carelipik.app.data.extraction.DirectGeminiClinicalNoteGenerationEngine
+import com.carelipik.app.data.extraction.PreferDeviceKeyClinicalNoteGenerationEngine
+import com.carelipik.app.data.local.DeviceApiKeyProvider
+import com.carelipik.app.domain.repository.ApiProvider
 import com.carelipik.app.data.extraction.TranscriptBackedClinicalExtractionEngine
 import com.carelipik.app.domain.extraction.ClinicalExtractionEngine
 import com.carelipik.app.domain.extraction.ClinicalExtractionResult
@@ -253,10 +257,17 @@ class ClinicalDraftViewModel(
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             require(modelClass.isAssignableFrom(ClinicalDraftViewModel::class.java))
+            val keyProvider = DeviceApiKeyProvider(applicationContext)
             return ClinicalDraftViewModel(
-                onlineEngine = HttpGeminiClinicalNoteGenerationEngine(
-                    backendBaseUrl = com.carelipik.app.BuildConfig.TRANSCRIPTION_BACKEND_URL,
-                    allowInsecureLocalhost = com.carelipik.app.BuildConfig.DEBUG
+                onlineEngine = PreferDeviceKeyClinicalNoteGenerationEngine(
+                    hasDeviceKey = { keyProvider.get(ApiProvider.Gemini) != null },
+                    direct = DirectGeminiClinicalNoteGenerationEngine {
+                        keyProvider.get(ApiProvider.Gemini)
+                    },
+                    fallback = HttpGeminiClinicalNoteGenerationEngine(
+                        backendBaseUrl = com.carelipik.app.BuildConfig.TRANSCRIPTION_BACKEND_URL,
+                        allowInsecureLocalhost = com.carelipik.app.BuildConfig.DEBUG
+                    )
                 )
             ) as T
         }

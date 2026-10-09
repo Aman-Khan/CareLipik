@@ -10,6 +10,7 @@
     <exclude domain="file" path="approved_consultation_reports/" />
     <exclude domain="file" path="doctor_voice/" />
     <exclude domain="file" path="doctor_profile.clp" />
+    <exclude domain="file" path="api_credentials/" />
     <!--
    <include domain="sharedpref" path="."/>
    <exclude domain="sharedpref" path="device.xml"/>

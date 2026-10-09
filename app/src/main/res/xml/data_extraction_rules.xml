@@ -9,6 +9,7 @@
         <exclude domain="file" path="approved_consultation_reports/" />
         <exclude domain="file" path="doctor_voice/" />
         <exclude domain="file" path="doctor_profile.clp" />
+        <exclude domain="file" path="api_credentials/" />
         <!-- TODO: Use <include> and <exclude> to control what is backed up.
         <include .../>
         <exclude .../>
@@ -19,6 +20,7 @@
         <exclude domain="file" path="approved_consultation_reports/" />
         <exclude domain="file" path="doctor_voice/" />
         <exclude domain="file" path="doctor_profile.clp" />
+        <exclude domain="file" path="api_credentials/" />
     </device-transfer>
     <!--
     <device-transfer>

@@ -45,24 +45,24 @@ class DoctorProfileViewModel(
     }
 
     fun setFullName(value: String) {
-        _uiState.update { it.copy(fullName = value) }
+        updateEditable { it.copy(fullName = value) }
     }
 
     fun setSpecialty(value: String) {
-        _uiState.update { it.copy(specialty = value) }
+        updateEditable { it.copy(specialty = value) }
     }
 
     fun setRegistrationNumber(value: String) {
-        _uiState.update { it.copy(registrationNumber = value) }
+        updateEditable { it.copy(registrationNumber = value) }
     }
 
     fun setClinicName(value: String) {
-        _uiState.update { it.copy(clinicName = value) }
+        updateEditable { it.copy(clinicName = value) }
     }
 
     fun togglePreferredLanguage(language: TranscriptionLanguage) {
         if (language == TranscriptionLanguage.Auto) return
-        _uiState.update { state ->
+        updateEditable { state ->
             val updatedLanguages = state.preferredLanguages.toMutableSet().apply {
                 if (!add(language)) remove(language)
             }
@@ -71,7 +71,7 @@ class DoctorProfileViewModel(
     }
 
     fun setProcessingPreference(preference: ProcessingPreference) {
-        _uiState.update { it.copy(processingPreference = preference) }
+        updateEditable { it.copy(processingPreference = preference) }
     }
 
     fun saveProfile(onSaved: (DoctorProfile) -> Unit = {}): DoctorProfile? {
@@ -81,6 +81,13 @@ class DoctorProfileViewModel(
         val profileRepository = repository
         if (profileRepository == null) {
             _savedProfile.value = profile
+            _uiState.update {
+                it.copy(
+                    hasUnsavedChanges = false,
+                    saveError = null,
+                    saveMessage = "Profile updated"
+                )
+            }
             onSaved(profile)
             return profile
         }
@@ -88,7 +95,13 @@ class DoctorProfileViewModel(
             runCatching { profileRepository.save(profile) }
                 .onSuccess {
                     _savedProfile.value = profile
-                    _uiState.update { it.copy(saveError = null) }
+                    _uiState.update {
+                        it.copy(
+                            hasUnsavedChanges = false,
+                            saveError = null,
+                            saveMessage = "Profile updated"
+                        )
+                    }
                     onSaved(profile)
                 }
                 .onFailure {
@@ -98,6 +111,32 @@ class DoctorProfileViewModel(
                 }
         }
         return profile
+    }
+
+    private fun updateEditable(transform: (DoctorProfileUiState) -> DoctorProfileUiState) {
+        _uiState.update { current ->
+            val updated = transform(current).copy(
+                hasAttemptedSave = false,
+                saveError = null,
+                saveMessage = null
+            )
+            updated.copy(hasUnsavedChanges = !updated.matches(_savedProfile.value))
+        }
+    }
+
+    private fun DoctorProfileUiState.matches(profile: DoctorProfile?): Boolean {
+        if (profile == null) {
+            return fullName.isBlank() && specialty.isBlank() && registrationNumber.isBlank() &&
+                clinicName.isBlank() &&
+                preferredLanguages == setOf(TranscriptionLanguage.English) &&
+                processingPreference == ProcessingPreference.SmartHybrid
+        }
+        return fullName.trim() == profile.fullName &&
+            specialty.trim() == profile.specialty &&
+            registrationNumber.trim() == profile.registrationNumber &&
+            clinicName.trim() == profile.clinicName &&
+            preferredLanguages == profile.preferredLanguages &&
+            processingPreference == profile.processingPreference
     }
 
     private fun runOperation(operation: suspend () -> Unit) {

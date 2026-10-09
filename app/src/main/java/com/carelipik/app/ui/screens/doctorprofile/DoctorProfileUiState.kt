@@ -12,8 +12,10 @@ data class DoctorProfileUiState(
     val preferredLanguages: Set<TranscriptionLanguage> = setOf(TranscriptionLanguage.English),
     val processingPreference: ProcessingPreference = ProcessingPreference.SmartHybrid,
     val hasAttemptedSave: Boolean = false,
+    val hasUnsavedChanges: Boolean = false,
     val isLoading: Boolean = false,
-    val saveError: String? = null
+    val saveError: String? = null,
+    val saveMessage: String? = null
 ) {
     val fullNameError: String?
         get() = if (hasAttemptedSave && fullName.isBlank()) {
@@ -48,7 +50,9 @@ data class DoctorProfileUiState(
             registrationNumber = profile.registrationNumber,
             clinicName = profile.clinicName,
             preferredLanguages = profile.preferredLanguages,
-            processingPreference = profile.processingPreference
+            processingPreference = profile.processingPreference,
+            hasUnsavedChanges = false,
+            isLoading = false
         )
     }
 }

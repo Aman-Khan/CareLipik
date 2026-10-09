@@ -48,10 +48,12 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.carelipik.app.domain.model.ProcessingPreference
+import com.carelipik.app.domain.repository.ApiProvider
 import com.carelipik.app.domain.transcription.TranscriptionLanguage
 import kotlin.math.abs
 import kotlin.math.sin
@@ -60,6 +62,7 @@ import kotlin.math.sin
 fun DoctorProfileScreen(
     uiState: DoctorProfileUiState,
     voiceUiState: DoctorVoiceEnrollmentUiState,
+    apiCredentialsUiState: ApiCredentialsUiState = ApiCredentialsUiState(),
     onFullNameChanged: (String) -> Unit,
     onSpecialtyChanged: (String) -> Unit,
     onRegistrationNumberChanged: (String) -> Unit,
@@ -69,6 +72,10 @@ fun DoctorProfileScreen(
     onStartVoiceSample: () -> Unit,
     onStopVoiceSample: () -> Unit,
     onDeleteVoiceSample: () -> Unit,
+    onSarvamKeyChanged: (String) -> Unit = {},
+    onGeminiKeyChanged: (String) -> Unit = {},
+    onSaveApiKey: (ApiProvider) -> Unit = {},
+    onDeleteApiKey: (ApiProvider) -> Unit = {},
     onBack: () -> Unit,
     onSave: () -> Unit,
     modifier: Modifier = Modifier
@@ -121,6 +128,13 @@ fun DoctorProfileScreen(
             selectedPreference = uiState.processingPreference,
             onPreferenceChanged = onProcessingPreferenceChanged
         )
+        ApiCredentialsCard(
+            uiState = apiCredentialsUiState,
+            onSarvamKeyChanged = onSarvamKeyChanged,
+            onGeminiKeyChanged = onGeminiKeyChanged,
+            onSave = onSaveApiKey,
+            onDelete = onDeleteApiKey
+        )
         VoiceRecognitionCard(
             uiState = voiceUiState,
             permissionDenied = permissionDenied,
@@ -130,7 +144,8 @@ fun DoctorProfileScreen(
         )
         Button(
             onClick = onSave,
-            enabled = !uiState.isLoading && voiceUiState.status !in setOf(
+            enabled = !uiState.isLoading && uiState.canSave && uiState.hasUnsavedChanges &&
+                voiceUiState.status !in setOf(
                 DoctorVoiceEnrollmentStatus.Recording,
                 DoctorVoiceEnrollmentStatus.Saving
             ),
@@ -143,12 +158,116 @@ fun DoctorProfileScreen(
         uiState.saveError?.let { message ->
             Text(message, color = MaterialTheme.colorScheme.error)
         }
+        uiState.saveMessage?.let { message ->
+            Text(
+                text = message,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.testTag("doctor_profile_save_confirmation")
+            )
+        }
         Text(
             text = "Profile details and the voice sample are stored separately in encrypted, private on-device storage.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
         )
+    }
+}
+
+@Composable
+private fun ApiCredentialsCard(
+    uiState: ApiCredentialsUiState,
+    onSarvamKeyChanged: (String) -> Unit,
+    onGeminiKeyChanged: (String) -> Unit,
+    onSave: (ApiProvider) -> Unit,
+    onDelete: (ApiProvider) -> Unit
+) {
+    ProfileSectionCard(
+        title = "Online service keys",
+        supportingText = "Optional. Keys are encrypted with Android Keystore, excluded from backups, and never shown again after saving."
+    ) {
+        ApiKeyEditor(
+            provider = ApiProvider.Sarvam,
+            value = uiState.sarvamInput,
+            isSaved = uiState.hasSarvamKey,
+            enabled = !uiState.isWorking,
+            onValueChanged = onSarvamKeyChanged,
+            onSave = onSave,
+            onDelete = onDelete
+        )
+        ApiKeyEditor(
+            provider = ApiProvider.Gemini,
+            value = uiState.geminiInput,
+            isSaved = uiState.hasGeminiKey,
+            enabled = !uiState.isWorking,
+            onValueChanged = onGeminiKeyChanged,
+            onSave = onSave,
+            onDelete = onDelete
+        )
+        uiState.message?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Text(
+            text = "Important: a key stored in a client app can still be extracted from a compromised device. Restrict provider quotas and rotate keys regularly. A server-held key remains safer for production.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error
+        )
+    }
+}
+
+@Composable
+private fun ApiKeyEditor(
+    provider: ApiProvider,
+    value: String,
+    isSaved: Boolean,
+    enabled: Boolean,
+    onValueChanged: (String) -> Unit,
+    onSave: (ApiProvider) -> Unit,
+    onDelete: (ApiProvider) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = "${provider.name} · ${if (isSaved) "Configured" else "Not configured"}",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold
+        )
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChanged,
+            enabled = enabled,
+            label = { Text(if (isSaved) "Replacement API key" else "API key") },
+            placeholder = { Text(if (isSaved) "Enter only to replace" else "Paste key") },
+            visualTransformation = PasswordVisualTransformation(),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("${provider.name.lowercase()}_api_key")
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = { onSave(provider) },
+                enabled = enabled && value.isNotBlank(),
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(if (isSaved) "Replace" else "Save securely")
+            }
+            if (isSaved) {
+                OutlinedButton(
+                    onClick = { onDelete(provider) },
+                    enabled = enabled,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Remove")
+                }
+            }
+        }
     }
 }
 

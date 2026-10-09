@@ -9,6 +9,10 @@ import com.carelipik.app.data.transcription.CareLipikTranscriptionEngineResolver
 import com.carelipik.app.data.transcription.RuleBasedTranscriptReviewAnalyzer
 import com.carelipik.app.data.transcription.LabelledTranscriptSegmentParser
 import com.carelipik.app.data.transcription.HttpOnlineTranscriptReviewAnalyzer
+import com.carelipik.app.data.transcription.DirectGeminiTranscriptReviewAnalyzer
+import com.carelipik.app.data.transcription.PreferDeviceKeyTranscriptReviewAnalyzer
+import com.carelipik.app.data.local.DeviceApiKeyProvider
+import com.carelipik.app.domain.repository.ApiProvider
 import com.carelipik.app.domain.transcription.SpeakerRole
 import com.carelipik.app.domain.transcription.OnlineTranscriptReviewAnalyzer
 import com.carelipik.app.domain.transcription.OnlineTranscriptReviewResult
@@ -275,11 +279,18 @@ class TranscriptViewModel(
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             require(modelClass.isAssignableFrom(TranscriptViewModel::class.java))
+            val keyProvider = DeviceApiKeyProvider(applicationContext)
             return TranscriptViewModel(
                 engineResolver = CareLipikTranscriptionEngineResolver(applicationContext),
-                onlineReviewAnalyzer = HttpOnlineTranscriptReviewAnalyzer(
-                    backendBaseUrl = com.carelipik.app.BuildConfig.TRANSCRIPTION_BACKEND_URL,
-                    allowInsecureLocalhost = com.carelipik.app.BuildConfig.DEBUG
+                onlineReviewAnalyzer = PreferDeviceKeyTranscriptReviewAnalyzer(
+                    hasDeviceKey = { keyProvider.get(ApiProvider.Gemini) != null },
+                    direct = DirectGeminiTranscriptReviewAnalyzer {
+                        keyProvider.get(ApiProvider.Gemini)
+                    },
+                    fallback = HttpOnlineTranscriptReviewAnalyzer(
+                        backendBaseUrl = com.carelipik.app.BuildConfig.TRANSCRIPTION_BACKEND_URL,
+                        allowInsecureLocalhost = com.carelipik.app.BuildConfig.DEBUG
+                    )
                 )
             ) as T
         }

@@ -6,6 +6,7 @@ import com.carelipik.app.domain.repository.DoctorProfileRepository
 import com.carelipik.app.domain.transcription.TranscriptionLanguage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -28,12 +29,38 @@ class DoctorProfileViewModelTest {
 
         assertEquals("Asha Mehta", viewModel.uiState.value.fullName)
         assertEquals(original, viewModel.savedProfile.value)
+        assertFalse(viewModel.uiState.value.hasUnsavedChanges)
 
         viewModel.setClinicName("Updated Care Clinic")
+        assertTrue(viewModel.uiState.value.hasUnsavedChanges)
         viewModel.saveProfile()
 
         assertEquals("Updated Care Clinic", repository.profile?.clinicName)
         assertEquals("Updated Care Clinic", viewModel.savedProfile.value?.clinicName)
+        assertFalse(viewModel.uiState.value.hasUnsavedChanges)
+        assertEquals("Profile updated", viewModel.uiState.value.saveMessage)
+    }
+
+    @Test
+    fun revertingEditToSavedValue_disablesSavingAgain() {
+        val original = DoctorProfile(
+            fullName = "Asha Mehta",
+            specialty = "General medicine",
+            registrationNumber = "DMC-123",
+            clinicName = "Care Clinic",
+            preferredLanguages = setOf(TranscriptionLanguage.English),
+            processingPreference = ProcessingPreference.SmartHybrid
+        )
+        val viewModel = DoctorProfileViewModel(
+            repository = FakeDoctorProfileRepository(original),
+            processAsynchronously = false
+        )
+
+        viewModel.setClinicName("Temporary edit")
+        assertTrue(viewModel.uiState.value.hasUnsavedChanges)
+
+        viewModel.setClinicName("Care Clinic")
+        assertFalse(viewModel.uiState.value.hasUnsavedChanges)
     }
 
     @Test

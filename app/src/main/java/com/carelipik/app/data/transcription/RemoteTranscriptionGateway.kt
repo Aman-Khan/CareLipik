@@ -30,7 +30,7 @@ sealed interface RemoteTranscriptionResult {
     data class Failure(val message: String) : RemoteTranscriptionResult
 }
 
-/** Boundary to the CareLipik backend. Provider credentials must remain on that backend. */
+/** Boundary for remote transcription via either CareLipik's backend or a direct provider client. */
 fun interface RemoteTranscriptionGateway {
     fun transcribe(request: RemoteTranscriptionRequest): RemoteTranscriptionResult
 }

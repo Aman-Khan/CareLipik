@@ -10,7 +10,7 @@ sealed interface OnlineTranscriptReviewResult {
     data class Failure(val message: String) : OnlineTranscriptReviewResult
 }
 
-/** Provider-neutral boundary for consented, backend-hosted clinical term extraction. */
+/** Provider-neutral boundary for consented online clinical term extraction. */
 fun interface OnlineTranscriptReviewAnalyzer {
     fun analyze(
         transcript: String,

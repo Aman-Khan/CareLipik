@@ -1,6 +1,7 @@
 package com.carelipik.app.ui.navigation
 
 import android.content.Intent
+import android.widget.Toast
 import java.io.File
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -21,6 +22,7 @@ import com.carelipik.app.ui.screens.doctorreview.DoctorReviewScreen
 import com.carelipik.app.ui.screens.doctorreview.DoctorReviewViewModel
 import com.carelipik.app.ui.screens.doctorprofile.DoctorProfileScreen
 import com.carelipik.app.ui.screens.doctorprofile.DoctorProfileViewModel
+import com.carelipik.app.ui.screens.doctorprofile.ApiCredentialsViewModel
 import com.carelipik.app.ui.screens.doctorprofile.DoctorVoiceEnrollmentViewModel
 import com.carelipik.app.ui.screens.home.HomeScreen
 import com.carelipik.app.ui.screens.home.HomeViewModel
@@ -42,6 +44,7 @@ fun CareLipikApp(
     homeViewModel: HomeViewModel? = null,
     doctorProfileViewModel: DoctorProfileViewModel? = null,
     doctorVoiceEnrollmentViewModel: DoctorVoiceEnrollmentViewModel? = null,
+    apiCredentialsViewModel: ApiCredentialsViewModel? = null,
     welcomeViewModel: WelcomeViewModel = viewModel(),
     patientDetailsViewModel: PatientDetailsViewModel = viewModel(),
     recordingViewModel: RecordingViewModel? = null,
@@ -57,6 +60,9 @@ fun CareLipikApp(
     )
     val activeDoctorProfileViewModel = doctorProfileViewModel ?: viewModel(
         factory = DoctorProfileViewModel.Factory(context)
+    )
+    val activeApiCredentialsViewModel = apiCredentialsViewModel ?: viewModel(
+        factory = ApiCredentialsViewModel.Factory(context)
     )
     val activeRecordingViewModel = recordingViewModel ?: viewModel(
         factory = RecordingViewModel.Factory(context)
@@ -81,6 +87,7 @@ fun CareLipikApp(
     )
     val homeUiState by activeHomeViewModel.uiState.collectAsState()
     val doctorProfileUiState by activeDoctorProfileViewModel.uiState.collectAsState()
+    val apiCredentialsUiState by activeApiCredentialsViewModel.uiState.collectAsState()
     val savedDoctorProfile by activeDoctorProfileViewModel.savedProfile.collectAsState()
     val doctorVoiceEnrollmentUiState by
         activeDoctorVoiceEnrollmentViewModel.uiState.collectAsState()
@@ -132,6 +139,7 @@ fun CareLipikApp(
             ConsultationDestination.DoctorProfile -> DoctorProfileScreen(
                 uiState = doctorProfileUiState,
                 voiceUiState = doctorVoiceEnrollmentUiState,
+                apiCredentialsUiState = apiCredentialsUiState,
                 onFullNameChanged = activeDoctorProfileViewModel::setFullName,
                 onSpecialtyChanged = activeDoctorProfileViewModel::setSpecialty,
                 onRegistrationNumberChanged = activeDoctorProfileViewModel::setRegistrationNumber,
@@ -141,10 +149,15 @@ fun CareLipikApp(
                 onStartVoiceSample = activeDoctorVoiceEnrollmentViewModel::startRecording,
                 onStopVoiceSample = activeDoctorVoiceEnrollmentViewModel::stopAndSave,
                 onDeleteVoiceSample = activeDoctorVoiceEnrollmentViewModel::deleteSample,
+                onSarvamKeyChanged = activeApiCredentialsViewModel::setSarvamInput,
+                onGeminiKeyChanged = activeApiCredentialsViewModel::setGeminiInput,
+                onSaveApiKey = activeApiCredentialsViewModel::save,
+                onDeleteApiKey = activeApiCredentialsViewModel::delete,
                 onBack = navigator::navigateBack,
                 onSave = {
                     activeDoctorProfileViewModel.saveProfile { profile ->
                         activeHomeViewModel.applyDoctorProfile(profile)
+                        Toast.makeText(context, "Profile updated", Toast.LENGTH_SHORT).show()
                         navigator.navigateBack()
                     }
                 },

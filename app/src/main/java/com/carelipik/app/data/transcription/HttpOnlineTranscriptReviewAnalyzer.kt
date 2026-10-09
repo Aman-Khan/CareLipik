@@ -64,7 +64,7 @@ class HttpOnlineTranscriptReviewAnalyzer(
                         message.ifBlank { "Online clinical term analysis returned HTTP $code." }
                     )
                 }
-                JSONObject(body).toReviewResult(transcript)
+                parseResponse(body, transcript)
             } finally {
                 connection.disconnect()
             }
@@ -74,6 +74,9 @@ class HttpOnlineTranscriptReviewAnalyzer(
             )
         }
     }
+
+    internal fun parseResponse(body: String, transcript: String): OnlineTranscriptReviewResult =
+        JSONObject(body).toReviewResult(transcript)
 
     private fun JSONObject.toReviewResult(transcript: String): OnlineTranscriptReviewResult {
         val entities = optJSONArray("entities")

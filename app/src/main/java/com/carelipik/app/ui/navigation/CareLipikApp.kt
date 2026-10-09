@@ -33,10 +33,13 @@ import com.carelipik.app.ui.screens.patientdetails.PatientDetailsScreen
 import com.carelipik.app.ui.screens.patientdetails.PatientDetailsViewModel
 import com.carelipik.app.ui.screens.recording.RecordingScreen
 import com.carelipik.app.ui.screens.recording.RecordingViewModel
+import com.carelipik.app.ui.screens.recording.RecordingStatus
 import com.carelipik.app.ui.screens.transcript.TranscriptScreen
 import com.carelipik.app.ui.screens.transcript.TranscriptViewModel
 import com.carelipik.app.ui.screens.welcome.WelcomeScreen
 import com.carelipik.app.ui.screens.welcome.WelcomeViewModel
+import com.carelipik.app.ui.screens.savedrecordings.SavedRecordingsScreen
+import com.carelipik.app.ui.screens.savedrecordings.SavedRecordingsViewModel
 
 @Composable
 fun CareLipikApp(
@@ -51,7 +54,8 @@ fun CareLipikApp(
     clinicalDraftViewModel: ClinicalDraftViewModel? = null,
     doctorReviewViewModel: DoctorReviewViewModel? = null,
     consultationHistoryViewModel: ConsultationHistoryViewModel? = null,
-    consultationExportViewModel: ConsultationExportViewModel? = null
+    consultationExportViewModel: ConsultationExportViewModel? = null,
+    savedRecordingsViewModel: SavedRecordingsViewModel? = null
 ) {
     val context = LocalContext.current
     val activeHomeViewModel = homeViewModel ?: viewModel(
@@ -84,6 +88,10 @@ fun CareLipikApp(
     val activeConsultationExportViewModel = consultationExportViewModel ?: viewModel(
         factory = ConsultationExportViewModel.Factory(context)
     )
+    val activeSavedRecordingsViewModel = savedRecordingsViewModel ?: viewModel(
+        factory = SavedRecordingsViewModel.Factory(context)
+    )
+    val savedRecordingsUiState by activeSavedRecordingsViewModel.uiState.collectAsState()
     val homeUiState by activeHomeViewModel.uiState.collectAsState()
     val doctorProfileUiState by activeDoctorProfileViewModel.uiState.collectAsState()
     val apiCredentialsUiState by activeApiCredentialsViewModel.uiState.collectAsState()
@@ -110,6 +118,7 @@ fun CareLipikApp(
             ConsultationDestination.Home -> HomeScreen(
                 uiState = homeUiState,
                 onStartConsultation = {
+                    activeSavedRecordingsViewModel.startNewConsultation()
                     welcomeViewModel.resetForNewConsultation()
                     patientDetailsViewModel.resetForNewConsultation()
                     activeRecordingViewModel.resetForNewConsultation()
@@ -118,6 +127,10 @@ fun CareLipikApp(
                     activeDoctorReviewViewModel.resetForNewConsultation()
                     activeConsultationExportViewModel.resetForNewConsultation()
                     navigator.startConsultation()
+                },
+                onOpenSavedRecordings = {
+                    activeSavedRecordingsViewModel.refresh()
+                    navigator.openSavedRecordings()
                 },
                 onOpenProfile = navigator::openDoctorProfile,
                 onOpenHistory = {
@@ -134,6 +147,29 @@ fun CareLipikApp(
                         }
                     }
                 },
+                modifier = Modifier.padding(innerPadding)
+            )
+            ConsultationDestination.SavedRecordings -> SavedRecordingsScreen(
+                uiState = savedRecordingsUiState,
+                onResume = { id ->
+                    activeSavedRecordingsViewModel.resume(id) { restored ->
+                        if (activeRecordingViewModel.restoreSavedRecording(restored)) {
+                            patientDetailsViewModel.restore(restored.recording)
+                            welcomeViewModel.setRecordingConsent(restored.recording.hasRecordingConsent)
+                            activeTranscriptViewModel.resetForNewConsultation()
+                            activeClinicalDraftViewModel.resetForNewConsultation()
+                            activeDoctorReviewViewModel.resetForNewConsultation()
+                            activeConsultationExportViewModel.resetForNewConsultation()
+                            navigator.resumeRecording()
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                },
+                onDelete = activeSavedRecordingsViewModel::delete,
+                onRefresh = activeSavedRecordingsViewModel::refresh,
+                onBack = navigator::navigateBack,
                 modifier = Modifier.padding(innerPadding)
             )
             ConsultationDestination.DoctorProfile -> DoctorProfileScreen(
@@ -259,6 +295,7 @@ fun CareLipikApp(
                     activeDoctorReviewViewModel.approve(
                         patient = patientDetailsViewModel.currentDetails(),
                         onSaved = { consultation ->
+                            activeSavedRecordingsViewModel.completeConsultation()
                             activeRecordingViewModel.discardRecording()
                             activeConsultationHistoryViewModel.refresh()
                             activeHomeViewModel.refreshRecentConsultations()
@@ -284,6 +321,30 @@ fun CareLipikApp(
             )
             ConsultationDestination.ConsultationRecording -> RecordingScreen(
                 uiState = recordingUiState,
+                isSavingForLater = savedRecordingsUiState.isBusy,
+                saveError = savedRecordingsUiState.error,
+                onSaveForLater = {
+                    if (recordingUiState.status == RecordingStatus.Completed &&
+                        !recordingUiState.isImporting
+                    ) {
+                        activeRecordingViewModel.stopPlayback()
+                        val patient = patientDetailsViewModel.currentDetails()
+                        activeSavedRecordingsViewModel.save(
+                            audio = activeRecordingViewModel.recordedAudio(),
+                            patientName = patient.patientName,
+                            patientAge = patient.age,
+                            visitReason = patient.visitReason,
+                            language = activeRecordingViewModel.transcriptionLanguage(),
+                            engine = activeRecordingViewModel.transcriptionEngine(),
+                            hasRecordingConsent = welcomeUiState.hasRecordingConsent,
+                            onSaved = {
+                                activeRecordingViewModel.resetForNewConsultation()
+                                Toast.makeText(context, "Recording saved for later", Toast.LENGTH_SHORT).show()
+                                navigator.returnHome()
+                            }
+                        )
+                    }
+                },
                 onStart = activeRecordingViewModel::startRecording,
                 onPause = activeRecordingViewModel::pauseRecording,
                 onResume = activeRecordingViewModel::resumeRecording,

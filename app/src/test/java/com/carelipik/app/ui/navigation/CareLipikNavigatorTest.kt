@@ -6,6 +6,21 @@ import org.junit.Test
 
 class CareLipikNavigatorTest {
     @Test
+    fun savedRecording_resumesAtRecordingAndCanReturnHome() {
+        val navigator = CareLipikNavigator()
+        navigator.openSavedRecordings()
+        assertEquals(ConsultationDestination.SavedRecordings, navigator.currentDestination)
+        navigator.navigateBack()
+        assertEquals(ConsultationDestination.Home, navigator.currentDestination)
+        navigator.openSavedRecordings()
+        navigator.resumeRecording()
+        assertEquals(ConsultationDestination.ConsultationRecording, navigator.currentDestination)
+        navigator.navigateToNext()
+        assertEquals(ConsultationDestination.Transcript, navigator.currentDestination)
+        navigator.returnHome()
+        assertEquals(ConsultationDestination.Home, navigator.currentDestination)
+    }
+    @Test
     fun initialDestination_isHome() {
         val navigator = CareLipikNavigator()
 

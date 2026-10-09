@@ -26,6 +26,7 @@ import com.carelipik.app.domain.transcription.TranscriptionResult
 import com.carelipik.app.domain.transcription.TranscriptionLanguage
 import com.carelipik.app.domain.voice.DoctorVoiceRoleMatchResult
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -267,6 +268,7 @@ class TranscriptViewModel(
     }
 
     fun resetForNewConsultation() {
+        viewModelScope.coroutineContext.cancelChildren()
         sourceAudioPath = null
         sourceLanguage = TranscriptionLanguage.English
         sourceEngine = TranscriptionEngineOption.MedAsrEnglish

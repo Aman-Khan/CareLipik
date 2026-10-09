@@ -14,6 +14,25 @@ import com.carelipik.app.domain.model.RecordedAudio
 
 class RecordingViewModelTest {
     @Test
+    fun restoredRecording_preservesSelectionsAndRequiresNewOnlineConsent() = kotlinx.coroutines.runBlocking {
+        val recorder = TrackingRecorder()
+        val viewModel = RecordingViewModel(recorder, useAutomaticTimer = false)
+        val audio = RecordedAudio("synthetic.wav", 32_044L, durationMillis = 1_000L)
+        val saved = com.carelipik.app.domain.model.SavedRecording(
+            "00000000-0000-0000-0000-000000000001", 1_000L, "Synthetic patient", "30", "Synthetic visit",
+            TranscriptionLanguage.Hinglish, TranscriptionEngineOption.SaarasHindiHinglish,
+            "Synthetic WAV", 1_000L, com.carelipik.app.domain.model.RecordedAudioSource.Microphone, true
+        )
+        assertTrue(viewModel.restoreSavedRecording(com.carelipik.app.domain.model.RestoredSavedRecording(saved, audio)))
+        assertEquals(RecordingStatus.Completed, viewModel.uiState.value.status)
+        assertEquals(TranscriptionLanguage.Hinglish, viewModel.transcriptionLanguage())
+        assertEquals(TranscriptionEngineOption.SaarasHindiHinglish, viewModel.transcriptionEngine())
+        assertFalse(viewModel.uiState.value.hasOnlineProcessingConsent)
+        assertFalse(viewModel.uiState.value.canContinue)
+        viewModel.setOnlineProcessingConsent(true)
+        assertTrue(viewModel.uiState.value.canContinue)
+    }
+    @Test
     fun recording_canBePausedResumedAndCompleted() {
         val recorder = TrackingRecorder()
         val viewModel = RecordingViewModel(recorder, useAutomaticTimer = false)
@@ -176,5 +195,9 @@ class RecordingViewModelTest {
         override fun stopPlayback() { calls += "stopPlayback" }
         override suspend fun importAudio(sourceUri: String): AudioImportResult =
             AudioImportResult.Failure("Test import is unavailable")
+        override suspend fun restoreAudio(audio: RecordedAudio): AudioImportResult {
+            recordedAudio.value = audio
+            return AudioImportResult.Success(audio)
+        }
     }
 }

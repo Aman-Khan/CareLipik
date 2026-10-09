@@ -29,6 +29,10 @@ development recordings, screenshots, fixtures, or tests.
 - Approved report files linked to consultation history as encrypted A4 PDF, structured JSON, HL7
   FHIR R4 Bundle, or plain text, with open, share, regenerate, and delete controls.
 - Temporary consultation audio in the Android cache by default.
+- **Save and continue later** after finishing a recording: encrypted recording and patient details
+  survive app/phone restarts. Open **Saved recordings** on Home to resume at recording review before
+  transcription. The language and engine are retained; online-processing consent must be confirmed
+  again. Saved recordings can be deleted and are removed after successful final doctor approval.
 - Optional consent-gated Gemini medical-term enhancement for transcripts produced by Whisper,
   MedASR, or Saaras, plus structured-note drafting. Keys can be entered at runtime and encrypted
   with Android Keystore; they are never compiled into the APK.

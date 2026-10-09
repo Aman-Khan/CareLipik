@@ -158,6 +158,28 @@ class AndroidMicrophoneRecorder(private val context: Context) : ConsultationReco
             }
         }
 
+    override suspend fun restoreAudio(audio: RecordedAudio): AudioImportResult =
+        withContext(Dispatchers.IO) {
+            val file = File(audio.localPath)
+            try {
+                // Only accept private temporary files, never transfer ownership of a saved archive.
+                require(file.canonicalFile.parentFile == File(context.cacheDir, "consultation_audio").canonicalFile)
+                val metadata = WaveAudioInspector.inspectCompatiblePcm(file)
+                stopPlayback()
+                val previous = outputFile
+                outputFile = file
+                val restored = audio.copy(sizeBytes = file.length(), durationMillis = metadata.durationMillis)
+                _recordedAudio.value = restored
+                if (previous != file) previous?.delete()
+                AudioImportResult.Success(restored)
+            } catch (error: Exception) {
+                if (file.canonicalFile.parentFile == File(context.cacheDir, "consultation_audio").canonicalFile) {
+                    file.delete()
+                }
+                AudioImportResult.Failure(error.message ?: "The saved recording could not be opened.")
+            }
+        }
+
     @SuppressLint("MissingPermission")
     private fun startCapture() {
         check(

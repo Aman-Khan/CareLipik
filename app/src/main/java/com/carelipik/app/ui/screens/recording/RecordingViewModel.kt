@@ -10,6 +10,7 @@ import com.carelipik.app.domain.recording.ConsultationRecorder
 import com.carelipik.app.domain.recording.AudioImportResult
 import com.carelipik.app.domain.transcription.TranscriptionLanguage
 import com.carelipik.app.domain.transcription.TranscriptionEngineOption
+import com.carelipik.app.domain.model.RestoredSavedRecording
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -123,6 +124,32 @@ class RecordingViewModel(
     }
 
     fun recordedAudioPath(): String? = recorder.recordedAudio.value?.localPath
+
+    fun recordedAudio() = recorder.recordedAudio.value
+
+    suspend fun restoreSavedRecording(saved: RestoredSavedRecording): Boolean {
+        when (val result = recorder.restoreAudio(saved.audio)) {
+            is AudioImportResult.Success -> {
+                timerJob?.cancel()
+                _uiState.value = RecordingUiState(
+                    status = RecordingStatus.Completed,
+                    elapsedSeconds = ((result.audio.durationMillis + 999L) / 1_000L).toInt(),
+                    hasSavedAudio = true,
+                    audioSource = result.audio.source,
+                    audioDisplayName = result.audio.displayName,
+                    audioSizeBytes = result.audio.sizeBytes,
+                    transcriptionLanguage = saved.recording.language,
+                    transcriptionEngine = saved.recording.engine,
+                    hasOnlineProcessingConsent = false
+                )
+                return true
+            }
+            is AudioImportResult.Failure -> {
+                _uiState.update { it.copy(importError = result.message) }
+                return false
+            }
+        }
+    }
 
     fun importAudio(sourceUri: String) {
         if (_uiState.value.status in setOf(RecordingStatus.Recording, RecordingStatus.Paused)) return

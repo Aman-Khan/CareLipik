@@ -11,6 +11,7 @@
     <exclude domain="file" path="doctor_voice/" />
     <exclude domain="file" path="doctor_profile.clp" />
     <exclude domain="file" path="api_credentials/" />
+    <exclude domain="file" path="saved_recordings/" />
     <!--
    <include domain="sharedpref" path="."/>
    <exclude domain="sharedpref" path="device.xml"/>

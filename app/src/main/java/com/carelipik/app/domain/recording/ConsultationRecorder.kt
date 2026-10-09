@@ -23,4 +23,7 @@ interface ConsultationRecorder {
     fun play()
     fun stopPlayback()
     suspend fun importAudio(sourceUri: String): AudioImportResult
+    /** Takes ownership of a decrypted app-private temporary recording. */
+    suspend fun restoreAudio(audio: RecordedAudio): AudioImportResult =
+        AudioImportResult.Failure("Saved recording playback is unavailable in this recorder.")
 }

@@ -70,7 +70,10 @@ fun RecordingScreen(
     onOnlineProcessingConsentChanged: (Boolean) -> Unit,
     onBack: () -> Unit,
     onContinue: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onSaveForLater: (() -> Unit)? = null,
+    isSavingForLater: Boolean = false,
+    saveError: String? = null
 ) {
     val context = LocalContext.current
     var permissionDenied by remember { mutableStateOf(false) }
@@ -113,7 +116,8 @@ fun RecordingScreen(
             currentStep = 3,
             totalSteps = 7,
             onBack = onBack,
-            backEnabled = uiState.status !in setOf(RecordingStatus.Recording, RecordingStatus.Paused)
+            backEnabled = !isSavingForLater && !uiState.isImporting &&
+                uiState.status !in setOf(RecordingStatus.Recording, RecordingStatus.Paused)
         )
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -218,19 +222,38 @@ fun RecordingScreen(
                 isImportedAudio = uiState.isImportedAudio,
                 onTogglePlayback = onTogglePlayback,
                 onDiscard = onDiscard,
-                onReplace = chooseAudioFile
+                onReplace = chooseAudioFile,
+                enabled = !isSavingForLater && !uiState.isImporting
             )
+            onSaveForLater?.let { save ->
+                OutlinedButton(
+                    onClick = save,
+                    enabled = !isSavingForLater && !uiState.isImporting,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (isSavingForLater) "Saving recording…" else "Save and continue later")
+                }
+                Text(
+                    "Keep the recording and patient details encrypted on this device. " +
+                        "Reopen it from Saved recordings on Home.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                saveError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
             TranscriptionSetupPanel(
                 selectedLanguage = uiState.transcriptionLanguage,
                 selectedEngine = uiState.transcriptionEngine,
                 hasOnlineProcessingConsent = uiState.hasOnlineProcessingConsent,
-                onLanguageChanged = onTranscriptionLanguageChanged,
-                onEngineChanged = onTranscriptionEngineChanged,
-                onOnlineProcessingConsentChanged = onOnlineProcessingConsentChanged
+                onLanguageChanged = { if (!isSavingForLater) onTranscriptionLanguageChanged(it) },
+                onEngineChanged = { if (!isSavingForLater) onTranscriptionEngineChanged(it) },
+                onOnlineProcessingConsentChanged = {
+                    if (!isSavingForLater) onOnlineProcessingConsentChanged(it)
+                }
             )
             TranscriptContinueSection(
                 uiState = uiState,
-                onContinue = onContinue
+                onContinue = onContinue,
+                enabled = !isSavingForLater
             )
         }
     }
@@ -242,28 +265,29 @@ private fun CompletedRecordingActions(
     isImportedAudio: Boolean,
     onTogglePlayback: () -> Unit,
     onDiscard: () -> Unit,
-    onReplace: () -> Unit
+    onReplace: () -> Unit,
+    enabled: Boolean = true
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Button(onClick = onTogglePlayback, modifier = Modifier.weight(1f)) {
+            Button(onClick = onTogglePlayback, enabled = enabled, modifier = Modifier.weight(1f)) {
                 Text(if (isPlaying) "Stop audio" else "Listen")
             }
             if (isImportedAudio) {
-                OutlinedButton(onClick = onReplace, modifier = Modifier.weight(1f)) {
+                OutlinedButton(onClick = onReplace, enabled = enabled, modifier = Modifier.weight(1f)) {
                     Text("Replace")
                 }
             } else {
-                OutlinedButton(onClick = onDiscard, modifier = Modifier.weight(1f)) {
+                OutlinedButton(onClick = onDiscard, enabled = enabled, modifier = Modifier.weight(1f)) {
                     Text("Record again")
                 }
             }
         }
         if (isImportedAudio) {
-            OutlinedButton(onClick = onDiscard, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = onDiscard, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
                 Text("Remove imported audio")
             }
         }
@@ -584,7 +608,8 @@ private fun OnlineProcessingConsentCard(
 @Composable
 private fun TranscriptContinueSection(
     uiState: RecordingUiState,
-    onContinue: () -> Unit
+    onContinue: () -> Unit,
+    enabled: Boolean = true
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -598,7 +623,7 @@ private fun TranscriptContinueSection(
         )
         Button(
             onClick = onContinue,
-            enabled = uiState.canContinue,
+            enabled = enabled && uiState.canContinue,
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(

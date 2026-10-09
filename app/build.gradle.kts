@@ -5,6 +5,8 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+apply(from = rootProject.file("gradle/offline-models.gradle.kts"))
+
 val careLipikLocalProperties = Properties().apply {
     val localPropertiesFile = rootProject.file("local.properties")
     if (localPropertiesFile.isFile) {

@@ -131,7 +131,7 @@ class SherpaDoctorVoiceRoleMatcher(
 
     private companion object {
         const val MODEL_DIR = "models/sherpa-onnx-speaker-diarization"
-        const val EMBEDDING_MODEL = "embedding-model.onnx"
+        const val EMBEDDING_MODEL = "nemo_en_titanet_small.onnx"
         const val MIN_SPEAKER_SAMPLES = PcmWaveAudio.sampleRate
     }
 }

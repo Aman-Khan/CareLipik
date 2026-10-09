@@ -45,8 +45,8 @@ development recordings, screenshots, fixtures, or tests.
 - For direct medical-term extraction or clinical-note generation: a Gemini API key entered in
   the app. The local Mac proxy remains available as a development fallback.
 
-Model binaries are intentionally ignored by Git. Obtain them through the repository download
-scripts rather than committing them.
+Model binaries are intentionally ignored by Git. APK builds download and verify them automatically;
+the repository download scripts are also available for manual setup. Never commit model binaries.
 
 The local diarization path uses Sherpa-ONNX 1.13.6 on CPU with Pyannote Segmentation 3.0,
 NeMo TitaNet Small speaker embeddings, and fixed two-cluster fast clustering. Gemini is not used
@@ -220,7 +220,33 @@ it changes. Never put the Sarvam API key in this file or anywhere in the Android
 
 ## Model setup
 
-Download the required ignored model assets from the repository root:
+APK builds now automatically download and SHA-256 verify the required MedASR, Whisper Small,
+Pyannote segmentation, and TitaNet speaker model assets before merging Android assets. This
+works through Gradle on Windows, macOS, and Linux without requiring the shell scripts. Android
+Studio **Run**, `assembleDebug`, `bundleRelease`, and `installDebug` include this step.
+
+On Windows, build and install with:
+
+```powershell
+.\gradlew.bat installDebug
+```
+
+The first build needs internet access and downloads several hundred MB. Subsequent builds
+verify and reuse the local files. Models are bundled inside the APK, so the installed app can
+use them without internet access. Rebuild and reinstall any APK previously built without models.
+Builds stop if a model cannot be downloaded or verified, rather than installing an incomplete APK.
+
+To download models separately before building:
+
+```sh
+./gradlew :app:prepareOfflineModels
+```
+
+With all models and Gradle dependencies already cached, builds also work with `--offline`.
+If a model is missing or corrupt in that mode, the build reports the affected file and fails.
+Gradle sync and local JVM tests do not trigger model downloads.
+
+The existing manual download scripts remain available from the repository root:
 
 ```sh
 ./scripts/download-medasr-model.sh

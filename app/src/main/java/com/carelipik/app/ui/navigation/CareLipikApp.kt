@@ -148,6 +148,7 @@ fun CareLipikApp(
                 onProcessingPreferenceChanged = activeDoctorProfileViewModel::setProcessingPreference,
                 onStartVoiceSample = activeDoctorVoiceEnrollmentViewModel::startRecording,
                 onStopVoiceSample = activeDoctorVoiceEnrollmentViewModel::stopAndSave,
+                onImportVoiceSample = activeDoctorVoiceEnrollmentViewModel::importSample,
                 onDeleteVoiceSample = activeDoctorVoiceEnrollmentViewModel::deleteSample,
                 onSarvamKeyChanged = activeApiCredentialsViewModel::setSarvamInput,
                 onGeminiKeyChanged = activeApiCredentialsViewModel::setGeminiInput,

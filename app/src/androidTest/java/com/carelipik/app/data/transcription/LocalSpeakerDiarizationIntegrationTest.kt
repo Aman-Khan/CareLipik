@@ -115,9 +115,32 @@ class LocalSpeakerDiarizationIntegrationTest {
         assertTrue(segments.all { it.transcript.isNotBlank() })
     }
 
+    @Test
+    fun syntheticFourVoiceAudio_autoDetectsMoreThanTwoSpeakers() {
+        val multiSpeakerFile = File(context.filesDir, FOUR_SPEAKER_AUDIO_FILE)
+        assumeTrue("Push $FOUR_SPEAKER_AUDIO_FILE into app files before this test", multiSpeakerFile.isFile)
+        val samples = PcmWaveAudio.readMono16Khz(multiSpeakerFile)
+
+        val result = SherpaOfflineSpeakerDiarizationEngine(context).diarize(
+            samples = samples,
+            sampleRate = PcmWaveAudio.sampleRate,
+            expectedSpeakerCount = 0
+        )
+
+        assertTrue("Expected speaker turns but received $result", result is SpeakerDiarizationResult.Success)
+        val turns = (result as SpeakerDiarizationResult.Success).turns
+        val detectedCount = turns.map { it.speakerId }.distinct().size
+        assertTrue(
+            "Expected at least 3 voice clusters for the four-voice stress fixture, " +
+                "but detected $detectedCount: $turns",
+            detectedCount >= 3
+        )
+    }
+
     private companion object {
         const val TEST_AUDIO_FILE = "synthetic-two-speaker-consultation.wav"
         const val LONG_TEST_AUDIO_FILE = "english-long-respiratory-history.wav"
+        const val FOUR_SPEAKER_AUDIO_FILE = "four-speakers-short-turns.wav"
         const val MIN_CORRECT_TURNS = 14
         val EXPECTED_TURN_BOUNDARIES_SECONDS = listOf(
             3.9196f,

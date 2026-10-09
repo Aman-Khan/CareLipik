@@ -15,7 +15,9 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class EncryptedApiCredentialRepositoryTest {
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
-    private val credentialDirectory by lazy { File(context.filesDir, "api_credentials") }
+    private val credentialDirectory by lazy {
+        File(context.cacheDir, "synthetic_api_credentials_test")
+    }
 
     @Before
     fun clearCredentials() {
@@ -24,7 +26,7 @@ class EncryptedApiCredentialRepositoryTest {
 
     @Test
     fun keysRoundTripWithoutPlaintextAtRestAndCanBeDeleted() = runBlocking {
-        val repository = EncryptedApiCredentialRepository(context)
+        val repository = EncryptedApiCredentialRepository(context, credentialDirectory)
         val syntheticSarvamKey = "synthetic-sarvam-key-123456"
         val syntheticGeminiKey = "synthetic-gemini-key-654321"
 

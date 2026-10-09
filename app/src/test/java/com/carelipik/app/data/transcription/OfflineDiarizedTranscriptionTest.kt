@@ -5,6 +5,7 @@ import com.carelipik.app.domain.transcription.SpeakerDiarizationEngine
 import com.carelipik.app.domain.transcription.SpeakerDiarizationResult
 import com.carelipik.app.domain.transcription.TranscriptSegment
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OfflineDiarizedTranscriptionTest {
@@ -81,5 +82,32 @@ class OfflineDiarizedTranscriptionTest {
             ),
             result.segments
         )
+    }
+
+    @Test
+    fun multipleSpeakers_andOverlap_arePreservedAndFlagged() {
+        var requestedCount = -1
+        val diarizer = SpeakerDiarizationEngine { _, _, expectedCount ->
+            requestedCount = expectedCount
+            SpeakerDiarizationResult.Success(
+                listOf(
+                    DiarizedAudioTurn("speaker-1", 0f, 1f),
+                    DiarizedAudioTurn("speaker-2", 0.5f, 1.5f),
+                    DiarizedAudioTurn("speaker-3", 1.5f, 2f)
+                )
+            )
+        }
+
+        val result = OfflineDiarizedTranscription.transcribe(
+            samples = FloatArray(32_000) { 0.2f },
+            sampleRate = 16_000,
+            diarizationEngine = diarizer,
+            recognize = { "speech" }
+        )
+
+        assertEquals(0, requestedCount)
+        assertEquals(3, result.segments.map { it.speakerId }.distinct().size)
+        assertTrue(result.speakerSeparationWarning.orEmpty().contains("Overlapping speech"))
+        assertTrue(result.speakerSeparationWarning.orEmpty().contains("3 distinct voices"))
     }
 }

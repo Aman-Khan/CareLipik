@@ -47,7 +47,12 @@ class SherpaMedAsrTranscriptionEngine(
         }
     }.fold(
         onSuccess = {
-            TranscriptionResult.Success(it.transcript, it.segments, it.doctorVoiceMatch)
+            TranscriptionResult.Success(
+                it.transcript,
+                it.segments,
+                it.doctorVoiceMatch,
+                it.speakerSeparationWarning
+            )
         },
         onFailure = { error ->
             TranscriptionResult.Failure(
@@ -110,7 +115,7 @@ class SherpaMedAsrTranscriptionEngine(
     }
 
     private companion object {
-        const val MAX_CHUNK_SECONDS = 25
+        const val MAX_CHUNK_SECONDS = 20
         const val MAX_CHUNK_SAMPLES = PcmWaveAudio.sampleRate * MAX_CHUNK_SECONDS
         const val MODEL_DIR = "models/sherpa-onnx-medasr-ctc-en-int8"
         val REQUIRED_MODEL_FILES = setOf("model.int8.onnx", "tokens.txt")

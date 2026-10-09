@@ -44,7 +44,12 @@ class SherpaWhisperTranscriptionEngine(
         }
     }.fold(
         onSuccess = {
-            TranscriptionResult.Success(it.transcript, it.segments, it.doctorVoiceMatch)
+            TranscriptionResult.Success(
+                it.transcript,
+                it.segments,
+                it.doctorVoiceMatch,
+                it.speakerSeparationWarning
+            )
         },
         onFailure = { error ->
             TranscriptionResult.Failure(
@@ -109,7 +114,7 @@ class SherpaWhisperTranscriptionEngine(
     }
 
     private companion object {
-        const val MAX_CHUNK_SECONDS = 25
+        const val MAX_CHUNK_SECONDS = 20
         const val MAX_CHUNK_SAMPLES = PcmWaveAudio.sampleRate * MAX_CHUNK_SECONDS
         const val MODEL_DIR = "models/sherpa-onnx-whisper-small"
         val REQUIRED_MODEL_FILES = setOf(

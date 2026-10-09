@@ -1,14 +1,20 @@
 package com.carelipik.app.ui.navigation
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.lifecycle.ViewModel
 import com.carelipik.app.domain.model.ConsultationDestination
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
-/** Route holder that keeps top-level app navigation separate from the consultation flow. */
-class CareLipikNavigator {
-    var currentDestination by mutableStateOf(ConsultationDestination.Home)
-        private set
+/** Activity-scoped navigation state that survives configuration changes with the consultation. */
+class CareLipikNavigator : ViewModel() {
+    private val _destination = MutableStateFlow(ConsultationDestination.Home)
+    val destination: StateFlow<ConsultationDestination> = _destination.asStateFlow()
+    var currentDestination: ConsultationDestination
+        get() = _destination.value
+        private set(value) {
+            _destination.value = value
+        }
     private var exportReturnDestination = ConsultationDestination.DoctorReview
 
     fun startConsultation() {

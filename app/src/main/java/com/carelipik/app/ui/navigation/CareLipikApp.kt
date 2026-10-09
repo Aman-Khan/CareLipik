@@ -10,7 +10,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.FileProvider
@@ -99,14 +98,15 @@ fun CareLipikApp(
     val doctorReviewUiState by activeDoctorReviewViewModel.uiState.collectAsState()
     val consultationHistoryUiState by activeConsultationHistoryViewModel.uiState.collectAsState()
     val consultationExportUiState by activeConsultationExportViewModel.uiState.collectAsState()
-    val navigator = remember { CareLipikNavigator() }
+    val navigator: CareLipikNavigator = viewModel()
+    val currentDestination by navigator.destination.collectAsState()
 
     LaunchedEffect(savedDoctorProfile) {
         savedDoctorProfile?.let(activeHomeViewModel::applyDoctorProfile)
     }
 
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-        when (navigator.currentDestination) {
+        when (currentDestination) {
             ConsultationDestination.Home -> HomeScreen(
                 uiState = homeUiState,
                 onStartConsultation = {

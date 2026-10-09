@@ -5,7 +5,8 @@ import com.carelipik.app.domain.model.RecordedAudio
 data class DoctorVoiceSample(
     val localPath: String,
     val durationMillis: Long,
-    val updatedAtMillis: Long
+    val updatedAtMillis: Long,
+    val enrolledSampleCount: Int = 1
 )
 
 sealed interface DoctorVoiceSampleSaveResult {

@@ -49,9 +49,28 @@ Model binaries are intentionally ignored by Git. Obtain them through the reposit
 scripts rather than committing them.
 
 The local diarization path uses Sherpa-ONNX 1.13.6 on CPU with Pyannote Segmentation 3.0,
-NeMo TitaNet Small speaker embeddings, and fixed two-cluster fast clustering. Gemini is not used
+NeMo TitaNet Small speaker embeddings, and automatic fast clustering. Gemini is not used
 for diarization: it receives reviewed transcript text only for optional medical-term analysis or
 structured-note drafting and cannot observe acoustic speaker changes.
+
+Doctor voice enrollment is a separate local role-matching step after diarization. A doctor records
+or uploads three 8–30 second mono 16 kHz, 16-bit PCM WAV samples in **Doctor profile**: normal
+voice, slightly louder voice, and a typical consultation question. The app quality-checks them and
+copies them into private, backup-excluded on-device storage. For offline Whisper and MedASR
+consultations, TitaNet embeds each enrollment sample and averages the three normalized references,
+then embeds each diarized speaker cluster;
+the app labels a cluster as Doctor only when its similarity and separation margin pass the fixed
+confidence policy. Otherwise roles stay unassigned for manual confirmation. The enrollment does
+not alter Pyannote/TitaNet diarization boundaries and is not applied to Saaras provider
+diarization; every automatic role remains manually correctable.
+
+Before local transcription, an on-device preflight measures clipping, silence percentage, active
+speech duration, approximate noise/SNR, and quiet speech as a microphone-distance warning. Whisper
+and MedASR chunks are capped at 20 seconds. Automatic clustering (`numClusters = 0`) preserves
+three or more detected voices instead of forcing every recording into two identities. The review
+screen supports Doctor, Patient, Other, and Noise/exclude labels. Overlapping diarized intervals,
+high noise, clipping, mostly silent audio, quiet speech, and three-or-more voices produce explicit
+review warnings; overlap is never presented as a confident role assignment.
 
 ## Clone and open
 
@@ -131,6 +150,12 @@ The plaintext field is cleared immediately after saving. Each key is encrypted w
 a non-exportable Android Keystore key, stored in app-private storage, excluded from Android backup
 and device transfer, and removed by uninstalling the app or tapping **Remove**. CareLipik reads a
 key only when making the corresponding HTTPS request and does not log it.
+
+The doctor profile, provider keys, and voice enrollment persist across normal APK updates, app
+restarts, and phone restarts. `./gradlew installDebug` and Android Studio's normal Run action update
+the APK without clearing them. Uninstalling the app, using **Clear storage**, changing the
+application ID, or installing on a different phone starts with empty local data. Instrumented tests
+use isolated synthetic storage and must never clear the developer's configured profile or keys.
 
 This is suitable for a controlled prototype where the doctor supplies their own restricted key.
 It is not equivalent to server-side secret custody: malware, a rooted/compromised phone, or runtime
@@ -477,11 +502,14 @@ For local diarization on a physical phone:
 1. Run `./tools/offline_speaker_diarization/setup.sh --check`, rebuild, and install the app.
 2. Choose English with **Offline medical English (MedASR)** or **Offline multilingual
    (Whisper)**. No backend, API key, or Gemini connection is involved.
-3. Record or import a synthetic consultation with two clearly different voices and short pauses.
-4. Verify every expected hand-off, not merely that two speaker IDs appear somewhere.
+3. Record or import synthetic two-, three-, and four-voice consultations, plus a noisy sample and
+   an overlapping-speech sample.
+4. Verify every expected hand-off and that additional speakers remain distinct. Mark non-clinical
+   sound as **Noise / exclude** and a caregiver/interpreter as **Other**.
 5. If a doctor voice was not enrolled, expect neutral Speaker 1/Speaker 2 identities and assign
    Doctor/Patient manually. Acoustic clustering cannot infer occupations from a voice.
-6. Correct or swap any wrong role in review and confirm the correction is retained.
+6. Confirm overlap/noise warnings appear, then correct or swap any wrong role and confirm the
+   correction is retained.
 
 The device benchmark requires at least 14 of 16 known alternating turns and requires the first
 two turns to be different speakers. On the connected iQOO I2501/SM8850, the accepted Pyannote +

@@ -316,11 +316,20 @@ private fun SpeakerRoleReviewPanel(
                         fontWeight = FontWeight.Bold
                     )
                     SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                        listOf(SpeakerRole.Doctor, SpeakerRole.Patient).forEachIndexed { index, role ->
+                        val assignableRoles = listOf(
+                            SpeakerRole.Doctor,
+                            SpeakerRole.Patient,
+                            SpeakerRole.OtherParticipant,
+                            SpeakerRole.Noise
+                        )
+                        assignableRoles.forEachIndexed { index, role ->
                             SegmentedButton(
                                 selected = speakerRoles[speakerId] == role,
                                 onClick = { onSpeakerRoleAssigned(speakerId, role) },
-                                shape = SegmentedButtonDefaults.itemShape(index = index, count = 2),
+                                shape = SegmentedButtonDefaults.itemShape(
+                                    index = index,
+                                    count = assignableRoles.size
+                                ),
                                 label = { Text(role.displayName) }
                             )
                         }
@@ -379,7 +388,9 @@ private fun ConversationBubble(segment: TranscriptSegment, role: SpeakerRole) {
             color = when (role) {
                 SpeakerRole.Doctor -> MaterialTheme.colorScheme.primaryContainer
                 SpeakerRole.Patient -> MaterialTheme.colorScheme.secondaryContainer
-                SpeakerRole.Unassigned -> MaterialTheme.colorScheme.surfaceVariant
+                SpeakerRole.Unassigned,
+                SpeakerRole.OtherParticipant,
+                SpeakerRole.Noise -> MaterialTheme.colorScheme.surfaceVariant
             }
         ) {
             Column(
@@ -391,13 +402,15 @@ private fun ConversationBubble(segment: TranscriptSegment, role: SpeakerRole) {
                         speakerDisplayName(segment.speakerId)
                     } else {
                         role.displayName
-                    },
+                    } + if (segment.isSpeakerUncertain) " · Overlap—verify" else "",
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold,
                     color = when (role) {
                         SpeakerRole.Doctor -> MaterialTheme.colorScheme.onPrimaryContainer
                         SpeakerRole.Patient -> MaterialTheme.colorScheme.onSecondaryContainer
-                        SpeakerRole.Unassigned -> MaterialTheme.colorScheme.onSurfaceVariant
+                        SpeakerRole.Unassigned,
+                        SpeakerRole.OtherParticipant,
+                        SpeakerRole.Noise -> MaterialTheme.colorScheme.onSurfaceVariant
                     }
                 )
                 Text(text = segment.transcript, style = MaterialTheme.typography.bodyLarge)

@@ -19,17 +19,16 @@ class SherpaDoctorVoiceRoleMatcher(
     enrollmentFileOverride: File? = null
 ) : DoctorVoiceRoleMatcher {
     private val applicationContext = context.applicationContext
-    private val enrollmentFile = enrollmentFileOverride ?: File(
-        applicationContext.filesDir,
-        "doctor_voice/doctor-voice-sample.wav"
-    )
+    private val enrollmentFileOverride = enrollmentFileOverride
+    private val enrollmentDirectory = File(applicationContext.filesDir, "doctor_voice")
 
     override fun match(
         samples: FloatArray,
         sampleRate: Int,
         turns: List<DiarizedAudioTurn>
     ): DoctorVoiceRoleMatchResult {
-        if (!enrollmentFile.isFile) return DoctorVoiceRoleMatchResult.NotEnrolled
+        val enrollmentFiles = enrollmentFiles()
+        if (enrollmentFiles.isEmpty()) return DoctorVoiceRoleMatchResult.NotEnrolled
         if (!hasModel()) {
             return DoctorVoiceRoleMatchResult.Unavailable(
                 "Offline doctor voice matching model is not installed in this build."
@@ -39,9 +38,10 @@ class SherpaDoctorVoiceRoleMatcher(
             require(sampleRate == PcmWaveAudio.sampleRate) {
                 "Doctor voice matching requires ${PcmWaveAudio.sampleRate} Hz audio."
             }
-            val enrollment = PcmWaveAudio.readMono16Khz(enrollmentFile)
             createExtractor().useExtractor { extractor ->
-                val referenceEmbedding = extractor.embedding(enrollment, sampleRate)
+                val referenceEmbedding = enrollmentFiles
+                    .map { file -> extractor.embedding(PcmWaveAudio.readMono16Khz(file), sampleRate) }
+                    .averageEmbedding()
                 val candidates = turns.map(DiarizedAudioTurn::speakerId).distinct().mapNotNull {
                     speakerId ->
                     concatenateSpeakerAudio(samples, sampleRate, turns, speakerId)
@@ -62,13 +62,45 @@ class SherpaDoctorVoiceRoleMatcher(
         }
     }
 
+    private fun enrollmentFiles(): List<File> {
+        enrollmentFileOverride?.let { return listOfNotNull(it.takeIf(File::isFile)) }
+        val multiple = enrollmentDirectory.listFiles().orEmpty()
+            .filter { it.isFile && ENROLLMENT_FILE_PATTERN.matches(it.name) }
+            .sortedBy { it.name }
+        if (multiple.isNotEmpty()) return multiple
+        return listOfNotNull(
+            File(enrollmentDirectory, "doctor-voice-sample.wav").takeIf(File::isFile)
+        )
+    }
+
+    private fun List<FloatArray>.averageEmbedding(): FloatArray {
+        require(isNotEmpty()) { "No doctor voice embeddings were available." }
+        val average = FloatArray(first().size)
+        forEach { embedding ->
+            require(embedding.size == average.size) { "Inconsistent voice embedding size." }
+            embedding.indices.forEach { index -> average[index] += embedding[index] }
+        }
+        average.indices.forEach { index -> average[index] /= size }
+        val norm = sqrt(average.sumOf { value -> (value * value).toDouble() }).toFloat()
+        require(norm > 0f) { "Invalid averaged doctor voice embedding." }
+        average.indices.forEach { index -> average[index] /= norm }
+        return average
+    }
+
     private fun concatenateSpeakerAudio(
         samples: FloatArray,
         sampleRate: Int,
         turns: List<DiarizedAudioTurn>,
         speakerId: String
     ): FloatArray {
-        val ranges = turns.filter { it.speakerId == speakerId }.mapNotNull { turn ->
+        val cleanTurns = turns.filter { turn ->
+            turns.none { other ->
+                other.speakerId != turn.speakerId &&
+                    minOf(turn.endSeconds, other.endSeconds) -
+                    maxOf(turn.startSeconds, other.startSeconds) > OVERLAP_TOLERANCE_SECONDS
+            }
+        }
+        val ranges = cleanTurns.filter { it.speakerId == speakerId }.mapNotNull { turn ->
             val start = floor(turn.startSeconds * sampleRate).toInt().coerceIn(0, samples.size)
             val end = ceil(turn.endSeconds * sampleRate).toInt().coerceIn(start, samples.size)
             (start until end).takeIf { !it.isEmpty() }
@@ -131,7 +163,11 @@ class SherpaDoctorVoiceRoleMatcher(
 
     private companion object {
         const val MODEL_DIR = "models/sherpa-onnx-speaker-diarization"
-        const val EMBEDDING_MODEL = "embedding-model.onnx"
+        // Keep this aligned with SherpaOfflineSpeakerDiarizationEngine: the same TitaNet
+        // embedding space must be used for enrollment and consultation speaker turns.
+        const val EMBEDDING_MODEL = "nemo_en_titanet_small.onnx"
         const val MIN_SPEAKER_SAMPLES = PcmWaveAudio.sampleRate
+        const val OVERLAP_TOLERANCE_SECONDS = 0.05f
+        val ENROLLMENT_FILE_PATTERN = Regex("doctor-voice-sample-[1-3]\\.wav")
     }
 }

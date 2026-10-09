@@ -11,7 +11,7 @@ import com.k2fsa.sherpa.onnx.OfflineSpeakerSegmentationModelConfig
 import com.k2fsa.sherpa.onnx.OfflineSpeakerSegmentationPyannoteModelConfig
 import com.k2fsa.sherpa.onnx.SpeakerEmbeddingExtractorConfig
 
-/** Fully on-device two-speaker diarization using Sherpa-ONNX. */
+/** Fully on-device diarization using Sherpa-ONNX with automatic speaker counting. */
 class SherpaOfflineSpeakerDiarizationEngine(
     private val context: Context
 ) : SpeakerDiarizationEngine {
@@ -79,7 +79,7 @@ class SherpaOfflineSpeakerDiarizationEngine(
             ),
             clustering = FastClusteringConfig(
                 numClusters = expectedSpeakerCount,
-                threshold = 0.5f
+                threshold = AUTO_CLUSTER_THRESHOLD
             ),
             minDurationOn = MIN_SPEECH_SECONDS,
             minDurationOff = MIN_SILENCE_SECONDS
@@ -140,6 +140,7 @@ class SherpaOfflineSpeakerDiarizationEngine(
         const val MIN_SILENCE_SECONDS = 0.25f
         const val MERGE_GAP_SECONDS = 0.15f
         const val SEGMENTATION_WINDOW_SHIFT_RATIO = 0.2f
+        const val AUTO_CLUSTER_THRESHOLD = 0.5f
         val REQUIRED_MODELS = setOf(SEGMENTATION_MODEL, EMBEDDING_MODEL)
     }
 }

@@ -16,7 +16,8 @@ data class TranscriptSegment(
     val speakerId: String,
     val transcript: String,
     val startTimeSeconds: Double? = null,
-    val endTimeSeconds: Double? = null
+    val endTimeSeconds: Double? = null,
+    val isSpeakerUncertain: Boolean = false
 )
 
 /** Boundary for a speech-to-text implementation, whether it runs locally or remotely. */

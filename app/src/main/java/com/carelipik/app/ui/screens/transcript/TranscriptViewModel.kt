@@ -173,16 +173,20 @@ class TranscriptViewModel(
         _uiState.update { state ->
             if (speakerId !in state.speakerIds) return@update state
             val updatedRoles = state.speakerRoles.toMutableMap()
-            updatedRoles.entries
-                .filter { it.key != speakerId && it.value == role }
-                .forEach { updatedRoles[it.key] = SpeakerRole.Unassigned }
+            if (role in setOf(SpeakerRole.Doctor, SpeakerRole.Patient)) {
+                updatedRoles.entries
+                    .filter { it.key != speakerId && it.value == role }
+                    .forEach { updatedRoles[it.key] = SpeakerRole.Unassigned }
+            }
             updatedRoles[speakerId] = role
             if (state.speakerIds.size == 2) {
                 val otherSpeaker = state.speakerIds.first { it != speakerId }
                 updatedRoles[otherSpeaker] = when (role) {
                     SpeakerRole.Doctor -> SpeakerRole.Patient
                     SpeakerRole.Patient -> SpeakerRole.Doctor
-                    SpeakerRole.Unassigned -> SpeakerRole.Unassigned
+                    SpeakerRole.Unassigned,
+                    SpeakerRole.OtherParticipant,
+                    SpeakerRole.Noise -> updatedRoles[otherSpeaker] ?: SpeakerRole.Unassigned
                 }
             }
             state.copy(speakerRoles = updatedRoles, hasAttemptedContinue = false)
@@ -260,7 +264,9 @@ class TranscriptViewModel(
         if (state.segments.isEmpty() || state.pendingSpeakerIds.isNotEmpty()) {
             return state.transcript
         }
-        return state.segments.joinToString(separator = "\n\n") { segment ->
+        return state.segments.filterNot { segment ->
+            state.speakerRoles[segment.speakerId] == SpeakerRole.Noise
+        }.joinToString(separator = "\n\n") { segment ->
             val role = state.speakerRoles[segment.speakerId] ?: SpeakerRole.Unassigned
             "${role.displayName}: ${segment.transcript}"
         }

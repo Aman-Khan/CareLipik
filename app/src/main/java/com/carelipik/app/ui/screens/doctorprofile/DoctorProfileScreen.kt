@@ -71,6 +71,7 @@ fun DoctorProfileScreen(
     onProcessingPreferenceChanged: (ProcessingPreference) -> Unit,
     onStartVoiceSample: () -> Unit,
     onStopVoiceSample: () -> Unit,
+    onImportVoiceSample: (String) -> Unit,
     onDeleteVoiceSample: () -> Unit,
     onSarvamKeyChanged: (String) -> Unit = {},
     onGeminiKeyChanged: (String) -> Unit = {},
@@ -87,6 +88,14 @@ fun DoctorProfileScreen(
     ) { isGranted ->
         permissionDenied = !isGranted
         if (isGranted) onStartVoiceSample()
+    }
+    val voiceSampleFileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.toString()?.let(onImportVoiceSample)
+    }
+    val chooseVoiceSampleFile = {
+        voiceSampleFileLauncher.launch(arrayOf("audio/wav", "audio/x-wav", "audio/*"))
     }
     val startVoiceSampleWithPermission = {
         if (
@@ -140,6 +149,7 @@ fun DoctorProfileScreen(
             permissionDenied = permissionDenied,
             onStart = startVoiceSampleWithPermission,
             onStop = onStopVoiceSample,
+            onImport = chooseVoiceSampleFile,
             onDelete = onDeleteVoiceSample
         )
         Button(
@@ -167,7 +177,7 @@ fun DoctorProfileScreen(
             )
         }
         Text(
-            text = "Profile details and the voice sample are stored separately in encrypted, private on-device storage.",
+            text = "Your profile, provider keys, and doctor voice enrollment stay saved on this phone across app and phone restarts. They are removed only when you delete them, clear app storage, or uninstall CareLipik.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
@@ -552,6 +562,7 @@ private fun VoiceRecognitionCard(
     permissionDenied: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit,
+    onImport: () -> Unit,
     onDelete: () -> Unit
 ) {
     Card(
@@ -583,7 +594,7 @@ private fun VoiceRecognitionCard(
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "A short voice sample will later help identify the doctor's turns. It never leaves this device.",
+                text = "Used automatically after offline Whisper or MedASR diarization to identify the doctor's speaker cluster. It never leaves this device and is not sent to Saaras.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -606,7 +617,7 @@ private fun VoiceRecognitionCard(
                             )
                             VoiceSampleWaveform(uiState.amplitude)
                             Text(
-                                text = "Read the phrase below in your normal consultation voice.",
+                                text = uiState.nextPrompt,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -640,7 +651,11 @@ private fun VoiceRecognitionCard(
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Text(
-                                text = "Voice sample ready",
+                                text = if (uiState.enrolledSampleCount >= 3) {
+                                    "Doctor voice profile ready"
+                                } else {
+                                    "${uiState.enrolledSampleCount} of 3 voice samples saved"
+                                },
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold
                             )
@@ -661,7 +676,7 @@ private fun VoiceRecognitionCard(
                                 .weight(1f)
                                 .testTag("doctor_voice_replace")
                         ) {
-                            Text("Replace sample")
+                            Text(if (uiState.enrolledSampleCount >= 3) "Replace oldest" else "Add next sample")
                         }
                         OutlinedButton(
                             onClick = onDelete,
@@ -669,6 +684,14 @@ private fun VoiceRecognitionCard(
                         ) {
                             Text("Delete")
                         }
+                    }
+                    OutlinedButton(
+                        onClick = onImport,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("doctor_voice_upload")
+                    ) {
+                        Text("Upload replacement WAV")
                     }
                 }
                 DoctorVoiceEnrollmentStatus.Error,
@@ -680,7 +703,15 @@ private fun VoiceRecognitionCard(
                             .fillMaxWidth()
                             .testTag("doctor_voice_record")
                     ) {
-                        Text(if (uiState.hasExistingSample) "Try replacement again" else "Record voice sample")
+                        Text(if (uiState.hasExistingSample) "Record next sample" else "Record voice sample")
+                    }
+                    OutlinedButton(
+                        onClick = onImport,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("doctor_voice_upload")
+                    ) {
+                        Text(if (uiState.hasExistingSample) "Upload next WAV" else "Upload voice sample")
                     }
                     if (uiState.hasExistingSample) {
                         OutlinedButton(onClick = onDelete, modifier = Modifier.fillMaxWidth()) {
@@ -707,6 +738,11 @@ private fun VoiceRecognitionCard(
                     color = MaterialTheme.colorScheme.onErrorContainer
                 )
             }
+            Text(
+                text = "Upload format: 8–30 seconds, mono 16 kHz, 16-bit PCM WAV. The file is checked and copied into private on-device storage.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

@@ -41,3 +41,26 @@ transcript. The voices are deliberately different so online speaker diarization 
 ```
 
 Do not add real patient text, recordings or identifiers to these fixtures.
+
+## Generate offline stress-test cases
+
+On macOS, generate deterministic privacy-safe fixtures using built-in system voices. This does
+not need an API key or consume Sarvam credits:
+
+```sh
+./tools/synthetic_test_audio/generate_stress.sh
+```
+
+The ignored `output/stress/` directory receives WAV and JSON pairs for:
+
+- long pauses between two speakers;
+- three speakers with an overlapping caregiver interruption;
+- four speakers with short hand-offs;
+- steady background/fan noise;
+- clipped speech;
+- distant/quiet speech;
+- a mostly-silent recording with one short utterance.
+
+Each JSON file contains expected speaker events, approximate timestamps, and the behavior that
+should be verified. System TTS timing and acoustic clustering vary by macOS/phone model, so the
+speaker-count expectations are deliberately approximate for stress cases.

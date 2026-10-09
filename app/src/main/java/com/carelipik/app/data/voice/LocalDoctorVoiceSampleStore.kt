@@ -11,12 +11,15 @@ import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-class LocalDoctorVoiceSampleStore(context: Context) : DoctorVoiceSampleStore {
-    private val directory = File(context.filesDir, DIRECTORY_NAME)
-    private val sampleFile = File(directory, SAMPLE_FILE_NAME)
+class LocalDoctorVoiceSampleStore internal constructor(
+    context: Context,
+    private val directory: File
+) : DoctorVoiceSampleStore {
+    constructor(context: Context) : this(context, File(context.filesDir, DIRECTORY_NAME))
 
     override suspend fun load(): DoctorVoiceSample? = withContext(Dispatchers.IO) {
-        sampleFile.takeIf(File::isFile)?.let(::toSample)
+        migrateLegacySample()
+        sampleFiles().maxByOrNull(File::lastModified)?.let(::toSample)
     }
 
     override suspend fun save(recordedAudio: RecordedAudio): DoctorVoiceSampleSaveResult =
@@ -33,6 +36,13 @@ class LocalDoctorVoiceSampleStore(context: Context) : DoctorVoiceSampleStore {
                     PcmWaveAudio.readMono16Khz(source)
                 )?.let { message -> error(message) }
                 directory.mkdirs()
+                migrateLegacySample()
+                val existing = sampleFiles()
+                val sampleFile = if (existing.size < REQUIRED_SAMPLE_COUNT) {
+                    File(directory, "doctor-voice-sample-${existing.size + 1}.wav")
+                } else {
+                    existing.minBy(File::lastModified)
+                }
                 val pendingFile = File(directory, "$SAMPLE_FILE_NAME.pending")
                 source.copyTo(pendingFile, overwrite = true)
                 if (!pendingFile.renameTo(sampleFile)) {
@@ -52,7 +62,8 @@ class LocalDoctorVoiceSampleStore(context: Context) : DoctorVoiceSampleStore {
         }
 
     override suspend fun delete() = withContext(Dispatchers.IO) {
-        sampleFile.delete()
+        sampleFiles().forEach(File::delete)
+        File(directory, SAMPLE_FILE_NAME).delete()
         File(directory, "$SAMPLE_FILE_NAME.pending").delete()
         if (directory.listFiles().isNullOrEmpty()) directory.delete()
         Unit
@@ -62,8 +73,20 @@ class LocalDoctorVoiceSampleStore(context: Context) : DoctorVoiceSampleStore {
         DoctorVoiceSample(
             localPath = file.absolutePath,
             durationMillis = durationMillis,
-            updatedAtMillis = file.lastModified()
+            updatedAtMillis = file.lastModified(),
+            enrolledSampleCount = sampleFiles().size
         )
+
+    private fun sampleFiles(): List<File> = directory.listFiles()
+        .orEmpty()
+        .filter { it.isFile && SAMPLE_FILE_PATTERN.matches(it.name) }
+
+    private fun migrateLegacySample() {
+        val legacy = File(directory, SAMPLE_FILE_NAME)
+        if (legacy.isFile && sampleFiles().isEmpty()) {
+            legacy.renameTo(File(directory, "doctor-voice-sample-1.wav"))
+        }
+    }
 
     private fun durationFromFile(file: File): Long =
         ((file.length() - WAVE_HEADER_BYTES).coerceAtLeast(0L) * 1_000L) /
@@ -72,6 +95,8 @@ class LocalDoctorVoiceSampleStore(context: Context) : DoctorVoiceSampleStore {
     private companion object {
         const val DIRECTORY_NAME = "doctor_voice"
         const val SAMPLE_FILE_NAME = "doctor-voice-sample.wav"
+        const val REQUIRED_SAMPLE_COUNT = 3
+        val SAMPLE_FILE_PATTERN = Regex("doctor-voice-sample-[1-3]\\.wav")
         const val WAVE_HEADER_BYTES = 44L
         const val BYTES_PER_SECOND = 16_000L * 2L
     }

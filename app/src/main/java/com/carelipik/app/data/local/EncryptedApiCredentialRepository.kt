@@ -15,8 +15,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /** Stores provider keys as separate app-private AES-GCM blobs backed by Android Keystore. */
-class EncryptedApiCredentialRepository(context: Context) : ApiCredentialRepository {
-    private val directory = File(context.filesDir, DIRECTORY_NAME)
+class EncryptedApiCredentialRepository internal constructor(
+    context: Context,
+    private val directory: File
+) : ApiCredentialRepository {
+    constructor(context: Context) : this(context, File(context.filesDir, DIRECTORY_NAME))
 
     override suspend fun hasKey(provider: ApiProvider): Boolean = withContext(Dispatchers.IO) {
         readKeyInternal(provider) != null

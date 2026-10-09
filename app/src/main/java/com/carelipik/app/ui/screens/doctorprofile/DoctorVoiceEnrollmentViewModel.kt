@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.carelipik.app.data.audio.AndroidMicrophoneRecorder
 import com.carelipik.app.data.voice.LocalDoctorVoiceSampleStore
 import com.carelipik.app.domain.recording.ConsultationRecorder
+import com.carelipik.app.domain.recording.AudioImportResult
 import com.carelipik.app.domain.voice.DoctorVoiceEnrollmentRules
 import com.carelipik.app.domain.voice.DoctorVoiceSampleSaveResult
 import com.carelipik.app.domain.voice.DoctorVoiceSampleStore
@@ -35,7 +36,8 @@ class DoctorVoiceEnrollmentViewModel(
                     it.copy(
                         status = DoctorVoiceEnrollmentStatus.Enrolled,
                         sampleDurationMillis = sample.durationMillis,
-                        hasExistingSample = true
+                        hasExistingSample = true,
+                        enrolledSampleCount = sample.enrolledSampleCount
                     )
                 }
             }
@@ -86,6 +88,41 @@ class DoctorVoiceEnrollmentViewModel(
         recorder.recordedAudio.value?.let(::persist)
     }
 
+    fun importSample(sourceUri: String) {
+        if (
+            sourceUri.isBlank() || _uiState.value.status in setOf(
+                DoctorVoiceEnrollmentStatus.Recording,
+                DoctorVoiceEnrollmentStatus.Saving
+            )
+        ) return
+        _uiState.update {
+            it.copy(
+                status = DoctorVoiceEnrollmentStatus.Saving,
+                amplitude = 0f,
+                message = null
+            )
+        }
+        viewModelScope.launch {
+            when (val result = recorder.importAudio(sourceUri)) {
+                is AudioImportResult.Success -> persist(result.audio)
+                is AudioImportResult.Failure -> {
+                    val existingSample = sampleStore.load()
+                    _uiState.update {
+                        it.copy(
+                            status = DoctorVoiceEnrollmentStatus.Error,
+                            hasExistingSample = existingSample != null,
+                            enrolledSampleCount = existingSample?.enrolledSampleCount ?: 0,
+                            sampleDurationMillis = existingSample?.durationMillis
+                                ?: it.sampleDurationMillis,
+                            message = result.message
+                        )
+                    }
+                    recorder.discard()
+                }
+            }
+        }
+    }
+
     fun deleteSample() {
         if (_uiState.value.status in setOf(
                 DoctorVoiceEnrollmentStatus.Recording,
@@ -108,6 +145,7 @@ class DoctorVoiceEnrollmentViewModel(
                             status = DoctorVoiceEnrollmentStatus.Enrolled,
                             sampleDurationMillis = result.sample.durationMillis,
                             hasExistingSample = true,
+                            enrolledSampleCount = result.sample.enrolledSampleCount,
                             message = "Voice sample saved privately on this device."
                         )
                     }
@@ -118,6 +156,7 @@ class DoctorVoiceEnrollmentViewModel(
                         it.copy(
                             status = DoctorVoiceEnrollmentStatus.Error,
                             hasExistingSample = existingSample != null,
+                            enrolledSampleCount = existingSample?.enrolledSampleCount ?: 0,
                             sampleDurationMillis = existingSample?.durationMillis
                                 ?: it.sampleDurationMillis,
                             message = result.message

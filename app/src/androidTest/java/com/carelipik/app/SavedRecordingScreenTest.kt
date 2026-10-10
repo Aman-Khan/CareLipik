@@ -1,6 +1,8 @@
 package com.carelipik.app
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -22,6 +24,32 @@ import org.junit.Test
 class SavedRecordingScreenTest {
     @get:Rule
     val composeRule = createComposeRule()
+
+    @Test
+    fun completedRecording_offersDownloadForReuse() {
+        renderDownload(RecordingUiState(status = RecordingStatus.Completed, hasSavedAudio = true))
+        composeRule.onNodeWithText("Download recording").performScrollTo().assertIsDisplayed().assertIsEnabled()
+    }
+
+    @Test
+    fun downloadingRecording_disablesReplacementAndShowsProgress() {
+        renderDownload(RecordingUiState(status = RecordingStatus.Completed, hasSavedAudio = true, isDownloading = true))
+        composeRule.onNodeWithText("Downloading recording…").performScrollTo().assertIsNotEnabled()
+        composeRule.onNodeWithText("Record again").performScrollTo().assertIsNotEnabled()
+    }
+
+    private fun renderDownload(state: RecordingUiState) {
+        composeRule.setContent {
+            CareLipikTheme {
+                RecordingScreen(
+                    uiState = state, onStart = {}, onPause = {}, onResume = {}, onStop = {}, onDiscard = {},
+                    onImportAudio = {}, onTogglePlayback = {}, onTranscriptionLanguageChanged = {},
+                    onTranscriptionEngineChanged = {}, onOnlineProcessingConsentChanged = {},
+                    onBack = {}, onContinue = {}, onDownloadAudio = {}
+                )
+            }
+        }
+    }
 
     @Test
     fun completedRecording_canBeSavedWithoutOnlineProcessingConsent() {

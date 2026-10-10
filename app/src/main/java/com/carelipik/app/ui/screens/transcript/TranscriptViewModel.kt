@@ -33,6 +33,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import com.carelipik.app.domain.transcription.ProgressAwareTranscriptionEngine
+import com.carelipik.app.domain.transcription.TranscriptionStage
+import com.carelipik.app.domain.transcription.CorrectionStatus
+import com.carelipik.app.domain.transcription.HybridTranscriptionReview
 
 class TranscriptViewModel(
     private val engineResolver: TranscriptionEngineResolver = TranscriptionEngineResolver {
@@ -48,6 +57,10 @@ class TranscriptViewModel(
     private var sourceAudioPath: String? = null
     private var sourceLanguage: TranscriptionLanguage = TranscriptionLanguage.English
     private var sourceEngine: TranscriptionEngineOption = TranscriptionEngineOption.MedAsrEnglish
+    private var transcriptionJob: Job? = null
+    @Volatile
+    private var transcriptionRequest = 0L
+    private val inferenceMutex = Mutex()
 
     fun transcribe(
         audioPath: String,
@@ -57,26 +70,61 @@ class TranscriptViewModel(
         require(engineOption.supports(language)) {
             "${engineOption.displayName} does not support ${language.displayName}."
         }
+        transcriptionJob?.cancel()
+        val request = ++transcriptionRequest
         sourceAudioPath = audioPath
         sourceLanguage = language
         sourceEngine = engineOption
         _uiState.value = TranscriptUiState(
             status = TranscriptStatus.Processing,
             language = language,
-            engine = engineOption
+            engine = engineOption,
+            transcriptionStage = if (engineOption == TranscriptionEngineOption.WhisperMedAsrHybrid) TranscriptionStage.Whisper else null
         )
-        val engine = engineResolver.resolve(engineOption)
         if (processAsynchronously) {
-            viewModelScope.launch {
-                val dispatcher = if (engine.option.isOffline) Dispatchers.Default else Dispatchers.IO
-                val result = withContext(dispatcher) {
-                    engine.transcribe(audioPath, language)
+            transcriptionJob = viewModelScope.launch {
+                val requestContext = coroutineContext
+                val dispatcher = if (engineOption.isOffline) Dispatchers.Default else Dispatchers.IO
+                val result = inferenceMutex.withLock {
+                    withContext(dispatcher) {
+                        runTranscription(audioPath, language, engineOption, request) { requestContext.ensureActive() }
+                    }
                 }
-                applyResult(result)
+                if (request == transcriptionRequest) applyResult(result)
             }
         } else {
-            val result = engine.transcribe(audioPath, language)
-            applyResult(result)
+            applyResult(runTranscription(audioPath, language, engineOption, request) {})
+        }
+    }
+
+    private fun runTranscription(
+        audioPath: String,
+        language: TranscriptionLanguage,
+        engineOption: TranscriptionEngineOption,
+        request: Long,
+        checkCancelled: () -> Unit
+    ): TranscriptionResult = try {
+        checkCancelled()
+        val engine = engineResolver.resolve(engineOption)
+        val result = if (engine is ProgressAwareTranscriptionEngine) {
+            engine.transcribe(audioPath, language, { stage ->
+                _uiState.update { if (request == transcriptionRequest) it.copy(transcriptionStage = stage) else it }
+            }, checkCancelled)
+        } else engine.transcribe(audioPath, language)
+        checkCancelled()
+        result
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Exception) {
+        TranscriptionResult.Failure(error.message ?: "Transcription could not be completed.")
+    }
+
+    fun cancelTranscription() {
+        transcriptionJob?.cancel()
+        transcriptionRequest++
+        _uiState.update {
+            it.copy(status = TranscriptStatus.Error, transcriptionStage = null,
+                errorMessage = "Transcription cancelled. The recording is retained; retry when ready.")
         }
     }
 
@@ -91,6 +139,7 @@ class TranscriptViewModel(
             it.copy(
                 status = TranscriptStatus.Ready,
                 transcript = transcript,
+                hybridReview = if (transcript == it.transcript) it.hybridReview else invalidateHybridReview(it.hybridReview),
                 errorMessage = null,
                 concerns = concerns,
                 confirmedConcernIds = it.confirmedConcernIds.intersect(
@@ -236,6 +285,7 @@ class TranscriptViewModel(
             }
             state.copy(
                 transcript = updatedTranscript,
+                hybridReview = invalidateHybridReview(state.hybridReview),
                 concerns = updatedConcerns,
                 confirmedConcernIds = buildSet {
                     addAll(
@@ -271,6 +321,61 @@ class TranscriptViewModel(
         return _uiState.value.canContinue
     }
 
+    /** Applies a prepared phrase after checking its offsets. Never invokes a transcription model. */
+    fun acceptHybridCorrection(id: String) {
+        val state = _uiState.value
+        val review = state.hybridReview ?: return
+        val correction = review.corrections.firstOrNull { it.id == id } ?: return
+        if (correction.status != CorrectionStatus.Suggested) return
+        val start = correction.transcriptStartIndex ?: return
+        val end = correction.transcriptEndIndex ?: return
+        if (start !in 0..state.transcript.length || end !in start..state.transcript.length ||
+            state.transcript.substring(start, end) != correction.originalText
+        ) {
+            _uiState.update { it.copy(hybridReview = invalidateHybridReview(review)) }
+            return
+        }
+        val updated = state.transcript.replaceRange(start, end, correction.suggestedText)
+        val delta = correction.suggestedText.length - (end - start)
+        val corrections = review.corrections.map { other ->
+            when {
+                other.id == id -> other.copy(status = CorrectionStatus.Accepted)
+                other.status !in setOf(CorrectionStatus.Suggested, CorrectionStatus.Unresolved) -> other
+                other.transcriptStartIndex == null || other.transcriptEndIndex == null -> other
+                other.transcriptStartIndex >= end -> other.copy(
+                    transcriptStartIndex = other.transcriptStartIndex + delta,
+                    transcriptEndIndex = other.transcriptEndIndex + delta
+                )
+                other.transcriptEndIndex > start -> other.copy(
+                    status = CorrectionStatus.Unresolved, transcriptStartIndex = null, transcriptEndIndex = null
+                )
+                else -> other
+            }
+        }
+        setTranscript(updated)
+        _uiState.update { it.copy(hybridReview = review.copy(corrections = corrections), hasAttemptedContinue = false) }
+    }
+
+    fun rejectHybridCorrection(id: String) {
+        _uiState.update { state ->
+            state.copy(hybridReview = state.hybridReview?.let { review ->
+                review.copy(corrections = review.corrections.map {
+                    if (it.id == id && it.status in setOf(CorrectionStatus.Suggested, CorrectionStatus.Unresolved)) {
+                        it.copy(status = CorrectionStatus.Rejected)
+                    } else it
+                })
+            })
+        }
+    }
+
+    private fun invalidateHybridReview(review: HybridTranscriptionReview?): HybridTranscriptionReview? =
+        review?.copy(corrections = review.corrections.map {
+            if (it.status in setOf(CorrectionStatus.Suggested, CorrectionStatus.Unresolved)) {
+                it.copy(status = CorrectionStatus.Unresolved, transcriptStartIndex = null, transcriptEndIndex = null,
+                    reasons = (it.reasons + "Transcript changed; review this alternative manually").distinct())
+            } else it
+        })
+
     fun transcriptText(): String {
         val state = _uiState.value
         if (state.segments.isEmpty() || state.pendingSpeakerIds.isNotEmpty()) {
@@ -282,6 +387,7 @@ class TranscriptViewModel(
     }
 
     fun resetForNewConsultation() {
+        transcriptionRequest++
         viewModelScope.coroutineContext.cancelChildren()
         sourceAudioPath = null
         sourceLanguage = TranscriptionLanguage.English
@@ -330,7 +436,9 @@ class TranscriptViewModel(
                     doctorVoiceMatch = result.doctorVoiceMatch,
                     speakerSeparationWarning = result.speakerSeparationWarning,
                     clinicalAnalysisSource = null,
-                    clinicalAnalysisWarning = null
+                    clinicalAnalysisWarning = null,
+                    hybridReview = result.hybridReview,
+                    sourceAudioPath = sourceAudioPath
                 )
             }
             is TranscriptionResult.Failure -> TranscriptUiState(

@@ -11,8 +11,89 @@ import org.junit.Test
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import com.carelipik.app.domain.model.RecordedAudio
+import com.carelipik.app.domain.export.RecordingAudioExporter
+import com.carelipik.app.domain.export.RecordingAudioExportResult
 
 class RecordingViewModelTest {
+    @Test
+    fun download_copiesCurrentRecordingWithoutDiscardingOrTranscribingIt() {
+        val recorder = TrackingRecorder()
+        var exportedPath: String? = null
+        var exportedDestination: String? = null
+        val viewModel = RecordingViewModel(
+            recorder, useAutomaticTimer = false, exportAsynchronously = false,
+            audioExporter = RecordingAudioExporter { audio, destination ->
+                exportedPath = audio.localPath
+                exportedDestination = destination
+                RecordingAudioExportResult.Success(audio.sizeBytes)
+            }
+        )
+        viewModel.startRecording()
+        viewModel.stopRecording()
+        viewModel.downloadAudio("content://synthetic/new.wav")
+
+        assertEquals("/private/test.wav", exportedPath)
+        assertEquals("content://synthetic/new.wav", exportedDestination)
+        assertEquals(RecordingStatus.Completed, viewModel.uiState.value.status)
+        assertTrue(viewModel.uiState.value.downloadMessage!!.contains("downloaded"))
+        assertFalse(viewModel.uiState.value.isDownloading)
+        assertTrue(viewModel.uiState.value.canContinue)
+        assertFalse(recorder.calls.contains("discard"))
+    }
+
+    @Test
+    fun failedDownload_keepsOriginalRecordingAvailableForRetry() {
+        val viewModel = RecordingViewModel(
+            TrackingRecorder(), useAutomaticTimer = false, exportAsynchronously = false,
+            audioExporter = RecordingAudioExporter { _, _ -> RecordingAudioExportResult.Failure("Synthetic write failure") }
+        )
+        viewModel.startRecording()
+        viewModel.stopRecording()
+        viewModel.downloadAudio("content://synthetic/new.wav")
+
+        assertEquals("Synthetic write failure", viewModel.uiState.value.downloadError)
+        assertFalse(viewModel.uiState.value.isDownloading)
+        assertTrue(viewModel.uiState.value.hasSavedAudio)
+        assertTrue(viewModel.uiState.value.canContinue)
+    }
+
+    @Test
+    fun unfinishedRecording_cannotBeDownloaded() {
+        var exported = false
+        val viewModel = RecordingViewModel(
+            TrackingRecorder(), useAutomaticTimer = false, exportAsynchronously = false,
+            audioExporter = RecordingAudioExporter { _, _ ->
+                exported = true
+                RecordingAudioExportResult.Success(1)
+            }
+        )
+        viewModel.downloadAudio("content://synthetic/new.wav")
+
+        assertFalse(exported)
+        assertTrue(viewModel.uiState.value.downloadError!!.contains("Finish recording"))
+    }
+
+    @Test
+    fun download_blocksDiscardAndContinueUntilCopyFinishes() {
+        val recorder = TrackingRecorder()
+        lateinit var viewModel: RecordingViewModel
+        viewModel = RecordingViewModel(
+            recorder, useAutomaticTimer = false, exportAsynchronously = false,
+            audioExporter = RecordingAudioExporter { _, _ ->
+                assertTrue(viewModel.uiState.value.isDownloading)
+                assertFalse(viewModel.uiState.value.canContinue)
+                viewModel.discardRecording()
+                assertFalse(recorder.calls.contains("discard"))
+                RecordingAudioExportResult.Success(128)
+            }
+        )
+        viewModel.startRecording()
+        viewModel.stopRecording()
+        viewModel.downloadAudio("content://synthetic/new.wav")
+
+        assertFalse(viewModel.uiState.value.isDownloading)
+        assertTrue(viewModel.uiState.value.canContinue)
+    }
     @Test
     fun restoredRecording_preservesSelectionsAndRequiresNewOnlineConsent() = kotlinx.coroutines.runBlocking {
         val recorder = TrackingRecorder()

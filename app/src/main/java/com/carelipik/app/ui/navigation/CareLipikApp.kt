@@ -246,6 +246,9 @@ fun CareLipikApp(
                 onViewModeChanged = activeTranscriptViewModel::setViewMode,
                 onSpeakerRoleAssigned = activeTranscriptViewModel::assignSpeakerRole,
                 onSpeakerNameChanged = activeTranscriptViewModel::setSpeakerName,
+                onAcceptHybridCorrection = activeTranscriptViewModel::acceptHybridCorrection,
+                onRejectHybridCorrection = activeTranscriptViewModel::rejectHybridCorrection,
+                onCancelTranscription = activeTranscriptViewModel::cancelTranscription,
                 onRetry = activeTranscriptViewModel::retry,
                 onBack = navigator::navigateBack,
                 onContinue = {
@@ -322,11 +325,12 @@ fun CareLipikApp(
             )
             ConsultationDestination.ConsultationRecording -> RecordingScreen(
                 uiState = recordingUiState,
+                onDownloadAudio = activeRecordingViewModel::downloadAudio,
                 isSavingForLater = savedRecordingsUiState.isBusy,
                 saveError = savedRecordingsUiState.error,
                 onSaveForLater = {
                     if (recordingUiState.status == RecordingStatus.Completed &&
-                        !recordingUiState.isImporting
+                        !recordingUiState.isImporting && !recordingUiState.isDownloading
                     ) {
                         activeRecordingViewModel.stopPlayback()
                         val patient = patientDetailsViewModel.currentDetails()

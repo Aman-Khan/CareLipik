@@ -27,6 +27,12 @@ enum class TranscriptionEngineOption(
         description = "Offline baseline for English, Hindi, and mixed speech",
         isOffline = true,
         supportedLanguages = TranscriptionLanguage.entries.toSet()
+    ),
+    WhisperMedAsrHybrid(
+        displayName = "Whisper + MedASR (Hybrid)",
+        description = "Experimental · Automatically checks doubtful English phrases; tap suggestions to apply",
+        isOffline = true,
+        supportedLanguages = TranscriptionLanguage.entries.toSet()
     );
 
     fun supports(language: TranscriptionLanguage): Boolean = language in supportedLanguages

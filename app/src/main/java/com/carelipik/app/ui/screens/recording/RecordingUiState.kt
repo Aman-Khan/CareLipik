@@ -22,6 +22,9 @@ data class RecordingUiState(
     val isPlaying: Boolean = false,
     val isImporting: Boolean = false,
     val importError: String? = null,
+    val isDownloading: Boolean = false,
+    val downloadMessage: String? = null,
+    val downloadError: String? = null,
     val transcriptionLanguage: TranscriptionLanguage = TranscriptionLanguage.English,
     val transcriptionEngine: TranscriptionEngineOption = TranscriptionEngineOption.MedAsrEnglish,
     val hasOnlineProcessingConsent: Boolean = false
@@ -33,6 +36,7 @@ data class RecordingUiState(
         get() = status == RecordingStatus.Completed &&
             hasSavedAudio &&
             !isImporting &&
+            !isDownloading &&
             (transcriptionEngine.isOffline || hasOnlineProcessingConsent)
 
     val isImportedAudio: Boolean

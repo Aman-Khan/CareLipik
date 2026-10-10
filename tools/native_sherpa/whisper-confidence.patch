@@ -1,0 +1,190 @@
+diff --git a/sherpa-onnx/csrc/offline-recognizer-whisper-impl.h b/sherpa-onnx/csrc/offline-recognizer-whisper-impl.h
+index 47a40d1..6abc23a 100644
+--- a/sherpa-onnx/csrc/offline-recognizer-whisper-impl.h
++++ b/sherpa-onnx/csrc/offline-recognizer-whisper-impl.h
+@@ -11,6 +11,7 @@
+ #include <string>
+ #include <utility>
+ #include <vector>
++#include "nlohmann/json.hpp"
+ 
+ #include "sherpa-onnx/csrc/offline-model-config.h"
+ #include "sherpa-onnx/csrc/macros.h"
+@@ -82,7 +83,10 @@ class OfflineRecognizerWhisperImpl : public OfflineRecognizerImpl {
+ 
+  private:
+   void DecodeStream(OfflineStream *s) const {
+-    decoder_->SetConfig(config_.model_config.whisper);
++    auto whisper_config = config_.model_config.whisper;
++    whisper_config.enable_token_confidence =
++        s->GetOption("carelipik.whisper.collect_confidence") == "1";
++    decoder_->SetConfig(whisper_config);
+ 
+     int32_t max_num_frames = 3000;
+     auto memory_info =
+@@ -137,6 +141,19 @@ class OfflineRecognizerWhisperImpl : public OfflineRecognizerImpl {
+ 
+       auto r = Convert(results[0], symbol_table_);
+       s->SetResult(r);
++      if (whisper_config.enable_token_confidence) {
++        nlohmann::json metadata;
++        metadata["schema"] = 1;
++        metadata["log_probs"] = r.ys_log_probs;
++        metadata["segment_starts"] = r.segment_timestamps;
++        metadata["segment_durations"] = r.segment_durations;
++        metadata["segment_texts"] = r.segment_texts;
++        // A timestamp boundary may split a UTF-8 token sequence. Never let
++        // malformed metadata text abort an otherwise successful transcription.
++        s->SetOption("carelipik.whisper.confidence.v1",
++                     metadata.dump(-1, ' ', false,
++                                   nlohmann::json::error_handler_t::replace));
++      }
+     } catch (const Ort::Exception &ex) {
+       SHERPA_ONNX_LOGE(
+           "\n\nCaught exception:\n\n%s\n\nReturn an empty result. Number of "
+@@ -162,7 +179,8 @@ class OfflineRecognizerWhisperImpl : public OfflineRecognizerImpl {
+         config_.model_config.whisper.enable_segment_timestamps;
+ 
+     // Build text, skipping timestamp tokens if in segment timestamp mode
+-    for (auto i : src.tokens) {
++    for (size_t token_index = 0; token_index < src.tokens.size(); ++token_index) {
++      auto i = src.tokens[token_index];
+       // Skip timestamp tokens (they are >= timestamp_begin)
+       if (enable_segment_timestamps && i >= timestamp_begin) {
+         continue;
+@@ -178,6 +196,9 @@ class OfflineRecognizerWhisperImpl : public OfflineRecognizerImpl {
+ 
+       text += s;
+       r.tokens.push_back(s);
++      if (src.token_log_probs.size() == src.tokens.size()) {
++        r.ys_log_probs.push_back(src.token_log_probs[token_index]);
++      }
+     }
+ 
+     r.text = text;
+diff --git a/sherpa-onnx/csrc/offline-whisper-greedy-search-decoder.cc b/sherpa-onnx/csrc/offline-whisper-greedy-search-decoder.cc
+index 0613146..208b710 100644
+--- a/sherpa-onnx/csrc/offline-whisper-greedy-search-decoder.cc
++++ b/sherpa-onnx/csrc/offline-whisper-greedy-search-decoder.cc
+@@ -5,6 +5,8 @@
+ #include "sherpa-onnx/csrc/offline-whisper-greedy-search-decoder.h"
+ 
+ #include <algorithm>
++#include <cmath>
++#include <limits>
+ #include <utility>
+ #include <vector>
+ 
+@@ -15,6 +17,23 @@
+ 
+ namespace sherpa_onnx {
+ 
++namespace {
++// Probability of the actual selected token under the same filtered logits used
++// by greedy decoding. Double precision log-sum-exp avoids overflow/underflow.
++float SelectedTokenLogProbability(const float *logits, int32_t size,
++                                  int32_t selected) {
++  float maximum = *std::max_element(logits, logits + size);
++  if (!std::isfinite(maximum) || !std::isfinite(logits[selected])) {
++    return std::numeric_limits<float>::quiet_NaN();
++  }
++  double sum = 0.0;
++  for (int32_t i = 0; i < size; ++i) {
++    sum += std::exp(static_cast<double>(logits[i]) - maximum);
++  }
++  return static_cast<float>(logits[selected] - maximum - std::log(sum));
++}
++}  // namespace
++
+ void OfflineWhisperGreedySearchDecoder::SetConfig(
+     const OfflineWhisperModelConfig &config) {
+   config_ = config;
+@@ -137,6 +156,7 @@ OfflineWhisperGreedySearchDecoder::Decode(Ort::Value cross_k,
+ 
+   int32_t n_text_ctx = model_->TextCtx();
+   int32_t max_token_id = 0;
++  float selected_log_prob = 0.0f;
+ 
+   // Get initial logits
+   {
+@@ -150,12 +170,21 @@ OfflineWhisperGreedySearchDecoder::Decode(Ort::Value cross_k,
+                           sample_begin, timestamp_begin, no_timestamps, eot,
+                           kMaxInitialTimestampIndex);
+       max_token_id = MaxElementIndex(logits_copy.data(), vocab_size);
++      if (config_.enable_token_confidence) {
++        selected_log_prob = SelectedTokenLogProbability(
++            logits_copy.data(), vocab_size, max_token_id);
++      }
+     } else {
+       max_token_id = MaxElementIndex(p_start, vocab_size);
++      if (config_.enable_token_confidence) {
++        selected_log_prob = SelectedTokenLogProbability(
++            p_start, vocab_size, max_token_id);
++      }
+     }
+   }
+ 
+   std::vector<int32_t> predicted_tokens;
++  std::vector<float> predicted_log_probs;
+ 
+   // Storage for accumulated attention weights
+   std::vector<std::vector<float>> all_attention_weights;
+@@ -203,6 +232,9 @@ OfflineWhisperGreedySearchDecoder::Decode(Ort::Value cross_k,
+     }
+ 
+     predicted_tokens.push_back(max_token_id);
++    if (config_.enable_token_confidence) {
++      predicted_log_probs.push_back(selected_log_prob);
++    }
+     all_tokens.push_back(max_token_id);
+ 
+     // Track if this is a timestamp token (for filtering in DTW)
+@@ -262,8 +294,16 @@ OfflineWhisperGreedySearchDecoder::Decode(Ort::Value cross_k,
+                           sample_begin, timestamp_begin, no_timestamps, eot,
+                           -1);  // -1 = no max_initial constraint
+       max_token_id = MaxElementIndex(logits_copy.data(), vocab_size);
++      if (config_.enable_token_confidence) {
++        selected_log_prob = SelectedTokenLogProbability(
++            logits_copy.data(), vocab_size, max_token_id);
++      }
+     } else {
+       max_token_id = MaxElementIndex(p_logits, vocab_size);
++      if (config_.enable_token_confidence) {
++        selected_log_prob = SelectedTokenLogProbability(
++            p_logits, vocab_size, max_token_id);
++      }
+     }
+   }
+ 
+@@ -277,6 +317,9 @@ OfflineWhisperGreedySearchDecoder::Decode(Ort::Value cross_k,
+   }
+ 
+   ans[0].tokens = std::move(predicted_tokens);
++  ans[0].token_log_probs = std::move(predicted_log_probs);
++  // Segment fallback duration must be available even without attention output.
++  ans[0].num_audio_frames = num_feature_frames / 2;
+ 
+   // Parse timestamp tokens into segments if using segment timestamp mode
+   if (enable_segment_timestamps) {
+diff --git a/sherpa-onnx/csrc/offline-whisper-model-config.h b/sherpa-onnx/csrc/offline-whisper-model-config.h
+index 49d096b..9cad807 100644
+--- a/sherpa-onnx/csrc/offline-whisper-model-config.h
++++ b/sherpa-onnx/csrc/offline-whisper-model-config.h
+@@ -53,6 +53,9 @@ struct OfflineWhisperModelConfig {
+   // segment-level and token-level timestamps.
+   bool enable_segment_timestamps = false;
+ 
++  // CareLipik: collect decoder scores only for opted-in hybrid streams.
++  bool enable_token_confidence = false;
++
+   OfflineWhisperModelConfig() = default;
+   OfflineWhisperModelConfig(const std::string &encoder,
+                             const std::string &decoder,
+@@ -84,6 +87,7 @@ struct OfflineWhisperSegment {
+ struct OfflineWhisperDecoderResult {
+   /// The decoded token IDs
+   std::vector<int32_t> tokens;
++  std::vector<float> token_log_probs;
+   std::string lang;
+ 
+   /// Cross-attention weights for token-level timestamps (if enabled)

@@ -13,6 +13,7 @@ import com.k2fsa.sherpa.onnx.OfflineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
 import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
 import java.io.File
+import kotlinx.coroutines.CancellationException
 
 /** English-only on-device transcription adapted for medical speech. */
 class SherpaMedAsrTranscriptionEngine(
@@ -50,19 +51,41 @@ class SherpaMedAsrTranscriptionEngine(
             TranscriptionResult.Success(it.transcript, it.segments, it.doctorVoiceMatch)
         },
         onFailure = { error ->
+            if (error is CancellationException) throw error
             TranscriptionResult.Failure(
                 error.message ?: "Medical English transcription could not be completed."
             )
         }
     )
 
-    private fun recognize(recognizer: OfflineRecognizer, samples: FloatArray): String =
+    /** Opens one existing MedASR recognizer for all selected in-memory PCM windows. */
+    internal fun <T> withVerificationSession(
+        checkCancelled: () -> Unit,
+        block: ((FloatArray) -> String) -> T
+    ): T {
+        checkCancelled()
+        checkModelAssets()
+        return createRecognizer().useRecognizer { recognizer ->
+            block { samples ->
+                checkCancelled()
+                recognize(recognizer, samples, checkCancelled)
+            }
+        }
+    }
+
+    private fun recognize(
+        recognizer: OfflineRecognizer,
+        samples: FloatArray,
+        checkCancelled: () -> Unit = {}
+    ): String =
         PcmWaveAudio.chunks(samples, MAX_CHUNK_SAMPLES)
             .mapNotNull { chunk ->
+                checkCancelled()
                 recognizer.createStream().let { stream ->
                     try {
                         stream.acceptWaveform(chunk, PcmWaveAudio.sampleRate)
                         recognizer.decode(stream)
+                        checkCancelled()
                         recognizer.getResult(stream).text.trim().ifBlank { null }
                     } finally {
                         stream.release()
@@ -109,7 +132,7 @@ class SherpaMedAsrTranscriptionEngine(
         release()
     }
 
-    private companion object {
+    internal companion object {
         const val MAX_CHUNK_SECONDS = 25
         const val MAX_CHUNK_SAMPLES = PcmWaveAudio.sampleRate * MAX_CHUNK_SECONDS
         const val MODEL_DIR = "models/sherpa-onnx-medasr-ctc-en-int8"

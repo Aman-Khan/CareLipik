@@ -38,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -73,10 +74,19 @@ fun RecordingScreen(
     modifier: Modifier = Modifier,
     onSaveForLater: (() -> Unit)? = null,
     isSavingForLater: Boolean = false,
-    saveError: String? = null
+    saveError: String? = null,
+    onDownloadAudio: ((String) -> Unit)? = null
 ) {
     val context = LocalContext.current
     var permissionDenied by remember { mutableStateOf(false) }
+    var isChoosingDownloadLocation by rememberSaveable { mutableStateOf(false) }
+    val audioDownloadLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("audio/wav")
+    ) { uri ->
+        isChoosingDownloadLocation = false
+        uri?.toString()?.let { onDownloadAudio?.invoke(it) }
+    }
+    val isBusy = isSavingForLater || uiState.isDownloading || isChoosingDownloadLocation
     val microphonePermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -116,7 +126,7 @@ fun RecordingScreen(
             currentStep = 3,
             totalSteps = 7,
             onBack = onBack,
-            backEnabled = !isSavingForLater && !uiState.isImporting &&
+            backEnabled = !isBusy && !uiState.isImporting &&
                 uiState.status !in setOf(RecordingStatus.Recording, RecordingStatus.Paused)
         )
         Card(
@@ -223,12 +233,35 @@ fun RecordingScreen(
                 onTogglePlayback = onTogglePlayback,
                 onDiscard = onDiscard,
                 onReplace = chooseAudioFile,
-                enabled = !isSavingForLater && !uiState.isImporting
+                enabled = !isBusy && !uiState.isImporting
             )
+            if (onDownloadAudio != null) {
+                OutlinedButton(
+                    onClick = {
+                        isChoosingDownloadLocation = true
+                        audioDownloadLauncher.launch("carelipik-recording-${System.currentTimeMillis()}.wav")
+                    },
+                    enabled = !isBusy && !uiState.isImporting,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (uiState.isDownloading) "Downloading recording…" else "Download recording")
+                }
+                Text(
+                    "Save a reusable WAV file to the folder you choose. " +
+                        "This copy is outside CareLipik's encrypted storage.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                uiState.downloadMessage?.let {
+                    Text(it, color = MaterialTheme.colorScheme.primary)
+                }
+                uiState.downloadError?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error)
+                }
+            }
             onSaveForLater?.let { save ->
                 OutlinedButton(
                     onClick = save,
-                    enabled = !isSavingForLater && !uiState.isImporting,
+                    enabled = !isBusy && !uiState.isImporting,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(if (isSavingForLater) "Saving recording…" else "Save and continue later")
@@ -244,16 +277,16 @@ fun RecordingScreen(
                 selectedLanguage = uiState.transcriptionLanguage,
                 selectedEngine = uiState.transcriptionEngine,
                 hasOnlineProcessingConsent = uiState.hasOnlineProcessingConsent,
-                onLanguageChanged = { if (!isSavingForLater) onTranscriptionLanguageChanged(it) },
-                onEngineChanged = { if (!isSavingForLater) onTranscriptionEngineChanged(it) },
+                onLanguageChanged = { if (!isBusy) onTranscriptionLanguageChanged(it) },
+                onEngineChanged = { if (!isBusy) onTranscriptionEngineChanged(it) },
                 onOnlineProcessingConsentChanged = {
-                    if (!isSavingForLater) onOnlineProcessingConsentChanged(it)
+                    if (!isBusy) onOnlineProcessingConsentChanged(it)
                 }
             )
             TranscriptContinueSection(
                 uiState = uiState,
                 onContinue = onContinue,
-                enabled = !isSavingForLater
+                enabled = !isBusy
             )
         }
     }
@@ -676,6 +709,7 @@ private fun engineUnavailableMessage(engine: TranscriptionEngineOption): String 
     TranscriptionEngineOption.SaarasHindiHinglish ->
         "Choose English, Hindi, or Hinglish to use Saaras."
     TranscriptionEngineOption.WhisperMultilingual -> "Unavailable for this language."
+    TranscriptionEngineOption.WhisperMedAsrHybrid -> "Unavailable for this language."
 }
 
 @Composable

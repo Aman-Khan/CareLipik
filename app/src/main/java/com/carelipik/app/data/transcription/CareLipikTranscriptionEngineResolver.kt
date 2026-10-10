@@ -15,12 +15,14 @@ class CareLipikTranscriptionEngineResolver(context: Context) : TranscriptionEngi
         context.applicationContext
     )
     private val doctorVoiceRoleMatcher = SherpaDoctorVoiceRoleMatcher(context.applicationContext)
+    private val whisper = SherpaWhisperTranscriptionEngine(
+        context.applicationContext, diarizationEngine, doctorVoiceRoleMatcher
+    )
+    private val medAsr = SherpaMedAsrTranscriptionEngine(
+        context.applicationContext, diarizationEngine, doctorVoiceRoleMatcher
+    )
     private val engines: Map<TranscriptionEngineOption, AudioTranscriptionEngine> = listOf(
-        SherpaMedAsrTranscriptionEngine(
-            context.applicationContext,
-            diarizationEngine,
-            doctorVoiceRoleMatcher
-        ),
+        medAsr,
         SaarasTranscriptionEngine(
             PreferDeviceKeyTranscriptionGateway(
                 hasDeviceKey = { deviceApiKeyProvider.get(ApiProvider.Sarvam) != null },
@@ -33,11 +35,8 @@ class CareLipikTranscriptionEngineResolver(context: Context) : TranscriptionEngi
                 )
             )
         ),
-        SherpaWhisperTranscriptionEngine(
-            context.applicationContext,
-            diarizationEngine,
-            doctorVoiceRoleMatcher
-        )
+        whisper,
+        HybridWhisperMedAsrTranscriptionEngine(whisper, medAsr)
     ).associateBy(AudioTranscriptionEngine::option)
 
     override fun resolve(option: TranscriptionEngineOption): AudioTranscriptionEngine {

@@ -20,6 +20,8 @@ internal object OfflineDiarizedTranscription {
         sampleRate: Int,
         diarizationEngine: SpeakerDiarizationEngine?,
         doctorVoiceRoleMatcher: DoctorVoiceRoleMatcher? = null,
+        fallbackAfterEmptyDiarization: Boolean = true,
+        recognizeWithTiming: ((FloatArray, Double, String?) -> String)? = null,
         recognize: (FloatArray) -> String
     ): OfflineTranscriptionPayload {
         val diarization = diarizationEngine?.diarize(
@@ -36,10 +38,18 @@ internal object OfflineDiarizedTranscription {
                 if (endSample - startSample < MIN_TRANSCRIPTION_SAMPLES) {
                     null
                 } else {
-                    recognize(samples.copyOfRange(startSample, endSample))
+                    val audio = samples.copyOfRange(startSample, endSample)
+                    (recognizeWithTiming?.invoke(audio, startSample.toDouble() / sampleRate, turn.speakerId)
+                        ?: recognize(audio))
                         .trim()
                         .ifBlank { null }
-                        ?.let { text -> TranscriptSegment(turn.speakerId, text) }
+                        ?.let { text ->
+                            TranscriptSegment(
+                                turn.speakerId, text,
+                                startTimeSeconds = if (recognizeWithTiming != null) startSample.toDouble() / sampleRate else null,
+                                endTimeSeconds = if (recognizeWithTiming != null) endSample.toDouble() / sampleRate else null
+                            )
+                        }
                 }
             }.mergeAdjacentSpeakerSegments()
             if (segments.isNotEmpty()) {
@@ -55,8 +65,11 @@ internal object OfflineDiarizedTranscription {
                     )
                 )
             }
+            if (!fallbackAfterEmptyDiarization) return OfflineTranscriptionPayload(transcript = "")
         }
-        return OfflineTranscriptionPayload(transcript = recognize(samples).trim())
+        return OfflineTranscriptionPayload(
+            transcript = (recognizeWithTiming?.invoke(samples, 0.0, null) ?: recognize(samples)).trim()
+        )
     }
 
     private fun List<TranscriptSegment>.mergeAdjacentSpeakerSegments(): List<TranscriptSegment> =
@@ -64,7 +77,8 @@ internal object OfflineDiarizedTranscription {
             val previous = merged.lastOrNull()
             if (previous?.speakerId == segment.speakerId) {
                 merged[merged.lastIndex] = previous.copy(
-                    transcript = "${previous.transcript} ${segment.transcript}".trim()
+                    transcript = "${previous.transcript} ${segment.transcript}".trim(),
+                    endTimeSeconds = segment.endTimeSeconds
                 )
             } else {
                 merged += segment

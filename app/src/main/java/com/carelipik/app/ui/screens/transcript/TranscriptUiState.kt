@@ -6,6 +6,9 @@ import com.carelipik.app.domain.transcription.TranscriptConcern
 import com.carelipik.app.domain.transcription.TranscriptSegment
 import com.carelipik.app.domain.transcription.SpeakerRole
 import com.carelipik.app.domain.voice.DoctorVoiceRoleMatchResult
+import com.carelipik.app.domain.transcription.HybridTranscriptionReview
+import com.carelipik.app.domain.transcription.CorrectionStatus
+import com.carelipik.app.domain.transcription.TranscriptionStage
 
 enum class TranscriptStatus {
     Idle,
@@ -37,8 +40,15 @@ data class TranscriptUiState(
     val clinicalAnalysisWarning: String? = null,
     val hasOnlineAnalysisConsent: Boolean = false,
     val isAnalyzingTerms: Boolean = false,
+    val hybridReview: HybridTranscriptionReview? = null,
+    val transcriptionStage: TranscriptionStage? = null,
+    val sourceAudioPath: String? = null,
     val viewMode: TranscriptViewMode = TranscriptViewMode.FullTranscript
 ) {
+    val pendingHybridCorrections: Boolean
+        get() = hybridReview?.corrections?.any {
+            it.status == CorrectionStatus.Suggested || it.status == CorrectionStatus.Unresolved
+        } == true
     val pendingConcerns: List<TranscriptConcern>
         get() = concerns.filterNot { it.id in confirmedConcernIds }
 
@@ -76,6 +86,7 @@ data class TranscriptUiState(
         get() = when {
             !hasAttemptedContinue -> null
             transcript.isBlank() -> "Add or enter a transcript before continuing"
+            pendingHybridCorrections -> "Review the Whisper/MedASR disagreements above"
             pendingSpeakerIds.isNotEmpty() ->
                 "Confirm each person's role: Doctor, Patient, or Other"
             pendingConcerns.isNotEmpty() ->
@@ -86,6 +97,7 @@ data class TranscriptUiState(
     val canContinue: Boolean
         get() = status == TranscriptStatus.Ready &&
             !isAnalyzingTerms &&
+            !pendingHybridCorrections &&
             transcript.isNotBlank() &&
             pendingSpeakerIds.isEmpty() &&
             pendingConcerns.isEmpty()

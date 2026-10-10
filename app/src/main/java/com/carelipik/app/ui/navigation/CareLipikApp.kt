@@ -235,6 +235,7 @@ fun CareLipikApp(
                 onNoteLanguageSelected = activeClinicalDraftViewModel::selectNoteLanguage,
                 onSpecialtyNameChanged = activeClinicalDraftViewModel::setSpecialtyName,
                 onSectionChanged = activeClinicalDraftViewModel::setSectionContent,
+                onGenerateWithMedGemma = activeClinicalDraftViewModel::generateWithMedGemma,
                 onOnlineGenerationConsentChanged =
                     activeClinicalDraftViewModel::setOnlineGenerationConsent,
                 onGenerateWithGemini = activeClinicalDraftViewModel::generateWithGemini,

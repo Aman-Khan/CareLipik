@@ -122,6 +122,8 @@ enum class ClinicalNoteLanguage(val displayName: String) {
 
 enum class ClinicalNoteGenerationSource(val displayName: String) {
     OfflineTranscript("Offline transcript-backed draft"),
+    MedGemma("On-device MedGemma draft"),
+    Gemma4("On-device Gemma 4 draft"),
     Gemini("Gemini structured draft");
 
     companion object {

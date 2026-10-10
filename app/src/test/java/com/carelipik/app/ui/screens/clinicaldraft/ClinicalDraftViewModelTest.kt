@@ -151,6 +151,45 @@ class ClinicalDraftViewModelTest {
         assertFalse(viewModel.uiState.value.needsEnglishGeneration)
     }
 
+    @Test
+    fun medGemmaGeneration_needsNoOnlineConsentAndSatisfiesEnglishGeneration() {
+        val generatedDraft = ClinicalDraft(
+            noteFormat = ClinicalNoteFormat.Soap,
+            noteLanguage = ClinicalNoteLanguage.English,
+            structuredSections = listOf(
+                ClinicalNoteSection(
+                    "subjective",
+                    "Subjective",
+                    "Synthetic English summary",
+                    listOf("T2")
+                )
+            ),
+            generationSource = ClinicalNoteGenerationSource.MedGemma
+        )
+        val deviceEngine = StubOnlineEngine(ClinicalNoteGenerationResult.Success(generatedDraft))
+        val viewModel = ClinicalDraftViewModel(
+            engine = StubEngine(
+                ClinicalExtractionResult.Success(ClinicalDraft(history = "कृत्रिम इतिहास"))
+            ),
+            deviceGenerationEngine = deviceEngine,
+            processAsynchronously = false
+        )
+        viewModel.generate(
+            transcript = "Patient: कृत्रिम इतिहास",
+            language = TranscriptionLanguage.Hindi
+        )
+        viewModel.selectNoteLanguage(ClinicalNoteLanguage.English)
+
+        viewModel.generateWithMedGemma()
+
+        assertEquals(
+            ClinicalNoteGenerationSource.MedGemma,
+            viewModel.uiState.value.draft.generationSource
+        )
+        assertEquals(listOf("T2"), viewModel.uiState.value.draft.structuredSections.single().sourceTurnIds)
+        assertFalse(viewModel.uiState.value.needsEnglishGeneration)
+    }
+
     private class StubEngine(
         private val result: ClinicalExtractionResult
     ) : ClinicalExtractionEngine {

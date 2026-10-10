@@ -80,10 +80,14 @@ class HttpGeminiClinicalNoteGenerationEngine(
 
     internal fun parseDraftResponse(
         body: String,
-        request: ClinicalNoteGenerationRequest
-    ): ClinicalDraft = JSONObject(body).toDraft(request)
+        request: ClinicalNoteGenerationRequest,
+        generationSource: ClinicalNoteGenerationSource = ClinicalNoteGenerationSource.Gemini
+    ): ClinicalDraft = JSONObject(body).toDraft(request, generationSource)
 
-    private fun JSONObject.toDraft(request: ClinicalNoteGenerationRequest): ClinicalDraft {
+    private fun JSONObject.toDraft(
+        request: ClinicalNoteGenerationRequest,
+        generationSource: ClinicalNoteGenerationSource
+    ): ClinicalDraft {
         val rawSections = optJSONArray("sections") ?: JSONArray()
         val sectionsById = buildMap {
             for (index in 0 until rawSections.length()) {
@@ -135,7 +139,7 @@ class HttpGeminiClinicalNoteGenerationEngine(
             structuredSections = sections,
             medications = medications,
             coverageWarnings = optJSONArray("coverage_warnings").strings(MAX_WARNINGS),
-            generationSource = ClinicalNoteGenerationSource.Gemini
+            generationSource = generationSource
         )
     }
 

@@ -36,6 +36,7 @@ fun ClinicalDraftScreen(
     onNoteLanguageSelected: (ClinicalNoteLanguage) -> Unit,
     onSpecialtyNameChanged: (String) -> Unit,
     onSectionChanged: (Int, String) -> Unit,
+    onGenerateWithMedGemma: () -> Unit,
     onOnlineGenerationConsentChanged: (Boolean) -> Unit,
     onGenerateWithGemini: () -> Unit,
     onAddMedication: () -> Unit,
@@ -94,6 +95,12 @@ fun ClinicalDraftScreen(
                         minLines = 1
                     )
                 }
+                MedGemmaGenerationCard(
+                    isGenerating = uiState.isGeneratingOnDevice,
+                    generationSource = uiState.draft.generationSource.displayName,
+                    error = uiState.onDeviceGenerationError,
+                    onGenerate = onGenerateWithMedGemma
+                )
                 GeminiGenerationCard(
                     hasConsent = uiState.hasOnlineGenerationConsent,
                     isGenerating = uiState.isGeneratingOnline,
@@ -135,6 +142,42 @@ fun ClinicalDraftScreen(
                 Button(onClick = onContinue, modifier = Modifier.fillMaxWidth()) {
                     Text("Continue to doctor review")
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MedGemmaGenerationCard(
+    isGenerating: Boolean,
+    generationSource: String,
+    error: String?,
+    onGenerate: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("On-device clinical note", style = MaterialTheme.typography.titleMedium)
+            Text("Current source: $generationSource")
+            Text(
+                "The reviewed transcript stays on this phone. The installed model creates an unverified " +
+                    "draft with transcript evidence IDs; the doctor must review every section.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            Button(
+                onClick = onGenerate,
+                enabled = !isGenerating,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (isGenerating) "Generating on device…" else "Generate on device")
             }
         }
     }

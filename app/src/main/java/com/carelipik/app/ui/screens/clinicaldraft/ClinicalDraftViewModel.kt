@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import android.content.Context
 import com.carelipik.app.data.extraction.HttpGeminiClinicalNoteGenerationEngine
+import com.carelipik.app.data.extraction.LiteRtMedGemmaClinicalNoteGenerationEngine
 import com.carelipik.app.data.extraction.DirectGeminiClinicalNoteGenerationEngine
 import com.carelipik.app.data.extraction.PreferDeviceKeyClinicalNoteGenerationEngine
 import com.carelipik.app.data.local.DeviceApiKeyProvider
@@ -30,6 +31,7 @@ import kotlinx.coroutines.withContext
 
 class ClinicalDraftViewModel(
     private val engine: ClinicalExtractionEngine = TranscriptBackedClinicalExtractionEngine(),
+    private val deviceGenerationEngine: ClinicalNoteGenerationEngine? = null,
     private val onlineEngine: ClinicalNoteGenerationEngine? = null,
     private val processAsynchronously: Boolean = true
 ) : ViewModel() {
@@ -190,6 +192,65 @@ class ClinicalDraftViewModel(
         }
     }
 
+    fun generateWithMedGemma() {
+        val generator = deviceGenerationEngine
+        val transcript = sourceTranscript
+        if (generator == null || transcript.isNullOrBlank()) {
+            _uiState.update {
+                it.copy(onDeviceGenerationError = "On-device MedGemma generation is unavailable.")
+            }
+            return
+        }
+        if (_uiState.value.isGeneratingOnDevice) return
+        val currentDraft = _uiState.value.draft
+        val request = ClinicalNoteGenerationRequest(
+            reviewedTranscript = transcript,
+            sourceLanguage = sourceLanguage,
+            noteFormat = currentDraft.noteFormat,
+            outputLanguage = currentDraft.noteLanguage,
+            specialtyName = sourceSpecialtyName,
+            patientAge = sourcePatientAge.ifBlank { currentDraft.patientAge },
+            visitReason = sourceVisitReason.ifBlank { currentDraft.presentingComplaint }
+        )
+        _uiState.update {
+            it.copy(isGeneratingOnDevice = true, onDeviceGenerationError = null)
+        }
+        val applyGeneration: (ClinicalNoteGenerationResult) -> Unit = { result ->
+            _uiState.update { state ->
+                when (result) {
+                    is ClinicalNoteGenerationResult.Success -> state.copy(
+                        status = ClinicalDraftStatus.Ready,
+                        draft = result.draft.copy(
+                            patientAge = result.draft.patientAge.ifBlank {
+                                currentDraft.patientAge
+                            },
+                            presentingComplaint = currentDraft.presentingComplaint,
+                            history = currentDraft.history,
+                            keyFindings = currentDraft.keyFindings,
+                            assessmentNotes = currentDraft.assessmentNotes,
+                            planNotes = currentDraft.planNotes,
+                            reviewedTranscript = transcript
+                        ),
+                        isGeneratingOnDevice = false,
+                        onDeviceGenerationError = null,
+                        hasAttemptedContinue = false
+                    )
+                    is ClinicalNoteGenerationResult.Failure -> state.copy(
+                        isGeneratingOnDevice = false,
+                        onDeviceGenerationError = result.message
+                    )
+                }
+            }
+        }
+        if (processAsynchronously) {
+            viewModelScope.launch {
+                applyGeneration(withContext(Dispatchers.IO) { generator.generate(request) })
+            }
+        } else {
+            applyGeneration(generator.generate(request))
+        }
+    }
+
     fun addMedication() = updateDraft {
         copy(medications = medications + MedicationDraft())
     }
@@ -259,6 +320,9 @@ class ClinicalDraftViewModel(
             require(modelClass.isAssignableFrom(ClinicalDraftViewModel::class.java))
             val keyProvider = DeviceApiKeyProvider(applicationContext)
             return ClinicalDraftViewModel(
+                deviceGenerationEngine = LiteRtMedGemmaClinicalNoteGenerationEngine(
+                    applicationContext
+                ),
                 onlineEngine = PreferDeviceKeyClinicalNoteGenerationEngine(
                     hasDeviceKey = { keyProvider.get(ApiProvider.Gemini) != null },
                     direct = DirectGeminiClinicalNoteGenerationEngine {

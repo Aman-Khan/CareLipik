@@ -152,6 +152,7 @@ fun CareLipikApp(
                 onDeleteVoiceSample = activeDoctorVoiceEnrollmentViewModel::deleteSample,
                 onSarvamKeyChanged = activeApiCredentialsViewModel::setSarvamInput,
                 onGeminiKeyChanged = activeApiCredentialsViewModel::setGeminiInput,
+                onAssemblyAiKeyChanged = activeApiCredentialsViewModel::setAssemblyAiInput,
                 onSaveApiKey = activeApiCredentialsViewModel::save,
                 onDeleteApiKey = activeApiCredentialsViewModel::delete,
                 onBack = navigator::navigateBack,

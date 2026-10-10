@@ -61,6 +61,7 @@ class EncryptedApiCredentialRepository internal constructor(
         when (provider) {
             ApiProvider.Sarvam -> "sarvam.key"
             ApiProvider.Gemini -> "gemini.key"
+            ApiProvider.AssemblyAI -> "assemblyai.key"
         }
     )
 

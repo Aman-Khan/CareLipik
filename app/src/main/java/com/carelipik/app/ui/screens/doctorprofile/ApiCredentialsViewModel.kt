@@ -16,8 +16,10 @@ import kotlinx.coroutines.launch
 data class ApiCredentialsUiState(
     val sarvamInput: String = "",
     val geminiInput: String = "",
+    val assemblyAiInput: String = "",
     val hasSarvamKey: Boolean = false,
     val hasGeminiKey: Boolean = false,
+    val hasAssemblyAiKey: Boolean = false,
     val isWorking: Boolean = false,
     val message: String? = null
 )
@@ -40,10 +42,15 @@ class ApiCredentialsViewModel(
         _uiState.update { it.copy(geminiInput = value, message = null) }
     }
 
+    fun setAssemblyAiInput(value: String) {
+        _uiState.update { it.copy(assemblyAiInput = value, message = null) }
+    }
+
     fun save(provider: ApiProvider) {
         val key = when (provider) {
             ApiProvider.Sarvam -> _uiState.value.sarvamInput
             ApiProvider.Gemini -> _uiState.value.geminiInput
+            ApiProvider.AssemblyAI -> _uiState.value.assemblyAiInput
         }
         if (key.isBlank()) {
             _uiState.update { it.copy(message = "Enter a key before saving.") }
@@ -57,8 +64,10 @@ class ApiCredentialsViewModel(
                         state.copy(
                             sarvamInput = if (provider == ApiProvider.Sarvam) "" else state.sarvamInput,
                             geminiInput = if (provider == ApiProvider.Gemini) "" else state.geminiInput,
+                            assemblyAiInput = if (provider == ApiProvider.AssemblyAI) "" else state.assemblyAiInput,
                             hasSarvamKey = state.hasSarvamKey || provider == ApiProvider.Sarvam,
                             hasGeminiKey = state.hasGeminiKey || provider == ApiProvider.Gemini,
+                            hasAssemblyAiKey = state.hasAssemblyAiKey || provider == ApiProvider.AssemblyAI,
                             isWorking = false,
                             message = "${provider.name} key saved securely on this device."
                         )
@@ -81,6 +90,7 @@ class ApiCredentialsViewModel(
                         state.copy(
                             hasSarvamKey = state.hasSarvamKey && provider != ApiProvider.Sarvam,
                             hasGeminiKey = state.hasGeminiKey && provider != ApiProvider.Gemini,
+                            hasAssemblyAiKey = state.hasAssemblyAiKey && provider != ApiProvider.AssemblyAI,
                             isWorking = false,
                             message = "${provider.name} key removed from this device."
                         )
@@ -99,7 +109,8 @@ class ApiCredentialsViewModel(
             _uiState.update {
                 it.copy(
                     hasSarvamKey = repository.hasKey(ApiProvider.Sarvam),
-                    hasGeminiKey = repository.hasKey(ApiProvider.Gemini)
+                    hasGeminiKey = repository.hasKey(ApiProvider.Gemini),
+                    hasAssemblyAiKey = repository.hasKey(ApiProvider.AssemblyAI)
                 )
             }
         }

@@ -22,9 +22,27 @@ enum class TranscriptionEngineOption(
             TranscriptionLanguage.Hinglish
         )
     ),
+    AssemblyAiUniversal(
+        displayName = "Online multilingual (AssemblyAI)",
+        description = "Experimental cloud ASR with automatic language detection and multi-speaker diarization",
+        isOffline = false,
+        supportedLanguages = TranscriptionLanguage.entries.toSet()
+    ),
     WhisperMultilingual(
         displayName = "Multilingual (Whisper Small)",
         description = "Offline baseline for English, Hindi, and mixed speech",
+        isOffline = true,
+        supportedLanguages = TranscriptionLanguage.entries.toSet()
+    ),
+    WhisperTurboMultilingual(
+        displayName = "Multilingual (Whisper Turbo)",
+        description = "Higher-capacity offline model; requires about 1.04 GB of local assets",
+        isOffline = true,
+        supportedLanguages = TranscriptionLanguage.entries.toSet()
+    ),
+    WhisperTurboFullAudioTest(
+        displayName = "Whisper Turbo (full audio test)",
+        description = "Experimental 30-second context without speaker diarization or role matching",
         isOffline = true,
         supportedLanguages = TranscriptionLanguage.entries.toSet()
     );

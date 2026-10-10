@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import com.carelipik.app.domain.transcription.TranscriptConcern
 import com.carelipik.app.domain.transcription.TranscriptConcernType
 import com.carelipik.app.domain.transcription.SpeakerRole
+import com.carelipik.app.domain.transcription.TranscriptionEngineOption
 import com.carelipik.app.domain.transcription.TranscriptSegment
 import com.carelipik.app.domain.voice.DoctorVoiceRoleMatchResult
 import com.carelipik.app.ui.components.ConsultationScreenHeader
@@ -116,6 +117,8 @@ fun TranscriptScreen(
                         speakerIds = uiState.speakerIds,
                         speakerRoles = uiState.speakerRoles,
                         doctorVoiceMatch = uiState.doctorVoiceMatch,
+                        speakerNamesAreAiInferred =
+                            uiState.engine == TranscriptionEngineOption.AssemblyAiUniversal,
                         onSpeakerRoleAssigned = onSpeakerRoleAssigned
                     )
                 } else {
@@ -273,6 +276,7 @@ private fun SpeakerRoleReviewPanel(
     speakerIds: List<String>,
     speakerRoles: Map<String, SpeakerRole>,
     doctorVoiceMatch: DoctorVoiceRoleMatchResult?,
+    speakerNamesAreAiInferred: Boolean,
     onSpeakerRoleAssigned: (String, SpeakerRole) -> Unit
 ) {
     Card(
@@ -302,7 +306,12 @@ private fun SpeakerRoleReviewPanel(
                             "No doctor voice is enrolled. Confirm both roles manually."
                         is DoctorVoiceRoleMatchResult.Unavailable ->
                             "Automatic local matching was unavailable. Confirm both roles manually."
-                        null -> "Confirm the doctor and patient roles before using the transcript."
+                        null -> if (speakerNamesAreAiInferred) {
+                            "AssemblyAI inferred these names from the conversation. Confirm each " +
+                                "name by listening, then assign Doctor, Patient, Other, or Noise."
+                        } else {
+                            "Confirm the doctor and patient roles before using the transcript."
+                        }
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer
@@ -311,7 +320,11 @@ private fun SpeakerRoleReviewPanel(
             speakerIds.forEach { speakerId ->
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        text = speakerDisplayName(speakerId),
+                        text = if (speakerNamesAreAiInferred) {
+                            "Detected name: ${speakerDisplayName(speakerId)}"
+                        } else {
+                            speakerDisplayName(speakerId)
+                        },
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold
                     )

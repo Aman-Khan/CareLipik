@@ -75,6 +75,7 @@ fun DoctorProfileScreen(
     onDeleteVoiceSample: () -> Unit,
     onSarvamKeyChanged: (String) -> Unit = {},
     onGeminiKeyChanged: (String) -> Unit = {},
+    onAssemblyAiKeyChanged: (String) -> Unit = {},
     onSaveApiKey: (ApiProvider) -> Unit = {},
     onDeleteApiKey: (ApiProvider) -> Unit = {},
     onBack: () -> Unit,
@@ -141,6 +142,7 @@ fun DoctorProfileScreen(
             uiState = apiCredentialsUiState,
             onSarvamKeyChanged = onSarvamKeyChanged,
             onGeminiKeyChanged = onGeminiKeyChanged,
+            onAssemblyAiKeyChanged = onAssemblyAiKeyChanged,
             onSave = onSaveApiKey,
             onDelete = onDeleteApiKey
         )
@@ -190,6 +192,7 @@ private fun ApiCredentialsCard(
     uiState: ApiCredentialsUiState,
     onSarvamKeyChanged: (String) -> Unit,
     onGeminiKeyChanged: (String) -> Unit,
+    onAssemblyAiKeyChanged: (String) -> Unit,
     onSave: (ApiProvider) -> Unit,
     onDelete: (ApiProvider) -> Unit
 ) {
@@ -212,6 +215,15 @@ private fun ApiCredentialsCard(
             isSaved = uiState.hasGeminiKey,
             enabled = !uiState.isWorking,
             onValueChanged = onGeminiKeyChanged,
+            onSave = onSave,
+            onDelete = onDelete
+        )
+        ApiKeyEditor(
+            provider = ApiProvider.AssemblyAI,
+            value = uiState.assemblyAiInput,
+            isSaved = uiState.hasAssemblyAiKey,
+            enabled = !uiState.isWorking,
+            onValueChanged = onAssemblyAiKeyChanged,
             onSave = onSave,
             onDelete = onDelete
         )

@@ -344,8 +344,9 @@ private fun TranscriptionSetupPanel(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             SectionLabel(number = "2", title = "Transcription engine")
             Text(
-                text = "Saaras provides online two-speaker separation for English, Hindi, and " +
-                    "Hinglish. MedASR, Whisper Small, and Whisper Turbo remain offline options.",
+                text = "Saaras provides online two-speaker separation for Indian conversations. " +
+                    "AssemblyAI is an experimental online multi-speaker option. MedASR, " +
+                    "Whisper Small, and Whisper Turbo remain offline.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -366,6 +367,23 @@ private fun TranscriptionSetupPanel(
                     hasConsent = hasOnlineProcessingConsent,
                     onConsentChanged = onOnlineProcessingConsentChanged
                 )
+            }
+            if (selectedEngine == TranscriptionEngineOption.WhisperTurboFullAudioTest) {
+                Surface(
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Comparison mode: the complete recording is transcribed in " +
+                            "30-second contextual windows. Pyannote, TitaNet speaker clustering, " +
+                            "and automatic Doctor/Patient matching are bypassed, so this mode " +
+                            "does not provide speaker labels.",
+                        modifier = Modifier.padding(14.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
             }
         }
     }
@@ -650,8 +668,10 @@ private fun engineUnavailableMessage(engine: TranscriptionEngineOption): String 
     TranscriptionEngineOption.MedAsrEnglish -> "Choose English to use MedASR."
     TranscriptionEngineOption.SaarasHindiHinglish ->
         "Choose English, Hindi, or Hinglish to use Saaras."
+    TranscriptionEngineOption.AssemblyAiUniversal -> "Unavailable for this language."
     TranscriptionEngineOption.WhisperMultilingual -> "Unavailable for this language."
     TranscriptionEngineOption.WhisperTurboMultilingual -> "Unavailable for this language."
+    TranscriptionEngineOption.WhisperTurboFullAudioTest -> "Unavailable for this language."
 }
 
 @Composable

@@ -19,9 +19,14 @@ class SherpaWhisperTranscriptionEngine(
     private val context: Context,
     private val diarizationEngine: SpeakerDiarizationEngine? = null,
     private val doctorVoiceRoleMatcher: DoctorVoiceRoleMatcher? = null,
-    private val variant: WhisperModelVariant = WhisperModelVariant.Small
+    private val variant: WhisperModelVariant = WhisperModelVariant.Small,
+    private val engineOption: TranscriptionEngineOption = variant.option,
+    maxChunkSeconds: Int = DEFAULT_MAX_CHUNK_SECONDS
 ) : AudioTranscriptionEngine {
-    override val option: TranscriptionEngineOption = variant.option
+    override val option: TranscriptionEngineOption = engineOption
+    private val maxChunkSamples = PcmWaveAudio.sampleRate * maxChunkSeconds.also {
+        require(it in 5..30) { "Whisper chunks must be between 5 and 30 seconds." }
+    }
 
     override fun transcribe(
         audioPath: String,
@@ -60,7 +65,7 @@ class SherpaWhisperTranscriptionEngine(
     )
 
     private fun recognize(recognizer: OfflineRecognizer, samples: FloatArray): String =
-        PcmWaveAudio.chunks(samples, MAX_CHUNK_SAMPLES)
+        PcmWaveAudio.chunks(samples, maxChunkSamples)
             .mapNotNull { chunk ->
                 recognizer.createStream().let { stream ->
                     try {
@@ -119,8 +124,7 @@ class SherpaWhisperTranscriptionEngine(
     }
 
     private companion object {
-        const val MAX_CHUNK_SECONDS = 20
-        const val MAX_CHUNK_SAMPLES = PcmWaveAudio.sampleRate * MAX_CHUNK_SECONDS
+        const val DEFAULT_MAX_CHUNK_SECONDS = 20
     }
 }
 

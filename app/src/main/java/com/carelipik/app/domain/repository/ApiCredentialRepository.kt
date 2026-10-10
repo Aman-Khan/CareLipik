@@ -2,7 +2,8 @@ package com.carelipik.app.domain.repository
 
 enum class ApiProvider {
     Sarvam,
-    Gemini
+    Gemini,
+    AssemblyAI
 }
 
 interface ApiCredentialRepository {

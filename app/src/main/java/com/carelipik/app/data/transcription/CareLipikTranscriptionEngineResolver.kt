@@ -33,6 +33,11 @@ class CareLipikTranscriptionEngineResolver(context: Context) : TranscriptionEngi
                 )
             )
         ),
+        AssemblyAiTranscriptionEngine(
+            DirectAssemblyAiTranscriptionGateway(apiKey = {
+                deviceApiKeyProvider.get(ApiProvider.AssemblyAI)
+            })
+        ),
         SherpaWhisperTranscriptionEngine(
             context.applicationContext,
             diarizationEngine,
@@ -43,6 +48,14 @@ class CareLipikTranscriptionEngineResolver(context: Context) : TranscriptionEngi
             diarizationEngine,
             doctorVoiceRoleMatcher,
             WhisperModelVariant.Turbo
+        ),
+        SherpaWhisperTranscriptionEngine(
+            context = context.applicationContext,
+            diarizationEngine = null,
+            doctorVoiceRoleMatcher = null,
+            variant = WhisperModelVariant.Turbo,
+            engineOption = TranscriptionEngineOption.WhisperTurboFullAudioTest,
+            maxChunkSeconds = 30
         )
     ).associateBy(AudioTranscriptionEngine::option)
 

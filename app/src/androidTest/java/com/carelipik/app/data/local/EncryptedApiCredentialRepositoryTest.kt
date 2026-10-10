@@ -29,16 +29,20 @@ class EncryptedApiCredentialRepositoryTest {
         val repository = EncryptedApiCredentialRepository(context, credentialDirectory)
         val syntheticSarvamKey = "synthetic-sarvam-key-123456"
         val syntheticGeminiKey = "synthetic-gemini-key-654321"
+        val syntheticAssemblyAiKey = "synthetic-assemblyai-key-789012"
 
         repository.saveKey(ApiProvider.Sarvam, syntheticSarvamKey)
         repository.saveKey(ApiProvider.Gemini, syntheticGeminiKey)
+        repository.saveKey(ApiProvider.AssemblyAI, syntheticAssemblyAiKey)
 
         assertEquals(syntheticSarvamKey, repository.readKey(ApiProvider.Sarvam))
         assertEquals(syntheticGeminiKey, repository.readKey(ApiProvider.Gemini))
+        assertEquals(syntheticAssemblyAiKey, repository.readKey(ApiProvider.AssemblyAI))
         credentialDirectory.listFiles().orEmpty().forEach { file ->
             val atRest = file.readText(Charsets.ISO_8859_1)
             assertFalse(atRest.contains(syntheticSarvamKey))
             assertFalse(atRest.contains(syntheticGeminiKey))
+            assertFalse(atRest.contains(syntheticAssemblyAiKey))
         }
 
         repository.deleteKey(ApiProvider.Sarvam)

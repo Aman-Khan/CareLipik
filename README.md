@@ -13,6 +13,8 @@ development recordings, screenshots, fixtures, or tests.
 - Offline English transcription with MedASR.
 - Offline multilingual transcription with Whisper.
 - Optional online English, Hindi, and Hinglish transcription with Sarvam Saaras Batch diarization.
+- Experimental AssemblyAI Universal-3.5 Pro transcription with automatic language detection and
+  multi-speaker diarization, using a user-supplied key stored with Android Keystore.
 - Offline two-speaker diarization.
 - Offline doctor-voice enrollment and confidence-gated Doctor/Patient role matching.
 - Optional on-device Whisper Turbo engine alongside the existing Whisper Small baseline.
@@ -60,6 +62,12 @@ Whisper Turbo is optional because its INT8 encoder, decoder, and tokens require 
 After rebuilding and reinstalling, choose **Multilingual (Whisper Turbo)** on the recording
 screen. It uses 128-bin Whisper features and the same fully offline diarization and doctor-role
 matching path as Whisper Small.
+
+For controlled accuracy comparison, the recording screen also offers **Whisper Turbo (full audio
+test)**. This experimental option bypasses Pyannote segmentation, TitaNet clustering, and doctor
+voice role matching, then transcribes the recording in 30-second contextual windows. It returns a
+continuous transcript without speaker labels. Keep the language, WAV, and device identical when
+comparing it with the normal diarized Turbo option.
 
 The local diarization path uses Sherpa-ONNX 1.13.6 on CPU with Pyannote Segmentation 3.0,
 NeMo TitaNet Small speaker embeddings, and automatic fast clustering. Gemini is not used
@@ -146,7 +154,7 @@ No Sarvam key, Gemini key, Python server, internet connection, or `adb reverse` 
 
 ```sh
 adb devices
-./gradlew installDebug
+./tools/install_debug_preserve_data.sh
 ```
 
 Open CareLipik and select **Offline medical English (MedASR)** or **Offline multilingual
@@ -156,7 +164,7 @@ Open CareLipik and select **Offline medical English (MedASR)** or **Offline mult
 
 1. Install and open the app.
 2. Open **Doctor profile** and find **Online service keys**.
-3. Paste the Sarvam and/or Gemini key and tap **Save securely**.
+3. Paste the Sarvam, Gemini, and/or AssemblyAI key and tap **Save securely**.
 4. Return to the consultation flow and explicitly consent to each online operation.
 
 The plaintext field is cleared immediately after saving. Each key is encrypted with AES-GCM using
@@ -164,11 +172,16 @@ a non-exportable Android Keystore key, stored in app-private storage, excluded f
 and device transfer, and removed by uninstalling the app or tapping **Remove**. CareLipik reads a
 key only when making the corresponding HTTPS request and does not log it.
 
-The doctor profile, provider keys, and voice enrollment persist across normal APK updates, app
-restarts, and phone restarts. `./gradlew installDebug` and Android Studio's normal Run action update
-the APK without clearing them. Uninstalling the app, using **Clear storage**, changing the
-application ID, or installing on a different phone starts with empty local data. Instrumented tests
-use isolated synthetic storage and must never clear the developer's configured profile or keys.
+The doctor profile, provider keys, consultation history, and voice enrollment persist across normal
+APK updates, app restarts, and phone restarts. Use `./tools/install_debug_preserve_data.sh` for an
+explicit `adb install -r` update that does not uninstall the existing app. Android Studio's normal
+Run action and `./gradlew installDebug` should also update the APK without clearing app data.
+
+**Do not run `connectedDebugAndroidTest` against a phone containing a configured profile or test
+consultation history.** The Android test runner can uninstall the target package after testing,
+which removes Android Keystore credentials and all app-private data. Use a disposable emulator or
+a dedicated test phone for instrumented tests. Uninstalling CareLipik, using **Clear storage**,
+changing the application ID, or installing on a different phone also starts with empty local data.
 
 This is suitable for a controlled prototype where the doctor supplies their own restricted key.
 It is not equivalent to server-side secret custody: malware, a rooted/compromised phone, or runtime

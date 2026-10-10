@@ -24,4 +24,28 @@ class TranscriptionEngineOptionTest {
         assertTrue(turbo.supports(TranscriptionLanguage.Hinglish))
         assertTrue(TranscriptionEngineOption.entries.contains(TranscriptionEngineOption.WhisperMultilingual))
     }
+
+    @Test
+    fun fullAudioTurboTest_isOfflineAndKeepsDiarizedTurboAvailable() {
+        val fullAudio = TranscriptionEngineOption.WhisperTurboFullAudioTest
+
+        assertTrue(fullAudio.isOffline)
+        assertTrue(fullAudio.supports(TranscriptionLanguage.Hinglish))
+        assertTrue(
+            TranscriptionEngineOption.entries.contains(
+                TranscriptionEngineOption.WhisperTurboMultilingual
+            )
+        )
+    }
+
+    @Test
+    fun assemblyAi_isOptionalOnlineMultilingualEngine() {
+        val assemblyAi = TranscriptionEngineOption.AssemblyAiUniversal
+
+        assertFalse(assemblyAi.isOffline)
+        assertTrue(assemblyAi.supports(TranscriptionLanguage.Auto))
+        assertTrue(assemblyAi.supports(TranscriptionLanguage.English))
+        assertTrue(assemblyAi.supports(TranscriptionLanguage.Hindi))
+        assertTrue(assemblyAi.supports(TranscriptionLanguage.Hinglish))
+    }
 }

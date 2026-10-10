@@ -5,6 +5,10 @@ Material 3, MVVM, and `StateFlow`. It records a consented consultation, transcri
 doctor correct terms and speaker roles, prepares a structured draft, and saves documentation only
 after final doctor approval.
 
+The planned clinical-NER work is tracked in
+[`docs/clinical-ner-training-plan.md`](docs/clinical-ner-training-plan.md). The repository does not
+currently claim to contain a fine-tuned MuRIL or IndicNER clinical model.
+
 CareLipik is not an autonomous diagnosis or prescription system. Never use real patient data in
 development recordings, screenshots, fixtures, or tests.
 

@@ -32,7 +32,9 @@ class DirectSarvamTranscriptionGateway(
                         .put("language_code", request.languageCode)
                         .put("mode", request.mode.wireValue)
                         .put("with_diarization", true)
-                        .put("num_speakers", request.expectedSpeakerCount)
+                        .apply {
+                            request.expectedSpeakerCount?.let { put("num_speakers", it) }
+                        }
                 )
             ).optString("job_id")
             require(job.matches(SAFE_ID)) { "Sarvam returned an invalid job identifier." }

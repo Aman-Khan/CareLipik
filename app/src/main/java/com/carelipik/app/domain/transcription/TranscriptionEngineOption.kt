@@ -14,7 +14,7 @@ enum class TranscriptionEngineOption(
     ),
     SaarasHindiHinglish(
         displayName = "Online multilingual (Saaras)",
-        description = "Cloud ASR with batch two-speaker separation for Indian conversations",
+        description = "Cloud ASR with automatic speaker separation for Indian conversations",
         isOffline = false,
         supportedLanguages = setOf(
             TranscriptionLanguage.English,

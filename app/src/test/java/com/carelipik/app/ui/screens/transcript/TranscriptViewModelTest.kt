@@ -349,6 +349,59 @@ class TranscriptViewModelTest {
         )
     }
 
+    @Test
+    fun fourPeople_canAssignAdditionalRolesAndRenameWithoutLosingTurns() {
+        val viewModel = TranscriptViewModel(processAsynchronously = false)
+        val transcript = (1..4).joinToString("\n\n") { "Speaker $it: Synthetic greeting $it" }
+        viewModel.setTranscript(transcript)
+        assertFalse(viewModel.validateForContinue())
+
+        viewModel.assignSpeakerRole("speaker-1", SpeakerRole.Doctor)
+        viewModel.assignSpeakerRole("speaker-2", SpeakerRole.Patient)
+        viewModel.assignSpeakerRole("speaker-3", SpeakerRole.Other)
+        viewModel.assignSpeakerRole("speaker-4", SpeakerRole.Other)
+        viewModel.setSpeakerName("speaker-3", "Synthetic attendant")
+
+        assertTrue(viewModel.validateForContinue())
+        assertEquals(SpeakerRole.Other, viewModel.uiState.value.speakerRoles["speaker-3"])
+        assertEquals(SpeakerRole.Other, viewModel.uiState.value.speakerRoles["speaker-4"])
+        assertEquals("Person 4", viewModel.uiState.value.speakerLabel("speaker-4"))
+        assertTrue(viewModel.transcriptText().contains("Synthetic attendant: Synthetic greeting 3"))
+        assertTrue(viewModel.transcriptText().contains("Person 4: Synthetic greeting 4"))
+        assertEquals(transcript, viewModel.uiState.value.transcript)
+
+        viewModel.setTranscript(transcript.replace("greeting 3", "reply 3"))
+        assertEquals("Synthetic attendant", viewModel.uiState.value.speakerNames["speaker-3"])
+        viewModel.setSpeakerName("speaker-3", "")
+        assertEquals("Person 3", viewModel.uiState.value.speakerLabel("speaker-3"))
+        viewModel.resetForNewConsultation()
+        assertTrue(viewModel.uiState.value.speakerNames.isEmpty())
+    }
+
+    @Test
+    fun renamingDoctor_preservesRoleAndIgnoresUnknownSpeaker() {
+        val viewModel = TranscriptViewModel(processAsynchronously = false)
+        viewModel.setTranscript("Speaker 1: Hello\nSpeaker 2: Welcome")
+        viewModel.assignSpeakerRole("speaker-1", SpeakerRole.Doctor)
+        viewModel.setSpeakerName("speaker-1", "Synthetic doctor")
+        viewModel.setSpeakerName("missing", "Ignored")
+
+        assertTrue(viewModel.transcriptText().startsWith("Synthetic doctor (Doctor):"))
+        assertFalse(viewModel.uiState.value.speakerNames.containsKey("missing"))
+        viewModel.setTranscript("Speaker 2: Welcome")
+        assertFalse(viewModel.uiState.value.speakerNames.containsKey("speaker-1"))
+    }
+
+    @Test
+    fun assigningDoctor_keepsExplicitOtherRoleForSecondPerson() {
+        val viewModel = TranscriptViewModel(processAsynchronously = false)
+        viewModel.setTranscript("Speaker 1: Hello\nSpeaker 2: Welcome")
+        viewModel.assignSpeakerRole("speaker-2", SpeakerRole.Other)
+        viewModel.assignSpeakerRole("speaker-1", SpeakerRole.Doctor)
+
+        assertEquals(SpeakerRole.Other, viewModel.uiState.value.speakerRoles["speaker-2"])
+    }
+
     private class StubEngine(
         private val result: TranscriptionResult,
         override val option: TranscriptionEngineOption =

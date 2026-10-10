@@ -5,11 +5,25 @@ import com.carelipik.app.domain.transcription.TranscriptionResult
 import com.carelipik.app.domain.transcription.TranscriptSegment
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class SaarasTranscriptionEngineTest {
     @Test
-    fun hindi_usesTranscribeModeAndTwoSpeakers() {
+    fun automaticSpeakerCount_preservesFourRemoteSpeakers() {
+        val gateway = CapturingGateway(RemoteTranscriptionResult.Success(
+            transcript = "Fallback",
+            segments = (1..4).map { RemoteSpeakerSegment("remote-$it", "Synthetic turn $it") }
+        ))
+        val result = SaarasTranscriptionEngine(gateway)
+            .transcribe("/private/test.wav", TranscriptionLanguage.English) as TranscriptionResult.Success
+
+        assertNull(gateway.request?.expectedSpeakerCount)
+        assertEquals((1..4).map { "speaker-$it" }, result.segments.map { it.speakerId })
+    }
+
+    @Test
+    fun hindi_usesTranscribeModeAndAutomaticSpeakerCount() {
         val gateway = CapturingGateway(
             RemoteTranscriptionResult.Success("नमस्ते")
         )
@@ -20,7 +34,7 @@ class SaarasTranscriptionEngineTest {
         assertEquals("saaras:v3", gateway.request?.model)
         assertEquals("hi-IN", gateway.request?.languageCode)
         assertEquals(RemoteTranscriptionMode.Transcribe, gateway.request?.mode)
-        assertEquals(2, gateway.request?.expectedSpeakerCount)
+        assertNull(gateway.request?.expectedSpeakerCount)
     }
 
     @Test
@@ -46,7 +60,7 @@ class SaarasTranscriptionEngineTest {
 
         assertEquals("en-IN", gateway.request?.languageCode)
         assertEquals(RemoteTranscriptionMode.Transcribe, gateway.request?.mode)
-        assertEquals(2, gateway.request?.expectedSpeakerCount)
+        assertNull(gateway.request?.expectedSpeakerCount)
     }
 
     @Test

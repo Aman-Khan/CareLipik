@@ -11,9 +11,11 @@ speech model.
 - Whisper Small remains available as the offline Hindi/Hinglish fallback.
 
 Saaras Batch is used because consultations are commonly longer than the 30-second REST
-limit and speaker diarization is a Batch-only feature. The request asks for two speakers.
-The result deliberately labels them `Speaker 1` and `Speaker 2`; diarization does not prove
-which voice belongs to the doctor or patient.
+limit and speaker diarization is a Batch-only feature. The request omits `num_speakers` to
+allow automatic speaker counting. The result uses stable numbered speaker IDs; the review
+screen shows Person 1, Person 2, Person 3, and so on with optional editable names.
+Diarization does not prove which voice belongs to the doctor or patient. Confirm each role;
+additional people can be marked Other.
 
 ## Security boundary
 
@@ -43,9 +45,11 @@ model=saaras:v3
 language_code=hi-IN
 mode=transcribe|codemix
 with_diarization=true
-num_speakers=2
 file=<16 kHz mono PCM WAV>
 ```
+
+`num_speakers` is optional. When absent, the backend must omit it from the provider request
+and allow automatic counting instead of defaulting to two speakers.
 
 The backend acknowledges the asynchronous job:
 

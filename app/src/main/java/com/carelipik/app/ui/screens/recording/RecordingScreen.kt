@@ -368,7 +368,7 @@ private fun TranscriptionSetupPanel(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             SectionLabel(number = "2", title = "Transcription engine")
             Text(
-                text = "Saaras provides online two-speaker separation for English, Hindi, and " +
+                text = "Saaras provides online speaker separation for English, Hindi, and " +
                     "Hinglish. MedASR and Whisper remain offline options.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant

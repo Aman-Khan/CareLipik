@@ -57,6 +57,7 @@ fun TranscriptScreen(
     onRetry: () -> Unit,
     onBack: () -> Unit,
     onContinue: () -> Unit,
+    onSpeakerNameChanged: (String, String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -112,11 +113,13 @@ fun TranscriptScreen(
                         selectedMode = uiState.viewMode,
                         onModeChanged = onViewModeChanged
                     )
+                }
+                if (uiState.speakerIds.isNotEmpty()) {
                     SpeakerRoleReviewPanel(
-                        speakerIds = uiState.speakerIds,
-                        speakerRoles = uiState.speakerRoles,
+                        uiState = uiState,
                         doctorVoiceMatch = uiState.doctorVoiceMatch,
-                        onSpeakerRoleAssigned = onSpeakerRoleAssigned
+                        onSpeakerRoleAssigned = onSpeakerRoleAssigned,
+                        onSpeakerNameChanged = onSpeakerNameChanged
                     )
                 } else {
                     UnsegmentedTranscriptNotice()
@@ -132,8 +135,7 @@ fun TranscriptScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
                     TranscriptViewMode.Conversation -> ConversationTranscript(
-                        segments = uiState.segments,
-                        speakerRoles = uiState.speakerRoles
+                        uiState = uiState
                     )
                 }
                 Button(
@@ -270,10 +272,10 @@ private fun TranscriptViewModeSelector(
 
 @Composable
 private fun SpeakerRoleReviewPanel(
-    speakerIds: List<String>,
-    speakerRoles: Map<String, SpeakerRole>,
+    uiState: TranscriptUiState,
     doctorVoiceMatch: DoctorVoiceRoleMatchResult?,
-    onSpeakerRoleAssigned: (String, SpeakerRole) -> Unit
+    onSpeakerRoleAssigned: (String, SpeakerRole) -> Unit,
+    onSpeakerNameChanged: (String, String) -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -297,30 +299,38 @@ private fun SpeakerRoleReviewPanel(
                         is DoctorVoiceRoleMatchResult.Matched ->
                             "Matched the enrolled doctor voice locally. Check or correct the roles."
                         is DoctorVoiceRoleMatchResult.Uncertain ->
-                            "The enrolled voice match was uncertain. Confirm both roles manually."
+                            "The enrolled voice match was uncertain. Confirm each person's role."
                         DoctorVoiceRoleMatchResult.NotEnrolled ->
-                            "No doctor voice is enrolled. Confirm both roles manually."
+                            "No doctor voice is enrolled. Confirm each person's role."
                         is DoctorVoiceRoleMatchResult.Unavailable ->
-                            "Automatic local matching was unavailable. Confirm both roles manually."
-                        null -> "Confirm the doctor and patient roles before using the transcript."
+                            "Automatic local matching was unavailable. Confirm each person's role."
+                        null -> "Choose Doctor, Patient, or Other for each person. Names are optional."
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer
                 )
             }
-            speakerIds.forEach { speakerId ->
+            uiState.speakerIds.forEach { speakerId ->
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        text = speakerDisplayName(speakerId),
+                        text = uiState.personLabel(speakerId),
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold
                     )
+                    OutlinedTextField(
+                        value = uiState.speakerNames[speakerId].orEmpty(),
+                        onValueChange = { onSpeakerNameChanged(speakerId, it) },
+                        label = { Text("Name (optional)") },
+                        placeholder = { Text(uiState.personLabel(speakerId)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("speaker_name_$speakerId")
+                    )
                     SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                        listOf(SpeakerRole.Doctor, SpeakerRole.Patient).forEachIndexed { index, role ->
+                        listOf(SpeakerRole.Doctor, SpeakerRole.Patient, SpeakerRole.Other).forEachIndexed { index, role ->
                             SegmentedButton(
-                                selected = speakerRoles[speakerId] == role,
+                                selected = uiState.speakerRoles[speakerId] == role,
                                 onClick = { onSpeakerRoleAssigned(speakerId, role) },
-                                shape = SegmentedButtonDefaults.itemShape(index = index, count = 2),
+                                shape = SegmentedButtonDefaults.itemShape(index = index, count = 3),
                                 label = { Text(role.displayName) }
                             )
                         }
@@ -350,16 +360,15 @@ private fun UnsegmentedTranscriptNotice() {
 
 @Composable
 private fun ConversationTranscript(
-    segments: List<TranscriptSegment>,
-    speakerRoles: Map<String, SpeakerRole>
+    uiState: TranscriptUiState
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        segments.forEach { segment ->
-            val role = speakerRoles[segment.speakerId] ?: SpeakerRole.Unassigned
-            ConversationBubble(segment = segment, role = role)
+        uiState.segments.forEach { segment ->
+            val role = uiState.speakerRoles[segment.speakerId] ?: SpeakerRole.Unassigned
+            ConversationBubble(segment = segment, role = role, label = uiState.speakerLabel(segment.speakerId))
         }
         Text(
             text = "Switch to Full transcript to edit wording or speaker labels.",
@@ -370,7 +379,7 @@ private fun ConversationTranscript(
 }
 
 @Composable
-private fun ConversationBubble(segment: TranscriptSegment, role: SpeakerRole) {
+private fun ConversationBubble(segment: TranscriptSegment, role: SpeakerRole, label: String) {
     Row(modifier = Modifier.fillMaxWidth()) {
         if (role == SpeakerRole.Doctor) Spacer(modifier = Modifier.weight(0.16f))
         Surface(
@@ -379,7 +388,7 @@ private fun ConversationBubble(segment: TranscriptSegment, role: SpeakerRole) {
             color = when (role) {
                 SpeakerRole.Doctor -> MaterialTheme.colorScheme.primaryContainer
                 SpeakerRole.Patient -> MaterialTheme.colorScheme.secondaryContainer
-                SpeakerRole.Unassigned -> MaterialTheme.colorScheme.surfaceVariant
+                SpeakerRole.Unassigned, SpeakerRole.Other -> MaterialTheme.colorScheme.surfaceVariant
             }
         ) {
             Column(
@@ -387,17 +396,14 @@ private fun ConversationBubble(segment: TranscriptSegment, role: SpeakerRole) {
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    text = if (role == SpeakerRole.Unassigned) {
-                        speakerDisplayName(segment.speakerId)
-                    } else {
-                        role.displayName
-                    },
+                    text = label,
+                    modifier = Modifier.testTag("conversation_label_${segment.speakerId}"),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold,
                     color = when (role) {
                         SpeakerRole.Doctor -> MaterialTheme.colorScheme.onPrimaryContainer
                         SpeakerRole.Patient -> MaterialTheme.colorScheme.onSecondaryContainer
-                        SpeakerRole.Unassigned -> MaterialTheme.colorScheme.onSurfaceVariant
+                        SpeakerRole.Unassigned, SpeakerRole.Other -> MaterialTheme.colorScheme.onSurfaceVariant
                     }
                 )
                 Text(text = segment.transcript, style = MaterialTheme.typography.bodyLarge)
@@ -410,17 +416,13 @@ private fun ConversationBubble(segment: TranscriptSegment, role: SpeakerRole) {
 private fun reviewSupportingText(uiState: TranscriptUiState): String =
     uiState.transcriptError ?: when {
         uiState.pendingSpeakerIds.isNotEmpty() ->
-            "Confirm the doctor and patient speakers above."
+            "Confirm each person's role above."
         uiState.pendingConcerns.isNotEmpty() ->
             "Review ${uiState.pendingConcerns.size} highlighted " +
                 pluralize(uiState.pendingConcerns.size, "term", "terms") + " above."
         uiState.concerns.isNotEmpty() -> "All highlighted terms have been reviewed."
         else -> "Speaker labels and transcript text can be corrected here."
     }
-
-private fun speakerDisplayName(speakerId: String): String = speakerId
-    .split('-', '_')
-    .joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
 
 @Composable
 private fun TranscriptTermReviewPanel(

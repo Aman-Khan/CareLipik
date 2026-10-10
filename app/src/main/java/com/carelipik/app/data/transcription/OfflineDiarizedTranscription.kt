@@ -25,7 +25,7 @@ internal object OfflineDiarizedTranscription {
         val diarization = diarizationEngine?.diarize(
             samples = samples,
             sampleRate = sampleRate,
-            expectedSpeakerCount = EXPECTED_SPEAKER_COUNT
+            expectedSpeakerCount = -1
         )
         if (diarization is SpeakerDiarizationResult.Success) {
             val segments = diarization.turns.mapNotNull { turn ->
@@ -42,7 +42,7 @@ internal object OfflineDiarizedTranscription {
                         ?.let { text -> TranscriptSegment(turn.speakerId, text) }
                 }
             }.mergeAdjacentSpeakerSegments()
-            if (segments.map { it.speakerId }.distinct().size >= EXPECTED_SPEAKER_COUNT) {
+            if (segments.isNotEmpty()) {
                 return OfflineTranscriptionPayload(
                     transcript = segments.joinToString("\n\n") { segment ->
                         "${segment.speakerId.toDisplayLabel()}: ${segment.transcript}"
@@ -76,6 +76,5 @@ internal object OfflineDiarizedTranscription {
         part.replaceFirstChar(Char::uppercase)
     }
 
-    private const val EXPECTED_SPEAKER_COUNT = 2
     private const val MIN_TRANSCRIPTION_SAMPLES = PcmWaveAudio.sampleRate / 5
 }

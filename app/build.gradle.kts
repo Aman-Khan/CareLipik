@@ -58,6 +58,13 @@ android {
     androidResources {
         noCompress += listOf("onnx", "txt")
     }
+    packaging {
+        jniLibs {
+            // Sherpa-ONNX bundles its own ONNX shared object. Keep the supported Java runtime
+            // selected above as the sole packaged copy instead of shipping duplicate filenames.
+            pickFirsts += "lib/**/libonnxruntime.so"
+        }
+    }
 }
 
 dependencies {
@@ -71,6 +78,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.onnxruntime.android)
     implementation(libs.litert.lm.android)
     implementation(libs.sherpa.onnx) {
         // The 1.13.6 Android AAR already bundles these classes but also declares the JVM jar.

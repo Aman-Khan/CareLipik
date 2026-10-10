@@ -9,6 +9,7 @@ activityCompose = "1.13.0"
 kotlin = "2.2.10"
 composeBom = "2026.02.01"
 sherpaOnnx = "1.13.6"
+onnxRuntime = "1.24.3"
 liteRtLm = "0.14.0"
 json = "20251224"
 
@@ -30,6 +31,7 @@ androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 sherpa-onnx = { group = "com.github.k2-fsa", name = "sherpa-onnx", version.ref = "sherpaOnnx" }
+onnxruntime-android = { group = "com.microsoft.onnxruntime", name = "onnxruntime-android", version.ref = "onnxRuntime" }
 litert-lm-android = { group = "com.google.ai.edge.litertlm", name = "litertlm-android", version.ref = "liteRtLm" }
 json = { group = "org.json", name = "json", version.ref = "json" }
 

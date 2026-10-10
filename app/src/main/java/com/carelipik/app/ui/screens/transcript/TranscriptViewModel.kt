@@ -7,6 +7,8 @@ import android.content.Context
 import com.carelipik.app.data.transcription.FakeAudioTranscriptionEngine
 import com.carelipik.app.data.transcription.CareLipikTranscriptionEngineResolver
 import com.carelipik.app.data.transcription.RuleBasedTranscriptReviewAnalyzer
+import com.carelipik.app.data.transcription.ApolloHybridTranscriptReviewAnalyzer
+import com.carelipik.app.data.transcription.ApolloOnnxMedicalNamedEntityRecognizer
 import com.carelipik.app.data.transcription.LabelledTranscriptSegmentParser
 import com.carelipik.app.data.transcription.HttpOnlineTranscriptReviewAnalyzer
 import com.carelipik.app.data.transcription.DirectGeminiTranscriptReviewAnalyzer
@@ -288,6 +290,9 @@ class TranscriptViewModel(
             val keyProvider = DeviceApiKeyProvider(applicationContext)
             return TranscriptViewModel(
                 engineResolver = CareLipikTranscriptionEngineResolver(applicationContext),
+                reviewAnalyzer = ApolloHybridTranscriptReviewAnalyzer(
+                    recognizer = ApolloOnnxMedicalNamedEntityRecognizer(applicationContext)
+                ),
                 onlineReviewAnalyzer = PreferDeviceKeyTranscriptReviewAnalyzer(
                     hasDeviceKey = { keyProvider.get(ApiProvider.Gemini) != null },
                     direct = DirectGeminiTranscriptReviewAnalyzer {

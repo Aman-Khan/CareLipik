@@ -194,6 +194,37 @@ runtime and KV cache require additional memory. Benchmark initialization time, g
 thermal throttling, and long Hindi/Hinglish transcripts on the iQOO before presenting this as a
 production-ready path. Google also requires validation for the intended clinical use case.
 
+### Optional on-device Apollo Medical-NER
+
+CareLipik can optionally run the published `blaze999/Medical-NER` checkpoint (the current home of
+Clinical-AI-Apollo/Medical-NER) on the phone as an INT8 ONNX token-classification bundle. It finds
+candidate medical concepts in an English transcript. Deterministic rules then separately identify
+strength, dose, frequency, duration, route, and common Hindi/Hinglish phrasing. The app only
+highlights candidates; it never edits a transcript, replaces a medicine name, diagnoses, or
+approves a prescription.
+
+The model is trained on PubMed and is therefore not a complete India-specific medicine
+terminology. Keep the existing rule layer and doctor confirmation for Hindi and Hinglish. Do not
+upload consultation text to a public Hugging Face Space.
+
+Export the public MIT-licensed model locally (this downloads model weights into the already ignored
+`.local-models/` directory), then install its three bundle files into CareLipik's app-private
+storage:
+
+```sh
+python3 -m pip install "optimum[onnxruntime]" transformers
+chmod +x ./tools/export_apollo_medical_ner.sh ./tools/install_apollo_medical_ner.sh
+./tools/export_apollo_medical_ner.sh .local-models/apollo-medical-ner
+./tools/install_apollo_medical_ner.sh --serial DEVICE_SERIAL \
+  "$(pwd)/.local-models/apollo-medical-ner"
+```
+
+The bundle contains `model.int8.onnx`, `tokenizer.json`, and `config.json`. All three must be from
+the same export. After installation, create or reopen a transcript: model candidates and rule
+attributes appear as **Terms to verify**. If the bundle is absent or unavailable, CareLipik falls
+back safely to its existing offline review rules. The Apollo component uses `onnxruntime-android`
+and has no network calls at inference time.
+
 ### A. One-time Android and model setup
 
 From the repository root on macOS:

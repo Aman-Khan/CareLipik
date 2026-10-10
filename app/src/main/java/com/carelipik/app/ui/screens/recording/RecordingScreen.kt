@@ -344,14 +344,13 @@ private fun TranscriptionSetupPanel(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             SectionLabel(number = "2", title = "Transcription engine")
             Text(
-                text = "Saaras provides online two-speaker separation for Indian conversations. " +
-                    "AssemblyAI is an experimental online multi-speaker option. MedASR, " +
-                    "Whisper Small, and Whisper Turbo remain offline.",
+                text = "MedASR processes English on this device. Turbo and Saaras send audio " +
+                    "to an online transcription service for speaker separation and transcription.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                TranscriptionEngineOption.entries.forEach { engine ->
+                TranscriptionEngineOption.visibleOptions.forEach { engine ->
                     EngineOptionCard(
                         engine = engine,
                         selectedLanguage = selectedLanguage,
@@ -361,12 +360,6 @@ private fun TranscriptionSetupPanel(
                         onSelected = { onEngineChanged(engine) }
                     )
                 }
-            }
-            if (!selectedEngine.isOffline) {
-                OnlineProcessingConsentCard(
-                    hasConsent = hasOnlineProcessingConsent,
-                    onConsentChanged = onOnlineProcessingConsentChanged
-                )
             }
             if (selectedEngine == TranscriptionEngineOption.WhisperTurboFullAudioTest) {
                 Surface(
@@ -629,22 +622,12 @@ private fun TranscriptContinueSection(
         }
         Text(
             text = when {
-                !uiState.transcriptionEngine.isOffline &&
-                    !uiState.hasOnlineProcessingConsent ->
-                    "Confirm patient consent above to continue."
                 uiState.transcriptionEngine.isOffline ->
                     "The recording and transcription stay on this device."
-                else -> "The recording is sent only after you continue."
+                else -> "The recording is sent to an online transcription service when you continue."
             },
             style = MaterialTheme.typography.bodySmall,
-            color = if (
-                !uiState.transcriptionEngine.isOffline &&
-                !uiState.hasOnlineProcessingConsent
-            ) {
-                MaterialTheme.colorScheme.error
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            }
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
@@ -657,7 +640,7 @@ private fun languageSegmentLabel(language: TranscriptionLanguage): String = when
 }
 
 private fun languageSupportingText(language: TranscriptionLanguage): String = when (language) {
-    TranscriptionLanguage.Auto -> "Whisper detects the language without uploading audio."
+    TranscriptionLanguage.Auto -> "Turbo detects the language using online transcription."
     TranscriptionLanguage.English ->
         "Saaras is recommended for online speaker separation; MedASR stays offline."
     TranscriptionLanguage.Hindi -> "Best for conversations spoken mostly in Hindi."

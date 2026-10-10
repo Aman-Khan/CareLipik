@@ -20,7 +20,7 @@ class ApolloSentencePieceTokenizerTest {
 
     private companion object {
         const val TOKENIZER = """{
-          "model": {"vocab": [
+          "model": {"type": "Unigram", "vocab": [
             ["[PAD]", 0.0], ["[CLS]", 0.0], ["[SEP]", 0.0], ["▁met", 5.0], ["formin", 4.0], ["[UNK]", -1.0]
           ]}
         }"""

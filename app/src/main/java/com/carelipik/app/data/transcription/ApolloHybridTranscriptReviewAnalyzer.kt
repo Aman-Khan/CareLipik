@@ -13,7 +13,9 @@ class ApolloHybridTranscriptReviewAnalyzer(
     private val recognizer: MedicalNamedEntityRecognizer,
     private val ruleExtractor: MedicationAttributeRuleExtractor = MedicationAttributeRuleExtractor(),
     private val fallback: TranscriptReviewAnalyzer = RuleBasedTranscriptReviewAnalyzer(),
-    private val minimumModelConfidence: Float = 0.60f
+    // Scores over 83 token labels are not calibrated clinical certainty. Highlight candidates
+    // for review at a recall-oriented threshold; every span remains unconfirmed.
+    private val minimumModelConfidence: Float = 0.15f
 ) : TranscriptReviewAnalyzer {
     override fun analyze(
         transcript: String,
@@ -21,7 +23,7 @@ class ApolloHybridTranscriptReviewAnalyzer(
     ): List<TranscriptConcern> {
         if (transcript.isBlank()) return emptyList()
         val modelEntities = runCatching { recognizer.recognize(transcript) }
-            .getOrElse { return fallback.analyze(transcript, language) }
+            .getOrElse { emptyList() }
             .filter { it.confidence >= minimumModelConfidence }
             .filter { it.startIndex >= 0 && it.endIndexExclusive <= transcript.length }
             .filter { transcript.substring(it.startIndex, it.endIndexExclusive) == it.text }
@@ -46,8 +48,12 @@ class ApolloHybridTranscriptReviewAnalyzer(
         type = TranscriptConcernType.MedicalTerm,
         reason = buildString {
             append(type.displayName)
-            append(" identified by offline medical NER")
-            if (type in ATTRIBUTE_TYPES) append(" and deterministic rules")
+            append(if (source == "deterministic-rule") " identified by deterministic rules" else " identified by offline medical NER")
+            if (source != "deterministic-rule") {
+                append(" (model score: ")
+                append((confidence * 100).toInt())
+                append("%; unverified candidate)")
+            }
             append(". Confirm against the recording; assertion: ")
             append(assertion.name.lowercase())
             append('.')

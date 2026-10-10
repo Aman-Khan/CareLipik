@@ -32,8 +32,7 @@ data class RecordingUiState(
     val canContinue: Boolean
         get() = status == RecordingStatus.Completed &&
             hasSavedAudio &&
-            !isImporting &&
-            (transcriptionEngine.isOffline || hasOnlineProcessingConsent)
+            !isImporting
 
     val isImportedAudio: Boolean
         get() = audioSource == RecordedAudioSource.Imported

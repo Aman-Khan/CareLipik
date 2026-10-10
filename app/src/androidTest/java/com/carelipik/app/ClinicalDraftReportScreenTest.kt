@@ -44,6 +44,7 @@ class ClinicalDraftReportScreenTest {
                     onSectionChanged = { _, _ -> },
                     onOnlineGenerationConsentChanged = {},
                     onGenerateWithGemini = {},
+                    onGenerateWithMedGemma = {},
                     onAddMedication = {},
                     onMedicationChanged = { _, _ -> },
                     onRemoveMedication = {},

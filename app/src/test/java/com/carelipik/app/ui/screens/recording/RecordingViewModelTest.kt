@@ -97,17 +97,14 @@ class RecordingViewModelTest {
     }
 
     @Test
-    fun onlineEngine_requiresPatientConsentBeforeContinue() {
+    fun onlineEngine_canContinueWithoutSeparateUploadCheckbox() {
         val viewModel = RecordingViewModel(TrackingRecorder(), useAutomaticTimer = false)
 
         viewModel.startRecording()
         viewModel.stopRecording()
         viewModel.setTranscriptionLanguage(TranscriptionLanguage.Hindi)
 
-        assertFalse(viewModel.uiState.value.canContinue)
-
-        viewModel.setOnlineProcessingConsent(true)
-
+        assertFalse(viewModel.uiState.value.hasOnlineProcessingConsent)
         assertTrue(viewModel.uiState.value.canContinue)
     }
 

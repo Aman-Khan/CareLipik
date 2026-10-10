@@ -28,7 +28,7 @@ class ApolloHybridTranscriptReviewAnalyzerTest {
         val analyzer = ApolloHybridTranscriptReviewAnalyzer(
             recognizer = {
                 listOf(
-                    entity(transcript, "asthma", MedicalEntityType.Disease, confidence = 0.3f),
+                    entity(transcript, "asthma", MedicalEntityType.Disease, confidence = 0.05f),
                     MedicalEntity("wrong", 0, 5, MedicalEntityType.Disease, 0.9f, source = "apollo")
                 )
             },
@@ -46,6 +46,14 @@ class ApolloHybridTranscriptReviewAnalyzerTest {
         )
 
         assertEquals("cough", analyzer.analyze(transcript, TranscriptionLanguage.English).single().text)
+    }
+
+    @Test
+    fun analyze_keepsMedicationAttributeRulesWhenModelFails() {
+        val analyzer = ApolloHybridTranscriptReviewAnalyzer(recognizer = { error("unavailable") })
+        val concerns = analyzer.analyze("Take 500 mg twice daily.", TranscriptionLanguage.English)
+        assertEquals(listOf("500 mg", "twice daily"), concerns.map { it.text })
+        assertTrue(concerns.all { it.reason.contains("deterministic rules") })
     }
 
     private fun entity(

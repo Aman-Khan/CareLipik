@@ -212,12 +212,16 @@ Export the public MIT-licensed model locally (this downloads model weights into 
 storage:
 
 ```sh
-python3 -m pip install "optimum[onnxruntime]" transformers
 chmod +x ./tools/export_apollo_medical_ner.sh ./tools/install_apollo_medical_ner.sh
 ./tools/export_apollo_medical_ner.sh .local-models/apollo-medical-ner
 ./tools/install_apollo_medical_ner.sh --serial DEVICE_SERIAL \
   "$(pwd)/.local-models/apollo-medical-ner"
 ```
+
+The exporter uses per-channel, reduced-range INT8 for MatMul weights, keeping embeddings in
+floating point because quantizing those damaged entity predictions. The resulting bundle is
+approximately 514 MiB. Export includes a synthetic FP32/INT8 comparison; failed comparisons stop
+the setup. `tools/verify_apollo_medical_ner.py` can also be run with the export environment's Python.
 
 The bundle contains `model.int8.onnx`, `tokenizer.json`, and `config.json`. All three must be from
 the same export. After installation, create or reopen a transcript: model candidates and rule

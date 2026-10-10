@@ -6,6 +6,13 @@ import org.junit.Test
 
 class ApolloNerDecoderTest {
     @Test
+    fun decode_ignoresNonClinicalLabels() {
+        val decoder = ApolloNerDecoder(listOf("O", "B-AGE"))
+        assertEquals(emptyList<Any>(), decoder.decode("Patient", listOf(ApolloTokenPiece(5, 0, 7)),
+            arrayOf(floatArrayOf(9f, 0f), floatArrayOf(0f, 9f), floatArrayOf(9f, 0f))))
+    }
+
+    @Test
     fun decode_mergesBioTokensIntoAnExactTranscriptSpan() {
         val decoder = ApolloNerDecoder(listOf("O", "B_DRUG", "I_DRUG"))
         val text = "metformin 500 mg"

@@ -11,6 +11,13 @@ import com.carelipik.app.domain.repository.ApiProvider
 
 class CareLipikTranscriptionEngineResolver(context: Context) : TranscriptionEngineResolver {
     private val deviceApiKeyProvider = DeviceApiKeyProvider(context.applicationContext)
+
+    // Sherpa's JNI library resolves OrtGetApiBase from libonnxruntime.so at load time.
+    // Load the shared runtime first because Apollo Medical-NER also contributes ONNX bindings,
+    // which means Android cannot rely on the former transitive load order.
+    @Suppress("unused")
+    private val sherpaNativeRuntimeLoaded = System.loadLibrary("onnxruntime")
+
     private val diarizationEngine = SherpaOfflineSpeakerDiarizationEngine(
         context.applicationContext
     )

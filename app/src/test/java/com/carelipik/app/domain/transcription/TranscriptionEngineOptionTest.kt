@@ -6,6 +6,21 @@ import org.junit.Test
 
 class TranscriptionEngineOptionTest {
     @Test
+    fun picker_showsOnlyThreeEnginesAndKeepsDefaultsVisible() {
+        org.junit.Assert.assertEquals(
+            listOf(TranscriptionEngineOption.MedAsrEnglish,
+                TranscriptionEngineOption.AssemblyAiUniversal,
+                TranscriptionEngineOption.SaarasHindiHinglish),
+            TranscriptionEngineOption.visibleOptions
+        )
+        TranscriptionLanguage.entries.forEach {
+            assertTrue(TranscriptionEngineOption.defaultFor(it) in TranscriptionEngineOption.visibleOptions)
+        }
+        org.junit.Assert.assertEquals("Multilingual (V3 Turbo)",
+            TranscriptionEngineOption.AssemblyAiUniversal.displayName)
+    }
+
+    @Test
     fun medAsr_remainsAvailableForEnglishOnly() {
         val medAsr = TranscriptionEngineOption.MedAsrEnglish
 

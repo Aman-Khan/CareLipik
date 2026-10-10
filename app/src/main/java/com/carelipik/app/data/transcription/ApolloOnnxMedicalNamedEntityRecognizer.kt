@@ -34,10 +34,25 @@ class ApolloOnnxMedicalNamedEntityRecognizer(context: Context) : MedicalNamedEnt
         }
     }
 
+    @Synchronized
     override fun recognize(text: String): List<MedicalEntity> {
         if (text.isBlank()) return emptyList()
         requireAvailable()
-        val encoded = tokenizer.encode(text, MAX_SEQUENCE_LENGTH)
+        val entities = mutableListOf<MedicalEntity>()
+        var start = 0
+        while (start < text.length) {
+            val remaining = text.substring(start)
+            val encoded = tokenizer.encode(remaining, MAX_SEQUENCE_LENGTH)
+            val consumed = encoded.pieces.lastOrNull()?.endIndexExclusive ?: break
+            entities += recognizeWindow(remaining, encoded).map {
+                it.copy(startIndex = it.startIndex + start, endIndexExclusive = it.endIndexExclusive + start)
+            }
+            start += consumed
+        }
+        return entities.distinctBy { Triple(it.startIndex, it.endIndexExclusive, it.type) }
+    }
+
+    private fun recognizeWindow(text: String, encoded: ApolloTokenizedInput): List<MedicalEntity> {
         val shape = longArrayOf(1, encoded.ids.size.toLong())
         val tensors = mutableMapOf<String, OnnxTensor>()
         try {
@@ -51,7 +66,7 @@ class ApolloOnnxMedicalNamedEntityRecognizer(context: Context) : MedicalNamedEnt
                 tensors[name] = OnnxTensor.createTensor(environment, LongBuffer.wrap(values), shape)
             }
             session.value.run(tensors).use { results ->
-                val output = results.firstOrNull()?.value as? Array<*>
+                val output = results.get(0).value as? Array<*>
                     ?: throw ApolloModelUnavailableException("Apollo model returned no token logits.")
                 val batch = output.firstOrNull() as? Array<*>
                     ?: throw ApolloModelUnavailableException("Apollo model returned malformed logits.")

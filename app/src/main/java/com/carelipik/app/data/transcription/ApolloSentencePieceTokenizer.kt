@@ -1,7 +1,5 @@
 package com.carelipik.app.data.transcription
 
-import java.util.Locale
-import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -52,9 +50,9 @@ internal class ApolloSentencePieceTokenizer(tokenizerJson: String) {
                 }
             }
             // Preserve an unknown character as one token when no vocabulary piece begins here.
-            if (best.none { it.previous == start }) {
+            if (source.substring(start, start + 1) !in vocabulary) {
                 val end = start + 1
-                if (current.score > best[end].score) {
+                if (current.score - UNKNOWN_PENALTY > best[end].score) {
                     best[end] = Candidate(current.score - UNKNOWN_PENALTY, start, Token("[UNK]", unknownId, -UNKNOWN_PENALTY))
                 }
             }
@@ -85,11 +83,20 @@ internal class ApolloSentencePieceTokenizer(tokenizerJson: String) {
 
     private fun parseVocabulary(root: JSONObject): Map<String, Token> {
         val entries = root.getJSONObject("model").getJSONArray("vocab")
+        require(root.getJSONObject("model").getString("type") == "Unigram") {
+            "Apollo bundle requires a Unigram tokenizer."
+        }
         return buildMap {
             for (index in 0 until entries.length()) {
                 val entry = entries.getJSONArray(index)
                 val text = entry.getString(0)
                 put(text, Token(text, index, entry.getDouble(1)))
+            }
+            val added = root.optJSONArray("added_tokens")
+            if (added != null) for (index in 0 until added.length()) {
+                val entry = added.getJSONObject(index)
+                val text = entry.getString("content")
+                put(text, Token(text, entry.getInt("id"), 0.0))
             }
         }
     }

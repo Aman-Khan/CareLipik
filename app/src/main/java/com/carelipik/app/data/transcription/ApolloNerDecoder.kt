@@ -65,7 +65,11 @@ internal class ApolloNerDecoder(
             category.contains("ALLERG") -> MedicalEntityType.Allergy
             category.contains("TEST") || category.contains("INVESTIGATION") || category.contains("PROCEDURE") ->
                 MedicalEntityType.Investigation
-            else -> MedicalEntityType.Other
+            category == "DOSAGE" -> MedicalEntityType.Dose
+            category == "FREQUENCY" -> MedicalEntityType.Frequency
+            category == "DURATION" -> MedicalEntityType.Duration
+            category == "ADMINISTRATION" -> MedicalEntityType.Route
+            else -> return null
         }
         return ParsedLabel(prefix, type)
     }

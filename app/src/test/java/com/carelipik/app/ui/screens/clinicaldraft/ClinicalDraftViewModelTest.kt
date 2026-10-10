@@ -190,6 +190,40 @@ class ClinicalDraftViewModelTest {
         assertFalse(viewModel.uiState.value.needsEnglishGeneration)
     }
 
+    @Test
+    fun generatedNote_replacesCrudeOfflineComplaintAndKeepsFallbackForBlankFields() {
+        val generatedDraft = ClinicalDraft(
+            presentingComplaint = "Clear generated visit reason",
+            history = "",
+            keyFindings = "Generated finding",
+            generationSource = ClinicalNoteGenerationSource.MedGemma
+        )
+        val viewModel = ClinicalDraftViewModel(
+            engine = StubEngine(
+                ClinicalExtractionResult.Success(
+                    ClinicalDraft(
+                        presentingComplaint = "Fragmented transcript opening",
+                        history = "Reviewed offline history"
+                    )
+                )
+            ),
+            deviceGenerationEngine = StubOnlineEngine(
+                ClinicalNoteGenerationResult.Success(generatedDraft)
+            ),
+            processAsynchronously = false
+        )
+        viewModel.generate("Patient: Synthetic transcript")
+
+        viewModel.generateWithMedGemma()
+
+        assertEquals(
+            "Clear generated visit reason",
+            viewModel.uiState.value.draft.presentingComplaint
+        )
+        assertEquals("Reviewed offline history", viewModel.uiState.value.draft.history)
+        assertEquals("Generated finding", viewModel.uiState.value.draft.keyFindings)
+    }
+
     private class StubEngine(
         private val result: ClinicalExtractionResult
     ) : ClinicalExtractionEngine {

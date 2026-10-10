@@ -3,6 +3,7 @@ package com.carelipik.app.data.extraction
 import com.carelipik.app.data.transcription.LabelledTranscriptSegmentParser
 import com.carelipik.app.domain.extraction.ClinicalExtractionEngine
 import com.carelipik.app.domain.extraction.ClinicalExtractionResult
+import com.carelipik.app.domain.extraction.ClinicalVisitReasonFormatter
 import com.carelipik.app.domain.model.ClinicalDraft
 import com.carelipik.app.domain.transcription.TranscriptSegment
 import com.carelipik.app.domain.transcription.TranscriptSegmentParser
@@ -27,7 +28,9 @@ class TranscriptBackedClinicalExtractionEngine(
         val sourceStatements = patientStatements.ifEmpty {
             listOf(TranscriptSegment(UNASSIGNED_SPEAKER_ID, reviewedTranscript))
         }
-        val presentingComplaint = sourceStatements.first().transcript.trim()
+        val presentingComplaint = sourceStatements.firstNotNullOfOrNull { statement ->
+            ClinicalVisitReasonFormatter.concise(statement.transcript).takeIf(String::isNotBlank)
+        }.orEmpty()
         val historyStatements = sourceStatements.drop(1).ifEmpty { sourceStatements }
 
         return ClinicalExtractionResult.Success(

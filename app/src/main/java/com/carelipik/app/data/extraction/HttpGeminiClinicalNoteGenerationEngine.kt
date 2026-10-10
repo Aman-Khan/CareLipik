@@ -3,6 +3,7 @@ package com.carelipik.app.data.extraction
 import com.carelipik.app.domain.extraction.ClinicalNoteGenerationEngine
 import com.carelipik.app.domain.extraction.ClinicalNoteGenerationRequest
 import com.carelipik.app.domain.extraction.ClinicalNoteGenerationResult
+import com.carelipik.app.domain.extraction.ClinicalVisitReasonFormatter
 import com.carelipik.app.domain.model.ClinicalDraft
 import com.carelipik.app.domain.model.ClinicalNoteGenerationSource
 import com.carelipik.app.domain.model.ClinicalNoteSection
@@ -131,7 +132,9 @@ class HttpGeminiClinicalNoteGenerationEngine(
         }
         return ClinicalDraft(
             patientAge = request.patientAge,
-            presentingComplaint = request.visitReason,
+            presentingComplaint = ClinicalVisitReasonFormatter.concise(
+                safeString("visit_reason").ifBlank { request.visitReason }
+            ),
             reviewedTranscript = request.reviewedTranscript,
             noteFormat = request.noteFormat,
             noteLanguage = request.outputLanguage,

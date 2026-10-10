@@ -15,11 +15,13 @@ internal object MedGemmaPromptBuilder {
             In prescribed_medications include only medicines explicitly prescribed/recommended by
             the doctor now; exclude existing medicines and pharmacy suggestions.
             Return one COMPACT JSON object only, without markdown or repeated facts:
-            {"sections":[{"id":"","title":"","content":"","source_turn_ids":["T1"]}],
+            {"visit_reason":"","sections":[{"id":"","title":"","content":"","source_turn_ids":["T1"]}],
             "prescribed_medications":[{"name":"","generic_name":"","strength":"",
             "dose":"","route":"","frequency":"","duration":"","instructions":"",
             "source_turn_ids":["T1"],"source_evidence":""}],"coverage_warnings":[]}
             Valid section IDs: $requiredSections. Evidence IDs must directly support each claim.
+            visit_reason must be a concise presenting symptom, injury, or concern with stated
+            onset/duration only. Exclude greetings, names, staff actions, handoffs, and small talk.
             Empty unsupported fields. Language=${request.outputLanguage.displayName};
             format=${request.noteFormat.displayName}; specialty=${request.specialtyName.ifBlank { "unknown" }};
             age=${request.patientAge.ifBlank { "unknown" }}; reason=${request.visitReason.ifBlank { "unknown" }}.
@@ -84,6 +86,7 @@ internal object MedGemmaPromptBuilder {
             providerWarnings.optString(index).trim().takeIf(String::isNotBlank)?.let(warnings::add)
         }
         return JSONObject()
+            .put("visit_reason", raw.optString("visit_reason").trim())
             .put("sections", sections)
             .put("prescribed_medications", medications)
             .put("coverage_warnings", JSONArray(warnings.distinct()))

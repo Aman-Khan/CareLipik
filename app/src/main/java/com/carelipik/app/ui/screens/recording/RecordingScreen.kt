@@ -344,8 +344,8 @@ private fun TranscriptionSetupPanel(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             SectionLabel(number = "2", title = "Transcription engine")
             Text(
-                text = "MedASR processes English on this device. Turbo and Saaras send audio " +
-                    "to an online transcription service for speaker separation and transcription.",
+                text = "MedASR and Multilingual Whisper run fully on this device. " +
+                    "Multilingual V3 Turbo and Saaras securely send audio for online processing.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -640,9 +640,10 @@ private fun languageSegmentLabel(language: TranscriptionLanguage): String = when
 }
 
 private fun languageSupportingText(language: TranscriptionLanguage): String = when (language) {
-    TranscriptionLanguage.Auto -> "Turbo detects the language using online transcription."
+    TranscriptionLanguage.Auto ->
+        "Multilingual V3 Turbo detects the language using online transcription."
     TranscriptionLanguage.English ->
-        "Saaras is recommended for online speaker separation; MedASR stays offline."
+        "MedASR is the default offline medical-English engine; Whisper is also available offline."
     TranscriptionLanguage.Hindi -> "Best for conversations spoken mostly in Hindi."
     TranscriptionLanguage.Hinglish -> "Best when Hindi and English are naturally mixed."
 }

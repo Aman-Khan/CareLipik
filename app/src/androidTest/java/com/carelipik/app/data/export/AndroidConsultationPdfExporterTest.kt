@@ -22,7 +22,8 @@ class AndroidConsultationPdfExporterTest {
                 approvedAtMillis = 1_788_000_000_000L,
                 patientName = "Synthetic patient reference",
                 patientAge = "42",
-                visitReason = "Synthetic follow-up",
+                visitReason = "Synthetic follow-up for cough, fever, shortness of breath, and " +
+                    "review of ongoing medicines that must wrap cleanly in the summary",
                 draft = ClinicalDraft(
                     presentingComplaint = "Synthetic cough and fever for three days.",
                     history = longSyntheticText("History"),

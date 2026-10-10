@@ -9,6 +9,7 @@ import android.graphics.pdf.PdfDocument
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
+import android.text.TextUtils
 import com.carelipik.app.domain.export.ConsultationPdf
 import com.carelipik.app.domain.export.ConsultationPdfExportResult
 import com.carelipik.app.domain.export.ConsultationPdfExporter
@@ -181,32 +182,52 @@ private class ConsultationPdfLayout(private val document: PdfDocument) {
     }
 
     private fun patientSummary(consultation: ApprovedConsultation) {
-        ensureSpace(96f, consultation)
+        val nameLayout = summaryLayout(consultation.patientName.ifBlank { "Not recorded" }, 2)
+        val ageLayout = summaryLayout(consultation.patientAge.ifBlank { "Not recorded" }, 1)
+        val visitReason = consultation.visitReason
+            .replace(Regex("\\s+"), " ")
+            .trim()
+            .ifBlank { "Not recorded" }
+        val reasonLayout = summaryLayout(visitReason, 4)
+        val cardHeight = SUMMARY_VERTICAL_PADDING * 2 +
+            nameLayout.height + ageLayout.height + reasonLayout.height + SUMMARY_ROW_GAP * 2
+        ensureSpace(cardHeight + SUMMARY_BOTTOM_GAP, consultation)
         val top = y
         canvas.drawRoundRect(
             LEFT_MARGIN,
             top,
             PAGE_WIDTH - RIGHT_MARGIN,
-            top + 76f,
+            top + cardHeight,
             10f,
             10f,
             Paint(Paint.ANTI_ALIAS_FLAG).apply { color = PALE_TEAL }
         )
-        drawLabelAndValue("PATIENT / REFERENCE", consultation.patientName, top + 18f)
-        drawLabelAndValue("AGE", consultation.patientAge.ifBlank { "Not recorded" }, top + 46f)
-        drawLabelAndValue("VISIT REASON", consultation.visitReason.ifBlank { "Not recorded" }, top + 64f)
-        y = top + 96f
+        var rowTop = top + SUMMARY_VERTICAL_PADDING
+        drawSummaryRow("PATIENT / REFERENCE", nameLayout, rowTop)
+        rowTop += nameLayout.height + SUMMARY_ROW_GAP
+        drawSummaryRow("AGE", ageLayout, rowTop)
+        rowTop += ageLayout.height + SUMMARY_ROW_GAP
+        drawSummaryRow("VISIT REASON", reasonLayout, rowTop)
+        y = top + cardHeight + SUMMARY_BOTTOM_GAP
     }
 
-    private fun drawLabelAndValue(label: String, value: String, baseline: Float) {
-        canvas.drawText(label, LEFT_MARGIN + 14f, baseline, labelPaint)
-        canvas.drawText(
-            value.take(MAX_SUMMARY_CHARACTERS),
-            SUMMARY_VALUE_X,
-            baseline,
-            bodyPaint
-        )
+    private fun drawSummaryRow(label: String, valueLayout: StaticLayout, top: Float) {
+        canvas.drawText(label, LEFT_MARGIN + 14f, top + SUMMARY_LABEL_BASELINE, labelPaint)
+        canvas.save()
+        canvas.translate(SUMMARY_VALUE_X, top)
+        valueLayout.draw(canvas)
+        canvas.restore()
     }
+
+    private fun summaryLayout(value: String, maxLines: Int): StaticLayout =
+        StaticLayout.Builder.obtain(value, 0, value.length, bodyPaint, SUMMARY_VALUE_WIDTH)
+            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+            .setIncludePad(false)
+            .setLineSpacing(1f, 1f)
+            .setMaxLines(maxLines)
+            .setEllipsize(TextUtils.TruncateAt.END)
+            .setEllipsizedWidth(SUMMARY_VALUE_WIDTH)
+            .build()
 
     private fun section(title: String, content: String) {
         val displayedContent = content.trim().ifBlank { "Not documented" }
@@ -354,8 +375,12 @@ private class ConsultationPdfLayout(private val document: PdfDocument) {
         const val SECTION_GAP = 22f
         const val MIN_SECTION_START_HEIGHT = 120f
         const val CONTENT_WIDTH = PAGE_WIDTH - LEFT_MARGIN.toInt() - RIGHT_MARGIN.toInt()
-        const val MAX_SUMMARY_CHARACTERS = 58
         const val SUMMARY_VALUE_X = 180f
+        const val SUMMARY_VALUE_WIDTH = 357
+        const val SUMMARY_VERTICAL_PADDING = 12f
+        const val SUMMARY_ROW_GAP = 8f
+        const val SUMMARY_BOTTOM_GAP = 20f
+        const val SUMMARY_LABEL_BASELINE = 9f
         val INK = Color.rgb(30, 43, 45)
         val MUTED = Color.rgb(84, 103, 105)
         val TEAL = Color.rgb(0, 107, 105)

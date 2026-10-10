@@ -61,7 +61,7 @@ Whisper Turbo is optional because its INT8 encoder, decoder, and tokens require 
 ./tools/offline_whisper_turbo/setup.sh --check
 ```
 
-After rebuilding and reinstalling, choose **Multilingual (Whisper Turbo)** on the recording
+After rebuilding and reinstalling, choose **Multilingual Whisper (V3 Turbo)** on the recording
 screen. It uses 128-bin Whisper features and the same fully offline diarization and doctor-role
 matching path as Whisper Small.
 

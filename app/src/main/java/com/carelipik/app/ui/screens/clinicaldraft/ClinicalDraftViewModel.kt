@@ -165,11 +165,19 @@ class ClinicalDraftViewModel(
                             patientAge = result.draft.patientAge.ifBlank {
                                 currentDraft.patientAge
                             },
-                            presentingComplaint = currentDraft.presentingComplaint,
-                            history = currentDraft.history,
-                            keyFindings = currentDraft.keyFindings,
-                            assessmentNotes = currentDraft.assessmentNotes,
-                            planNotes = currentDraft.planNotes,
+                            presentingComplaint = result.draft.presentingComplaint.ifBlank {
+                                currentDraft.presentingComplaint
+                            },
+                            history = result.draft.history.ifBlank { currentDraft.history },
+                            keyFindings = result.draft.keyFindings.ifBlank {
+                                currentDraft.keyFindings
+                            },
+                            assessmentNotes = result.draft.assessmentNotes.ifBlank {
+                                currentDraft.assessmentNotes
+                            },
+                            planNotes = result.draft.planNotes.ifBlank {
+                                currentDraft.planNotes
+                            },
                             reviewedTranscript = transcript
                         ),
                         isGeneratingOnline = false,
@@ -224,11 +232,19 @@ class ClinicalDraftViewModel(
                             patientAge = result.draft.patientAge.ifBlank {
                                 currentDraft.patientAge
                             },
-                            presentingComplaint = currentDraft.presentingComplaint,
-                            history = currentDraft.history,
-                            keyFindings = currentDraft.keyFindings,
-                            assessmentNotes = currentDraft.assessmentNotes,
-                            planNotes = currentDraft.planNotes,
+                            presentingComplaint = result.draft.presentingComplaint.ifBlank {
+                                currentDraft.presentingComplaint
+                            },
+                            history = result.draft.history.ifBlank { currentDraft.history },
+                            keyFindings = result.draft.keyFindings.ifBlank {
+                                currentDraft.keyFindings
+                            },
+                            assessmentNotes = result.draft.assessmentNotes.ifBlank {
+                                currentDraft.assessmentNotes
+                            },
+                            planNotes = result.draft.planNotes.ifBlank {
+                                currentDraft.planNotes
+                            },
                             reviewedTranscript = transcript
                         ),
                         isGeneratingOnDevice = false,

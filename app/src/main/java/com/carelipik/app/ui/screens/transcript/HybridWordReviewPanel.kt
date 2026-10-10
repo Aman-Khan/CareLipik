@@ -58,7 +58,9 @@ internal fun HybridWordReviewPanel(state: TranscriptUiState, onAccept: (String) 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Words to review", style = MaterialTheme.typography.titleMedium)
-            Text("Any MedASR alternatives shown here were prepared automatically. Tap a colored phrase or its alternative below to apply it. Tapping does not run a model.")
+            Text(if (review.isLlmGuided)
+                "Qwen3 and MedASR suggestions require your review. Check their verification status above before applying a phrase. Tapping applies the displayed suggestion."
+                else "Any MedASR alternatives shown here were prepared automatically. Tap a colored phrase or its alternative below to apply it. Tapping does not run a model.")
             Text("Gray words had low Whisper decoder scores. Scores and model agreement do not guarantee correctness; some regions may be skipped by language or verification limits.",
                 style = MaterialTheme.typography.bodySmall)
             Text(highlighted, style = MaterialTheme.typography.bodyLarge)
@@ -76,7 +78,9 @@ internal fun HybridWordReviewPanel(state: TranscriptUiState, onAccept: (String) 
             }
             applicable.forEach { correction ->
                 OutlinedButton(onClick = { onAccept(correction.id) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("${correction.originalText.ifEmpty { "(insert)" }} -> ${correction.suggestedText.ifEmpty { "(remove)" }}")
+                    Text((if (review.isLlmGuided) {
+                        if (correction.qwenSuggestion != null) "Qwen3: " else "MedASR: "
+                    } else "") + "${correction.originalText.ifEmpty { "(insert)" }} -> ${correction.suggestedText.ifEmpty { "(remove)" }}")
                 }
             }
             if (applicable.isEmpty()) Text("No prepared phrase replacement is available. Review unresolved alternatives above or edit the full transcript.")

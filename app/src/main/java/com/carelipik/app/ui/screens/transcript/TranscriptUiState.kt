@@ -43,6 +43,7 @@ data class TranscriptUiState(
     val isAnalyzingTerms: Boolean = false,
     val hybridReview: HybridTranscriptionReview? = null,
     val transcriptionStage: TranscriptionStage? = null,
+    val transcriptionDetail: String? = null,
     val sourceAudioPath: String? = null,
     val viewMode: TranscriptViewMode = TranscriptViewMode.FullTranscript
 ) {
@@ -57,7 +58,7 @@ data class TranscriptUiState(
         get() = concerns.size - pendingConcerns.size
 
     val speakerIds: List<String>
-        get() = segments.map { it.speakerId }.distinct()
+        get() = segments.map { it.speakerId }.filterNot { it == "speaker-unknown" }.distinct()
 
     val canShowConversation: Boolean
         get() = speakerIds.size >= 2
@@ -65,6 +66,7 @@ data class TranscriptUiState(
     fun personLabel(speakerId: String): String = "Person ${speakerIds.indexOf(speakerId) + 1}"
 
     fun speakerLabel(speakerId: String): String {
+        if (speakerId == "speaker-unknown") return "Unassigned speech"
         val name = speakerNames[speakerId]?.trim().orEmpty()
         val role = speakerRoles[speakerId] ?: SpeakerRole.Unassigned
         return when {
@@ -79,7 +81,7 @@ data class TranscriptUiState(
 
     val labelProjection: TranscriptLabelProjection
         get() {
-            val labels = speakerIds.associateWith(::speakerLabel)
+            val labels = segments.map { it.speakerId }.distinct().associateWith(::speakerLabel)
             val duplicateLabels = labels.values.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
             return TranscriptLabelProjection(transcript, labels.mapValues { (id, label) ->
                 if (label in duplicateLabels) "$label (${personLabel(id)})" else label

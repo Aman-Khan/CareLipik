@@ -44,8 +44,8 @@ fun DoctorReviewScreen(
         ConsultationScreenHeader(
             title = "Doctor review",
             subtitle = "Read the complete note before approving it for export.",
-            currentStep = 6,
-            totalSteps = 7,
+            currentStep = 7,
+            totalSteps = 8,
             onBack = onBack
         )
         SafetyNotice()

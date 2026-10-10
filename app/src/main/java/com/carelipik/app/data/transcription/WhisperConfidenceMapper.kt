@@ -14,7 +14,8 @@ internal object WhisperConfidenceMapper {
         chunkStartMs: Long,
         chunkEndMs: Long,
         speakerId: String?,
-        language: String?
+        language: String?,
+        clipPaddedTimestamps: Boolean = false
     ): List<WhisperDecodingSegment>? = runCatching {
         val metadata = JSONObject(metadataJson)
         require(metadata.getInt("schema") == 1)
@@ -70,8 +71,9 @@ internal object WhisperConfidenceMapper {
                 require(startSeconds.isFinite() && durationSeconds.isFinite() && startSeconds >= 0 && durationSeconds >= 0)
                 val start = chunkStartMs + (startSeconds * 1_000).toLong()
                 val end = chunkStartMs + ((startSeconds + durationSeconds) * 1_000).toLong()
-                require(start >= previousEnd - 20 && start < chunkEndMs && end <= chunkEndMs + 40 && end > start)
-                previousEnd = end
+                val maximumEnd = if (clipPaddedTimestamps) chunkStartMs + 30_000 else chunkEndMs + 40
+                require(start >= previousEnd - 20 && start < chunkEndMs && end <= maximumEnd && end > start)
+                previousEnd = end.coerceAtMost(chunkEndMs)
                 val from = cursor
                 cursor += text.length
                 if (text.isBlank()) null else region(from, cursor, start, end.coerceAtMost(chunkEndMs))

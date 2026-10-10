@@ -44,7 +44,9 @@ fun ClinicalDraftScreen(
     onRetry: () -> Unit,
     onBack: () -> Unit,
     onContinue: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onGenerateWithQwen: () -> Unit = {},
+    onCancelLocalGeneration: () -> Unit = {}
 ) {
     Column(
         modifier = modifier
@@ -59,7 +61,7 @@ fun ClinicalDraftScreen(
             title = "Clinical draft",
             subtitle = "Turn the reviewed transcript into structured notes, then verify every section.",
             currentStep = 5,
-            totalSteps = 7,
+            totalSteps = 8,
             onBack = onBack,
             backEnabled = uiState.status != ClinicalDraftStatus.Processing
         )
@@ -72,6 +74,22 @@ fun ClinicalDraftScreen(
                 onRetry = onRetry
             )
             ClinicalDraftStatus.Ready -> {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Local Qwen3 report", style = MaterialTheme.typography.titleMedium)
+                        Text("Organizes reviewed transcript evidence into the selected format, entirely offline. Missing facts stay blank. Review and edit the result.")
+                        if (uiState.isGeneratingLocal) {
+                            CircularProgressIndicator()
+                            Text(uiState.localGenerationDetail ?: "Organizing report…")
+                            OutlinedButton(onClick = onCancelLocalGeneration) { Text("Cancel report generation") }
+                        } else {
+                            Button(onClick = onGenerateWithQwen, enabled = !uiState.isGeneratingOnline) {
+                                Text("Generate selected report with Qwen3")
+                            }
+                        }
+                        uiState.localGenerationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    }
+                }
                 DraftField(
                     label = "Patient age from reviewed transcript",
                     value = uiState.draft.patientAge,
@@ -96,7 +114,7 @@ fun ClinicalDraftScreen(
                 }
                 GeminiGenerationCard(
                     hasConsent = uiState.hasOnlineGenerationConsent,
-                    isGenerating = uiState.isGeneratingOnline,
+                    isGenerating = uiState.isGeneratingOnline || uiState.isGeneratingLocal,
                     generationSource = uiState.draft.generationSource.displayName,
                     error = uiState.onlineGenerationError,
                     onConsentChanged = onOnlineGenerationConsentChanged,
@@ -133,7 +151,7 @@ fun ClinicalDraftScreen(
                     Text(error, color = MaterialTheme.colorScheme.error)
                 }
                 Button(onClick = onContinue, modifier = Modifier.fillMaxWidth()) {
-                    Text("Continue to doctor review")
+                    Text("Continue to report and prescription")
                 }
             }
         }

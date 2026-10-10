@@ -182,7 +182,7 @@ class RecordingViewModel(
                     audioDisplayName = result.audio.displayName,
                     audioSizeBytes = result.audio.sizeBytes,
                     transcriptionLanguage = saved.recording.language,
-                    transcriptionEngine = saved.recording.engine,
+                    transcriptionEngine = TranscriptionEngineOption.LlmGuidedHybrid,
                     speakerCount = saved.recording.speakerCount,
                     hasOnlineProcessingConsent = false
                 )

@@ -8,6 +8,9 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaPlayer
 import android.media.MediaRecorder
+import android.media.audiofx.AudioEffect
+import android.media.audiofx.NoiseSuppressor
+import android.util.Log
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.core.content.ContextCompat
@@ -209,48 +212,86 @@ class AndroidMicrophoneRecorder(private val context: Context) : ConsultationReco
         shouldStop = false
         isPaused = false
         audioRecord = recorder
-        recorder.startRecording()
+        // Attach to this capture session: suppression happens before PCM is written, without
+        // removing silent frames or shifting the timestamps used by speaker alignment.
+        val noiseSuppressor = createNoiseSuppressor(recorder.audioSessionId)
+        try {
+            recorder.startRecording()
+        } catch (error: Exception) {
+            noiseSuppressor?.release()
+            recorder.release()
+            audioRecord = null
+            throw error
+        }
         captureJob = scope.launch {
-            RandomAccessFile(file, "rw").use { output ->
-                writeWaveHeader(output, sampleRate, dataSize = 0)
-                val samples = ShortArray(bufferSize / 2)
-                val bytes = ByteArray(samples.size * 2)
-                try {
-                    while (isActive && !shouldStop) {
-                        if (isPaused) {
-                            delay(50)
-                            continue
+            try {
+                RandomAccessFile(file, "rw").use { output ->
+                    writeWaveHeader(output, sampleRate, dataSize = 0)
+                    val samples = ShortArray(bufferSize / 2)
+                    val bytes = ByteArray(samples.size * 2)
+                    try {
+                        while (isActive && !shouldStop) {
+                            if (isPaused) {
+                                delay(50)
+                                continue
+                            }
+                            val count = recorder.read(samples, 0, samples.size)
+                            if (count <= 0) continue
+                            var squareTotal = 0.0
+                            repeat(count) { index ->
+                                val sample = samples[index].toInt()
+                                bytes[index * 2] = sample.toByte()
+                                bytes[index * 2 + 1] = (sample shr 8).toByte()
+                                squareTotal += sample.toDouble() * sample.toDouble()
+                            }
+                            output.write(bytes, 0, count * 2)
+                            val normalizedRms = (sqrt(squareTotal / count) / Short.MAX_VALUE).toFloat()
+                            val level = (normalizedRms * 8f).coerceIn(0f, 1f)
+                            _amplitude.value = (_amplitude.value * 0.35f) + (level * 0.65f)
                         }
-                        val count = recorder.read(samples, 0, samples.size)
-                        if (count <= 0) continue
-                        var squareTotal = 0.0
-                        repeat(count) { index ->
-                            val sample = samples[index].toInt()
-                            bytes[index * 2] = sample.toByte()
-                            bytes[index * 2 + 1] = (sample shr 8).toByte()
-                            squareTotal += sample.toDouble() * sample.toDouble()
+                    } finally {
+                        if (recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) recorder.stop()
+                        _amplitude.value = 0f
+                        val dataSize = (output.length() - WAVE_HEADER_SIZE).coerceAtLeast(0)
+                        writeWaveHeader(output, sampleRate, dataSize)
+                        if (dataSize > 0 && outputFile === file && file.exists()) {
+                            _recordedAudio.value = RecordedAudio(
+                                localPath = file.absolutePath,
+                                sizeBytes = output.length(),
+                                durationMillis = dataSize * 1_000L / (sampleRate * 2L)
+                            )
                         }
-                        output.write(bytes, 0, count * 2)
-                        val normalizedRms = (sqrt(squareTotal / count) / Short.MAX_VALUE).toFloat()
-                        val level = (normalizedRms * 8f).coerceIn(0f, 1f)
-                        _amplitude.value = (_amplitude.value * 0.35f) + (level * 0.65f)
-                    }
-                } finally {
-                    if (recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) recorder.stop()
-                    recorder.release()
-                    audioRecord = null
-                    _amplitude.value = 0f
-                    val dataSize = (output.length() - WAVE_HEADER_SIZE).coerceAtLeast(0)
-                    writeWaveHeader(output, sampleRate, dataSize)
-                    if (dataSize > 0 && outputFile === file && file.exists()) {
-                        _recordedAudio.value = RecordedAudio(
-                            localPath = file.absolutePath,
-                            sizeBytes = output.length(),
-                            durationMillis = dataSize * 1_000L / (sampleRate * 2L)
-                        )
                     }
                 }
+            } finally {
+                noiseSuppressor?.release()
+                recorder.release()
+                if (audioRecord === recorder) audioRecord = null
             }
+        }
+    }
+
+    private fun createNoiseSuppressor(sessionId: Int): NoiseSuppressor? {
+        var effect: NoiseSuppressor? = null
+        return try {
+            if (!NoiseSuppressor.isAvailable()) {
+                Log.i("CareLipikRecording", "Noise suppression unavailable; recording original microphone audio")
+                null
+            } else {
+                effect = NoiseSuppressor.create(sessionId)
+                if (effect != null && effect.setEnabled(true) == AudioEffect.SUCCESS && effect.enabled) {
+                    Log.i("CareLipikRecording", "Capture noise suppression enabled")
+                    effect
+                } else {
+                    effect?.release()
+                    Log.w("CareLipikRecording", "Noise suppression could not be enabled; recording original microphone audio")
+                    null
+                }
+            }
+        } catch (_: Exception) {
+            effect?.release()
+            Log.w("CareLipikRecording", "Noise suppression initialization failed; recording original microphone audio")
+            null
         }
     }
 

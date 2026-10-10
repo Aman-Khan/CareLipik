@@ -105,7 +105,7 @@ class RecordingViewModelTest {
         assertTrue(viewModel.uiState.value.canContinue)
     }
     @Test
-    fun restoredRecording_preservesSelectionsAndRequiresNewOnlineConsent() = kotlinx.coroutines.runBlocking {
+    fun restoredRecording_preservesLanguageAndUsesFinalOfflineHybrid() = kotlinx.coroutines.runBlocking {
         val recorder = TrackingRecorder()
         val viewModel = RecordingViewModel(recorder, useAutomaticTimer = false)
         val audio = RecordedAudio("synthetic.wav", 32_044L, durationMillis = 1_000L)
@@ -119,9 +119,9 @@ class RecordingViewModelTest {
         assertEquals(3, viewModel.speakerCount())
         assertEquals(RecordingStatus.Completed, viewModel.uiState.value.status)
         assertEquals(TranscriptionLanguage.Hinglish, viewModel.transcriptionLanguage())
-        assertEquals(TranscriptionEngineOption.SaarasHindiHinglish, viewModel.transcriptionEngine())
+        assertEquals(TranscriptionEngineOption.LlmGuidedHybrid, viewModel.transcriptionEngine())
         assertFalse(viewModel.uiState.value.hasOnlineProcessingConsent)
-        assertFalse(viewModel.uiState.value.canContinue)
+        assertTrue(viewModel.uiState.value.canContinue)
         viewModel.setOnlineProcessingConsent(true)
         assertTrue(viewModel.uiState.value.canContinue)
     }
@@ -203,7 +203,7 @@ class RecordingViewModelTest {
             viewModel.transcriptionLanguage()
         )
         assertEquals(
-            TranscriptionEngineOption.SaarasHindiHinglish,
+            TranscriptionEngineOption.LlmGuidedHybrid,
             viewModel.transcriptionEngine()
         )
     }
@@ -211,6 +211,7 @@ class RecordingViewModelTest {
     @Test
     fun onlineEngine_requiresPatientConsentBeforeContinue() {
         val viewModel = RecordingViewModel(TrackingRecorder(), useAutomaticTimer = false)
+        viewModel.setTranscriptionEngine(TranscriptionEngineOption.SaarasHindiHinglish)
 
         viewModel.startRecording()
         viewModel.stopRecording()
@@ -250,6 +251,7 @@ class RecordingViewModelTest {
     @Test
     fun switchingFromHinglishToEnglish_keepsCompatibleOnlineEngine() {
         val viewModel = RecordingViewModel(TrackingRecorder(), useAutomaticTimer = false)
+        viewModel.setTranscriptionEngine(TranscriptionEngineOption.SaarasHindiHinglish)
 
         viewModel.setTranscriptionLanguage(TranscriptionLanguage.Hinglish)
         viewModel.setTranscriptionLanguage(TranscriptionLanguage.English)

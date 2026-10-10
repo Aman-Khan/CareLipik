@@ -46,8 +46,8 @@ fun ConsultationExportScreen(
         ConsultationScreenHeader(
             title = "Export approved note",
             subtitle = "Generate an encrypted report linked to this consultation history.",
-            currentStep = 7,
-            totalSteps = 7,
+            currentStep = 8,
+            totalSteps = 8,
             onBack = onBack,
             backEnabled = uiState.status != ConsultationExportStatus.Generating
         )

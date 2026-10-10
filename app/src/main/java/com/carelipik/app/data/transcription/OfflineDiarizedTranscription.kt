@@ -1,6 +1,7 @@
 package com.carelipik.app.data.transcription
 
 import com.carelipik.app.domain.transcription.SpeakerDiarizationEngine
+import com.carelipik.app.domain.transcription.DiarizedAudioTurn
 import com.carelipik.app.domain.transcription.SpeakerDiarizationResult
 import com.carelipik.app.domain.transcription.TranscriptSegment
 import com.carelipik.app.domain.voice.DoctorVoiceRoleMatchResult
@@ -22,16 +23,31 @@ internal object OfflineDiarizedTranscription {
         diarizationEngine: SpeakerDiarizationEngine?,
         doctorVoiceRoleMatcher: DoctorVoiceRoleMatcher? = null,
         fallbackAfterEmptyDiarization: Boolean = true,
+        consolidateSpeakerAudio: Boolean = false,
+        preparedDiarization: SpeakerDiarizationResult? = null,
         recognizeWithTiming: ((FloatArray, Double, String?) -> String)? = null,
         recognize: (FloatArray) -> String
     ): OfflineTranscriptionPayload {
-        val diarization = diarizationEngine?.diarize(
+        val diarization = preparedDiarization ?: diarizationEngine?.diarize(
             samples = samples,
             sampleRate = sampleRate,
             expectedSpeakerCount = -1
         )
         if (diarization is SpeakerDiarizationResult.Success) {
-            val segments = diarization.turns.mapNotNull { turn ->
+            // Merge audio BEFORE decoding; merging text afterwards cannot restore ASR context.
+            // Never span an intervening speaker or overlap another speaker's turn.
+            val turns = if (consolidateSpeakerAudio) diarization.turns.sortedBy { it.startSeconds }
+                .fold(mutableListOf<DiarizedAudioTurn>()) { merged, turn ->
+                    val previous = merged.lastOrNull()
+                    if (previous?.speakerId == turn.speakerId &&
+                        turn.startSeconds >= previous.endSeconds &&
+                        turn.startSeconds - previous.endSeconds <= 0.8f &&
+                        turn.endSeconds - previous.startSeconds <= 25f) {
+                        merged[merged.lastIndex] = previous.copy(endSeconds = turn.endSeconds)
+                    } else merged += turn
+                    merged
+                } else diarization.turns
+            val segments = turns.mapNotNull { turn ->
                 val startSample = floor(turn.startSeconds * sampleRate).toInt()
                     .coerceIn(0, samples.size)
                 val endSample = ceil(turn.endSeconds * sampleRate).toInt()

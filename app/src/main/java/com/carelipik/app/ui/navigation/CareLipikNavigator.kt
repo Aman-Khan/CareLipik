@@ -60,7 +60,8 @@ class CareLipikNavigator : ViewModel() {
             ConsultationDestination.PatientDetails -> ConsultationDestination.ConsultationRecording
             ConsultationDestination.ConsultationRecording -> ConsultationDestination.Transcript
             ConsultationDestination.Transcript -> ConsultationDestination.ClinicalDraft
-            ConsultationDestination.ClinicalDraft -> ConsultationDestination.DoctorReview
+            ConsultationDestination.ClinicalDraft -> ConsultationDestination.Prescription
+            ConsultationDestination.Prescription -> ConsultationDestination.DoctorReview
             ConsultationDestination.DoctorReview -> {
                 exportReturnDestination = ConsultationDestination.DoctorReview
                 ConsultationDestination.Export
@@ -80,7 +81,8 @@ class CareLipikNavigator : ViewModel() {
             ConsultationDestination.ConsultationRecording -> ConsultationDestination.PatientDetails
             ConsultationDestination.Transcript -> ConsultationDestination.ConsultationRecording
             ConsultationDestination.ClinicalDraft -> ConsultationDestination.Transcript
-            ConsultationDestination.DoctorReview -> ConsultationDestination.ClinicalDraft
+            ConsultationDestination.Prescription -> ConsultationDestination.ClinicalDraft
+            ConsultationDestination.DoctorReview -> ConsultationDestination.Prescription
             ConsultationDestination.Export -> exportReturnDestination
         }
     }

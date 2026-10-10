@@ -28,11 +28,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
+import com.carelipik.app.domain.extraction.ProgressClinicalNoteGenerationEngine
+import com.carelipik.app.data.extraction.QwenClinicalNoteGenerationEngine
 
 class ClinicalDraftViewModel(
     private val engine: ClinicalExtractionEngine = TranscriptBackedClinicalExtractionEngine(),
     private val onlineEngine: ClinicalNoteGenerationEngine? = null,
-    private val processAsynchronously: Boolean = true
+    private val processAsynchronously: Boolean = true,
+    private val localEngine: ProgressClinicalNoteGenerationEngine? = null
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(ClinicalDraftUiState())
     val uiState: StateFlow<ClinicalDraftUiState> = _uiState.asStateFlow()
@@ -41,6 +46,7 @@ class ClinicalDraftViewModel(
     private var sourceSpecialtyName = ""
     private var sourcePatientAge = ""
     private var sourceVisitReason = ""
+    private var localGenerationJob: Job? = null
 
     fun generate(
         transcript: String,
@@ -49,6 +55,7 @@ class ClinicalDraftViewModel(
         patientAge: String = "",
         visitReason: String = ""
     ) {
+        cancelLocalGeneration()
         sourceTranscript = transcript
         sourceLanguage = language
         sourceSpecialtyName = specialtyName.trim()
@@ -124,6 +131,7 @@ class ClinicalDraftViewModel(
     }
 
     fun generateWithGemini() {
+        if (_uiState.value.isGeneratingLocal) return
         val generator = onlineEngine
         val transcript = sourceTranscript
         if (generator == null || transcript.isNullOrBlank()) {
@@ -191,6 +199,45 @@ class ClinicalDraftViewModel(
         }
     }
 
+    fun generateWithQwen() {
+        val generator = localEngine ?: return
+        val transcript = sourceTranscript ?: return
+        val state = _uiState.value
+        if (state.isGeneratingLocal || state.isGeneratingOnline || state.status != ClinicalDraftStatus.Ready) return
+        val draft = state.draft
+        val request = ClinicalNoteGenerationRequest(transcript, sourceLanguage, draft.noteFormat,
+            draft.noteLanguage, draft.specialtyName, draft.patientAge, sourceVisitReason)
+        _uiState.update { it.copy(isGeneratingLocal = true, localGenerationError = null,
+            localGenerationDetail = "Preparing local Qwen3 report…") }
+        localGenerationJob = viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                val generationContext = coroutineContext
+                generator.generateWithProgress(request, { generationContext.ensureActive() }, { detail ->
+                    generationContext.ensureActive()
+                    _uiState.update { it.copy(localGenerationDetail = detail) }
+                })
+            }
+            _uiState.update {
+                when (result) {
+                    is ClinicalNoteGenerationResult.Success -> it.copy(draft = result.draft.copy(
+                        presentingComplaint = draft.presentingComplaint, history = draft.history,
+                        keyFindings = draft.keyFindings, assessmentNotes = draft.assessmentNotes,
+                        planNotes = draft.planNotes, medications = draft.medications),
+                        isGeneratingLocal = false, localGenerationDetail = null,
+                        localGenerationError = null, hasAttemptedContinue = false)
+                    is ClinicalNoteGenerationResult.Failure -> it.copy(isGeneratingLocal = false,
+                        localGenerationDetail = null, localGenerationError = result.message)
+                }
+            }
+        }
+    }
+
+    fun cancelLocalGeneration() {
+        localGenerationJob?.cancel()
+        localGenerationJob = null
+        _uiState.update { it.copy(isGeneratingLocal = false, localGenerationDetail = null) }
+    }
+
     fun addMedication() = updateDraft {
         copy(medications = medications + MedicationDraft())
     }
@@ -215,6 +262,7 @@ class ClinicalDraftViewModel(
     fun currentDraft(): com.carelipik.app.domain.model.ClinicalDraft = _uiState.value.draft
 
     fun resetForNewConsultation() {
+        cancelLocalGeneration()
         viewModelScope.coroutineContext.cancelChildren()
         sourceTranscript = null
         sourceLanguage = TranscriptionLanguage.English
@@ -225,6 +273,7 @@ class ClinicalDraftViewModel(
     }
 
     private fun updateDraft(transform: com.carelipik.app.domain.model.ClinicalDraft.() -> com.carelipik.app.domain.model.ClinicalDraft) {
+        if (_uiState.value.isGeneratingLocal) return
         _uiState.update {
             it.copy(status = ClinicalDraftStatus.Ready, draft = it.draft.transform(), errorMessage = null)
         }
@@ -251,6 +300,7 @@ class ClinicalDraftViewModel(
                 sourceLanguage = sourceLanguage
             )
         }
+        if (result is ClinicalExtractionResult.Success && localEngine != null) generateWithQwen()
     }
 
     class Factory(context: Context) : ViewModelProvider.Factory {
@@ -261,6 +311,7 @@ class ClinicalDraftViewModel(
             require(modelClass.isAssignableFrom(ClinicalDraftViewModel::class.java))
             val keyProvider = DeviceApiKeyProvider(applicationContext)
             return ClinicalDraftViewModel(
+                localEngine = QwenClinicalNoteGenerationEngine(applicationContext),
                 onlineEngine = PreferDeviceKeyClinicalNoteGenerationEngine(
                     hasDeviceKey = { keyProvider.get(ApiProvider.Gemini) != null },
                     direct = DirectGeminiClinicalNoteGenerationEngine {

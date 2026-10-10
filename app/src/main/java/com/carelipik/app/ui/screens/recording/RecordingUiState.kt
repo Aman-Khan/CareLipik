@@ -26,7 +26,7 @@ data class RecordingUiState(
     val downloadMessage: String? = null,
     val downloadError: String? = null,
     val transcriptionLanguage: TranscriptionLanguage = TranscriptionLanguage.English,
-    val transcriptionEngine: TranscriptionEngineOption = TranscriptionEngineOption.MedAsrEnglish,
+    val transcriptionEngine: TranscriptionEngineOption = TranscriptionEngineOption.LlmGuidedHybrid,
     val speakerCount: Int = com.carelipik.app.domain.transcription.SpeakerCount.DEFAULT,
     val hasOnlineProcessingConsent: Boolean = false
 ) {

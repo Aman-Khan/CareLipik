@@ -122,6 +122,7 @@ enum class ClinicalNoteLanguage(val displayName: String) {
 
 enum class ClinicalNoteGenerationSource(val displayName: String) {
     OfflineTranscript("Offline transcript-backed draft"),
+    LocalQwen("Local Qwen3 structured draft"),
     Gemini("Gemini structured draft");
 
     companion object {

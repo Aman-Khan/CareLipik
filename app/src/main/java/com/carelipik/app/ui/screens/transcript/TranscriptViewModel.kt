@@ -42,6 +42,8 @@ import com.carelipik.app.domain.transcription.ProgressAwareTranscriptionEngine
 import com.carelipik.app.domain.transcription.TranscriptionStage
 import com.carelipik.app.domain.transcription.CorrectionStatus
 import com.carelipik.app.domain.transcription.HybridTranscriptionReview
+import com.carelipik.app.domain.transcription.ConsultationAwareTranscriptionEngine
+import com.carelipik.app.domain.transcription.TranscriptionConsultationContext
 
 class TranscriptViewModel(
     private val engineResolver: TranscriptionEngineResolver = TranscriptionEngineResolver {
@@ -58,6 +60,7 @@ class TranscriptViewModel(
     private var sourceLanguage: TranscriptionLanguage = TranscriptionLanguage.English
     private var sourceEngine: TranscriptionEngineOption = TranscriptionEngineOption.MedAsrEnglish
     private var sourceSpeakerCount = com.carelipik.app.domain.transcription.SpeakerCount.DEFAULT
+    private var sourceConsultationContext = TranscriptionConsultationContext()
     private var transcriptionJob: Job? = null
     @Volatile
     private var transcriptionRequest = 0L
@@ -67,7 +70,8 @@ class TranscriptViewModel(
         audioPath: String,
         language: TranscriptionLanguage = TranscriptionLanguage.English,
         engineOption: TranscriptionEngineOption = TranscriptionEngineOption.defaultFor(language),
-        speakerCount: Int = com.carelipik.app.domain.transcription.SpeakerCount.DEFAULT
+        speakerCount: Int = com.carelipik.app.domain.transcription.SpeakerCount.DEFAULT,
+        consultationContext: TranscriptionConsultationContext = TranscriptionConsultationContext()
     ) {
         com.carelipik.app.domain.transcription.SpeakerCount.validate(speakerCount)
         require(engineOption.supports(language)) {
@@ -79,11 +83,14 @@ class TranscriptViewModel(
         sourceLanguage = language
         sourceEngine = engineOption
         sourceSpeakerCount = speakerCount
+        sourceConsultationContext = consultationContext.copy(expectedSpeakerCount = speakerCount)
+        val requestConsultation = sourceConsultationContext
         _uiState.value = TranscriptUiState(
             status = TranscriptStatus.Processing,
             language = language,
             engine = engineOption,
-            transcriptionStage = if (engineOption == TranscriptionEngineOption.WhisperMedAsrHybrid) TranscriptionStage.Whisper else null
+            transcriptionStage = if (engineOption in setOf(TranscriptionEngineOption.WhisperMedAsrHybrid,
+                    TranscriptionEngineOption.LlmGuidedHybrid)) TranscriptionStage.Whisper else null
         )
         if (processAsynchronously) {
             transcriptionJob = viewModelScope.launch {
@@ -91,13 +98,13 @@ class TranscriptViewModel(
                 val dispatcher = if (engineOption.isOffline) Dispatchers.Default else Dispatchers.IO
                 val result = inferenceMutex.withLock {
                     withContext(dispatcher) {
-                        runTranscription(audioPath, language, engineOption, speakerCount, request) { requestContext.ensureActive() }
+                        runTranscription(audioPath, language, engineOption, speakerCount, request, requestConsultation) { requestContext.ensureActive() }
                     }
                 }
                 if (request == transcriptionRequest) applyResult(result)
             }
         } else {
-            applyResult(runTranscription(audioPath, language, engineOption, speakerCount, request) {})
+            applyResult(runTranscription(audioPath, language, engineOption, speakerCount, request, requestConsultation) {})
         }
     }
 
@@ -107,14 +114,23 @@ class TranscriptViewModel(
         engineOption: TranscriptionEngineOption,
         speakerCount: Int,
         request: Long,
+        consultationContext: TranscriptionConsultationContext,
         checkCancelled: () -> Unit
     ): TranscriptionResult = try {
         checkCancelled()
         val engine = engineResolver.resolve(engineOption, speakerCount)
-        val result = if (engine is ProgressAwareTranscriptionEngine) {
-            engine.transcribe(audioPath, language, { stage ->
+        val result = if (engine is ConsultationAwareTranscriptionEngine) {
+            engine.transcribeWithContext(audioPath, language, consultationContext, { stage ->
                 _uiState.update { if (request == transcriptionRequest) it.copy(transcriptionStage = stage) else it }
-            }, checkCancelled)
+            }, checkCancelled) { detail ->
+                _uiState.update { if (request == transcriptionRequest) it.copy(transcriptionDetail = detail) else it }
+            }
+        } else if (engine is ProgressAwareTranscriptionEngine) {
+            engine.transcribeWithDetails(audioPath, language, { stage ->
+                _uiState.update { if (request == transcriptionRequest) it.copy(transcriptionStage = stage) else it }
+            }, checkCancelled) { detail ->
+                _uiState.update { if (request == transcriptionRequest) it.copy(transcriptionDetail = detail) else it }
+            }
         } else engine.transcribe(audioPath, language)
         checkCancelled()
         result
@@ -134,7 +150,7 @@ class TranscriptViewModel(
     }
 
     fun retry() {
-        sourceAudioPath?.let { transcribe(it, sourceLanguage, sourceEngine, sourceSpeakerCount) }
+        sourceAudioPath?.let { transcribe(it, sourceLanguage, sourceEngine, sourceSpeakerCount, sourceConsultationContext) }
     }
 
     fun setTranscript(transcript: String) {
@@ -376,12 +392,58 @@ class TranscriptViewModel(
             }
         }
         setTranscript(updated)
-        _uiState.update { it.copy(hybridReview = review.copy(corrections = corrections), hasAttemptedContinue = false) }
+        _uiState.update { it.copy(hybridReview = review.copy(corrections = corrections), hasAttemptedContinue = false,
+            confirmedConcernIds = it.confirmedConcernIds + it.concerns.filter { concern ->
+                concern.startIndex < start + correction.suggestedText.length && concern.endIndexExclusive > start
+            }.map { concern -> concern.id }) }
+    }
+
+    fun acceptMedAsrCorrection(id: String) {
+        val correction = _uiState.value.hybridReview?.corrections?.firstOrNull { it.id == id } ?: return
+        val alternative = correction.medAsrSuggestedText ?: return
+        if (correction.status != CorrectionStatus.Suggested) return
+        _uiState.update { state ->
+            state.copy(hybridReview = state.hybridReview?.let { review ->
+                review.copy(corrections = review.corrections.map {
+                    if (it.id == id) it.copy(suggestedText = alternative) else it
+                })
+            })
+        }
+        acceptHybridCorrection(id)
+    }
+
+    fun applyManualHybridCorrection(id: String, replacement: String) {
+        val state = _uiState.value
+        val correction = state.hybridReview?.corrections?.firstOrNull { it.id == id } ?: return
+        if (correction.status !in setOf(CorrectionStatus.Suggested, CorrectionStatus.Unresolved) || replacement.length > 2_000) return
+        val original = correction.originalText.ifBlank { correction.whisperContext }
+        if (original.isBlank()) return
+        val existingStart = correction.transcriptStartIndex
+        val existingEnd = correction.transcriptEndIndex
+        val validOffsets = existingStart != null && existingEnd != null && existingStart >= 0 &&
+            existingEnd in existingStart..state.transcript.length && state.transcript.substring(existingStart, existingEnd) == original
+        val start = if (validOffsets) existingStart!! else state.transcript.indexOf(original)
+        if (start < 0 || (!validOffsets && state.transcript.lastIndexOf(original) != start)) return
+        val end = start + original.length
+        _uiState.update { current -> current.copy(hybridReview = current.hybridReview?.let { review ->
+            review.copy(corrections = review.corrections.map {
+                if (it.id == id) it.copy(suggestedText = replacement, originalText = original,
+                    transcriptStartIndex = start, transcriptEndIndex = end, status = CorrectionStatus.Suggested) else it
+            })
+        }) }
+        acceptHybridCorrection(id)
     }
 
     fun rejectHybridCorrection(id: String) {
         _uiState.update { state ->
-            state.copy(hybridReview = state.hybridReview?.let { review ->
+            val correction = state.hybridReview?.corrections?.firstOrNull { it.id == id }
+            val confirmed = state.concerns.filter { concern ->
+                val start = correction?.transcriptStartIndex
+                val end = correction?.transcriptEndIndex
+                start != null && end != null && concern.startIndex < end && concern.endIndexExclusive > start
+            }.map { it.id }
+            state.copy(confirmedConcernIds = state.confirmedConcernIds + confirmed,
+                hybridReview = state.hybridReview?.let { review ->
                 review.copy(corrections = review.corrections.map {
                     if (it.id == id && it.status in setOf(CorrectionStatus.Suggested, CorrectionStatus.Unresolved)) {
                         it.copy(status = CorrectionStatus.Rejected)
@@ -413,6 +475,7 @@ class TranscriptViewModel(
         transcriptionRequest++
         viewModelScope.coroutineContext.cancelChildren()
         sourceAudioPath = null
+        sourceConsultationContext = TranscriptionConsultationContext()
         sourceLanguage = TranscriptionLanguage.English
         sourceEngine = TranscriptionEngineOption.MedAsrEnglish
         _uiState.value = TranscriptUiState()
@@ -446,7 +509,8 @@ class TranscriptViewModel(
             is TranscriptionResult.Success -> {
                 val fallbackConcerns = reviewAnalyzer.analyze(result.transcript, sourceLanguage)
                 val segments = result.segments.ifEmpty { segmentParser.parse(result.transcript) }
-                val actualSpeakerCount = segments.map { it.speakerId }.distinct().size
+                val actualSpeakerCount = segments.map { it.speakerId }
+                    .filterNot { it == "speaker-unknown" }.distinct().size
                 val countWarning = if (actualSpeakerCount != sourceSpeakerCount) {
                     "You selected $sourceSpeakerCount speakers, but the transcript contains " +
                         "$actualSpeakerCount speaker groups. Speaker separation is incomplete; " +
@@ -556,13 +620,15 @@ class TranscriptViewModel(
         doctorVoiceMatch: DoctorVoiceRoleMatchResult? = null
     ): Map<String, SpeakerRole> = segments
         .map { it.speakerId }
+        .filterNot { it == "speaker-unknown" }
         .distinct()
         .associateWith { speakerId ->
             when {
                 doctorVoiceMatch is DoctorVoiceRoleMatchResult.Matched &&
                     speakerId == doctorVoiceMatch.match.doctorSpeakerId -> SpeakerRole.Doctor
                 doctorVoiceMatch is DoctorVoiceRoleMatchResult.Matched &&
-                    segments.map { it.speakerId }.distinct().size == 2 -> SpeakerRole.Patient
+                    segments.map { it.speakerId }.filterNot { it == "speaker-unknown" }
+                        .distinct().size == 2 -> SpeakerRole.Patient
                 speakerId == "doctor" -> SpeakerRole.Doctor
                 speakerId == "patient" -> SpeakerRole.Patient
                 else -> existing[speakerId] ?: SpeakerRole.Unassigned

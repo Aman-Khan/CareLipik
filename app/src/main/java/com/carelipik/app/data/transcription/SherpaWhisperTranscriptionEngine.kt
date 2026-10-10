@@ -6,6 +6,7 @@ import com.carelipik.app.domain.transcription.TranscriptionResult
 import com.carelipik.app.domain.transcription.TranscriptionLanguage
 import com.carelipik.app.domain.transcription.TranscriptionEngineOption
 import com.carelipik.app.domain.transcription.SpeakerDiarizationEngine
+import com.carelipik.app.domain.transcription.SpeakerDiarizationResult
 import com.carelipik.app.domain.transcription.WhisperDecodingSegment
 import com.carelipik.app.domain.voice.DoctorVoiceRoleMatcher
 import com.k2fsa.sherpa.onnx.FeatureConfig
@@ -18,15 +19,18 @@ import kotlinx.coroutines.CancellationException
 
 internal data class WhisperPrimaryResult(
     val result: TranscriptionResult.Success,
-    val decodingSegments: List<WhisperDecodingSegment>
+    val decodingSegments: List<WhisperDecodingSegment>,
+    val backendNotice: String? = null
 )
 
 /** On-device multilingual Whisper transcription. No audio or text leaves the phone. */
 class SherpaWhisperTranscriptionEngine(
     private val context: Context,
     private val diarizationEngine: SpeakerDiarizationEngine? = null,
-    private val doctorVoiceRoleMatcher: DoctorVoiceRoleMatcher? = null
+    private val doctorVoiceRoleMatcher: DoctorVoiceRoleMatcher? = null,
+    private val preferVulkan: Boolean = false
 ) : AudioTranscriptionEngine {
+    internal val applicationContextForDiagnostics: Context get() = context.applicationContext
     override val option: TranscriptionEngineOption = TranscriptionEngineOption.WhisperMultilingual
 
     override fun transcribe(
@@ -50,24 +54,106 @@ class SherpaWhisperTranscriptionEngine(
         language: TranscriptionLanguage,
         checkCancelled: () -> Unit = {},
         fallbackAfterEmptyDiarization: Boolean = true,
-        collectConfidence: Boolean = false
+        collectConfidence: Boolean = false,
+        onDetail: (String) -> Unit = {},
+        consolidateSpeakerAudio: Boolean = false,
+        diarizeAfterTranscription: Boolean = false
     ): WhisperPrimaryResult {
         checkCancelled()
+        val rejectedGpu = File(context.noBackupFilesDir, "whisper-vulkan-rejected-1_9_5-fp32-v1")
+        val wantsVulkan = preferVulkan && (consolidateSpeakerAudio || diarizeAfterTranscription)
+        if (wantsVulkan && rejectedGpu.exists()) {
+            onDetail("Whisper Vulkan disabled after invalid output on this device; using CPU decoding")
+        }
+        if (wantsVulkan && !rejectedGpu.exists()) {
+            try {
+                return VulkanWhisperTranscriber(context.applicationContext, diarizationEngine, doctorVoiceRoleMatcher)
+                    .transcribe(samples, language, checkCancelled, onDetail)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                checkCancelled()
+                if (error is WhisperOutputRejectedException) {
+                    rejectedGpu.writeText("Rejected invalid Vulkan decoder output")
+                    onDetail("Whisper Vulkan quarantined on this device after invalid output")
+                }
+                val reason = if (error is IllegalArgumentException && error.message?.startsWith("Whisper ") == true)
+                    error.message else error.javaClass.simpleName
+                onDetail("Whisper Vulkan rejected or unavailable ($reason); restarting primary transcription with CPU decoding")
+            } catch (_: LinkageError) {
+                checkCancelled()
+                onDetail("Whisper Vulkan runtime unavailable; restarting primary transcription with CPU decoding")
+            }
+        }
+        if (preferVulkan && diarizeAfterTranscription) {
+            try {
+                onDetail("Whisper: using native CPU word timestamps for speaker alignment")
+                return VulkanWhisperTranscriber(context.applicationContext, diarizationEngine, doctorVoiceRoleMatcher)
+                    .transcribe(samples, language, checkCancelled, onDetail, useGpu = false)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                checkCancelled()
+                onDetail("Whisper native CPU unavailable (${error.javaClass.simpleName}); using Sherpa CPU with conservative speaker assignment")
+            } catch (_: LinkageError) {
+                checkCancelled()
+                onDetail("Whisper native CPU runtime unavailable; using Sherpa CPU")
+            }
+        }
+        onDetail("Whisper: checking model assets")
         checkModelAssets()
         require(samples.isNotEmpty()) { "The recording contains no audio." }
+        onDetail("Whisper language: ${language.displayName} (${language.whisperCode.ifEmpty { "auto" }})")
         val decoded = mutableListOf<WhisperDecodingSegment>()
+        if (diarizeAfterTranscription) {
+            onDetail("Whisper CPU: loading encoder and decoder for chronological audio")
+            createRecognizer(language, collectConfidence).useRecognizer { recognizer ->
+                var offset = 0
+                for (chunk in contextChunks(samples, checkCancelled)) {
+                    checkCancelled()
+                    onDetail("Whisper CPU: transcribing chronological audio at ${offset / PcmWaveAudio.sampleRate}s")
+                    val text = recognize(recognizer, chunk, offset.toDouble() / PcmWaveAudio.sampleRate,
+                        null, decoded, checkCancelled, collectConfidence, clipPaddedTimestamps = true)
+                    WhisperOutputValidation.requireReadable(text, language)
+                    offset += chunk.size
+                }
+            }
+            require(decoded.isNotEmpty()) { "No speech was detected. Check the recording and try again." }
+            checkCancelled()
+            onDetail("Whisper CPU released; running independent speaker diarization")
+            val diarization = diarizationEngine?.diarize(samples, PcmWaveAudio.sampleRate, -1)
+            checkCancelled()
+            val doctorMatch = (diarization as? SpeakerDiarizationResult.Success)?.let {
+                doctorVoiceRoleMatcher?.match(samples, PcmWaveAudio.sampleRate, it.turns)
+            }
+            checkCancelled()
+            return PostTranscriptionSpeakerAlignment.assemble(decoded, diarization, doctorMatch,
+                if (preferVulkan) "Whisper Vulkan output was rejected or unavailable; Sherpa CPU completed primary transcription." else null)
+        }
+        val preparedDiarization = if (consolidateSpeakerAudio) {
+            onDetail("Running speaker diarization before loading Whisper")
+            diarizationEngine?.diarize(samples, PcmWaveAudio.sampleRate, -1).also { checkCancelled() }
+        } else null
+        onDetail("Whisper: loading encoder and decoder")
         val payload = createRecognizer(language, collectConfidence).useRecognizer { recognizer ->
+            onDetail(if (consolidateSpeakerAudio) "Whisper loaded; decoding consolidated speaker audio"
+                else "Whisper loaded; running speaker diarization")
             val payload = OfflineDiarizedTranscription.transcribe(
                 samples = samples,
                 sampleRate = PcmWaveAudio.sampleRate,
                 diarizationEngine = diarizationEngine,
                 doctorVoiceRoleMatcher = doctorVoiceRoleMatcher,
                 fallbackAfterEmptyDiarization = fallbackAfterEmptyDiarization,
+                consolidateSpeakerAudio = consolidateSpeakerAudio,
+                preparedDiarization = preparedDiarization,
                 recognizeWithTiming = { audio, start, speaker ->
-                    recognize(recognizer, audio, start, speaker, decoded, checkCancelled, collectConfidence)
+                    onDetail("Whisper: recognizing $speaker at ${start.toInt()}s (${audio.size / PcmWaveAudio.sampleRate}s audio)")
+                    recognize(recognizer, audio, start, speaker, decoded, checkCancelled, collectConfidence,
+                        consolidateSpeakerAudio)
                 },
                 recognize = { audio ->
-                    recognize(recognizer, audio, 0.0, null, decoded, checkCancelled, collectConfidence)
+                    recognize(recognizer, audio, 0.0, null, decoded, checkCancelled, collectConfidence,
+                        consolidateSpeakerAudio)
                 }
             )
             require(payload.transcript.isNotBlank()) {
@@ -98,7 +184,8 @@ class SherpaWhisperTranscriptionEngine(
         return WhisperPrimaryResult(
             result = TranscriptionResult.Success(payload.transcript, payload.segments, payload.doctorVoiceMatch,
                 speakerSeparationWarning = payload.speakerSeparationWarning),
-            decodingSegments = if (text.toString() == payload.transcript) mapped else decoded.toList()
+            decodingSegments = if (text.toString() == payload.transcript) mapped else decoded.toList(),
+            backendNotice = if (preferVulkan) "Whisper Vulkan was unavailable; Sherpa CPU completed primary transcription." else null
         )
     }
 
@@ -109,10 +196,14 @@ class SherpaWhisperTranscriptionEngine(
         speakerId: String?,
         decoded: MutableList<WhisperDecodingSegment>,
         checkCancelled: () -> Unit,
-        collectConfidence: Boolean
+        collectConfidence: Boolean,
+        preferSilenceBoundaries: Boolean = false,
+        clipPaddedTimestamps: Boolean = false
     ): String {
         var offsetSamples = 0
-        return PcmWaveAudio.chunks(samples, MAX_CHUNK_SAMPLES)
+        val chunks = if (preferSilenceBoundaries) contextChunks(samples, checkCancelled)
+            else PcmWaveAudio.chunks(samples, MAX_CHUNK_SAMPLES)
+        return chunks
             .mapNotNull { chunk ->
                 checkCancelled()
                 val startMs = ((startSeconds + offsetSamples.toDouble() / PcmWaveAudio.sampleRate) * 1_000).toLong()
@@ -129,7 +220,7 @@ class SherpaWhisperTranscriptionEngine(
                         if (text.isBlank()) null else {
                             val confidenceRegions = if (collectConfidence) WhisperConfidenceMapper.map(
                                 result.text, result.tokens.toList(), stream.getOption("carelipik.whisper.confidence.v1"),
-                                startMs, endMs, speakerId, result.lang.takeIf(String::isNotBlank)
+                                startMs, endMs, speakerId, result.lang.takeIf(String::isNotBlank), clipPaddedTimestamps
                             ) else null
                             if (confidenceRegions != null) {
                                 decoded += confidenceRegions
@@ -161,6 +252,30 @@ class SherpaWhisperTranscriptionEngine(
                 }
             }
             .joinToString(separator = " ")
+    }
+
+    /** Prefer an acoustic pause near the 25-second cap; never drop or duplicate samples. */
+    private fun contextChunks(samples: FloatArray, checkCancelled: () -> Unit): Sequence<FloatArray> = sequence {
+        val frame = PcmWaveAudio.sampleRate / 25 // 40 ms
+        var start = 0
+        while (start < samples.size) {
+            checkCancelled()
+            var end = (start + MAX_CHUNK_SAMPLES).coerceAtMost(samples.size)
+            if (end < samples.size) {
+                var quietest = 0.003 * 0.003
+                for (position in start + PcmWaveAudio.sampleRate * 20 until end - frame step frame) {
+                    var energy = 0.0
+                    for (i in position until position + frame) energy += samples[i].toDouble() * samples[i]
+                    energy /= frame
+                    if (energy < quietest) {
+                        quietest = energy
+                        end = position + frame / 2
+                    }
+                }
+            }
+            yield(samples.copyOfRange(start, end))
+            start = end
+        }
     }
 
     private fun createRecognizer(language: TranscriptionLanguage, collectConfidence: Boolean): OfflineRecognizer {

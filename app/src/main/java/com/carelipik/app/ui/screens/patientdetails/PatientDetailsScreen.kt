@@ -34,7 +34,7 @@ fun PatientDetailsScreen(
             title = "Patient details",
             subtitle = "Enter only what is needed for this consultation. Information stays on this device.",
             currentStep = 2,
-            totalSteps = 7,
+            totalSteps = 8,
             onBack = onBack
         )
         OutlinedTextField(

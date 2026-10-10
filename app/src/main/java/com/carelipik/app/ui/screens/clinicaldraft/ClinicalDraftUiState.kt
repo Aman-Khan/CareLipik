@@ -20,7 +20,10 @@ data class ClinicalDraftUiState(
     val sourceLanguage: TranscriptionLanguage = TranscriptionLanguage.English,
     val isGeneratingOnline: Boolean = false,
     val onlineGenerationError: String? = null,
-    val hasOnlineGenerationConsent: Boolean = false
+    val hasOnlineGenerationConsent: Boolean = false,
+    val isGeneratingLocal: Boolean = false,
+    val localGenerationDetail: String? = null,
+    val localGenerationError: String? = null
 ) {
     val draftError: String?
         get() = when {
@@ -45,5 +48,5 @@ data class ClinicalDraftUiState(
             draft.hasContent &&
             draft.medications.all { it.hasContent && it.isDoctorReviewed } &&
             !needsEnglishGeneration &&
-            !isGeneratingOnline
+            !isGeneratingOnline && !isGeneratingLocal
 }

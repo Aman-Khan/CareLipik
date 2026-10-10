@@ -109,15 +109,42 @@ val prepareOfflineModels = tasks.register<PrepareOfflineModels>("prepareOfflineM
     ))
 }
 
+val prepareQwen3Model = tasks.register<PrepareOfflineModels>("prepareQwen3Model") {
+    dependsOn(prepareOfflineModels)
+    group = "build setup"
+    description = "Optionally installs Qwen3 1.7B Q4_K_M into ignored offline model assets"
+    destination.set(layout.projectDirectory.dir("src/main/assets/models"))
+    offline.set(gradle.startParameter.isOffline)
+    outputs.upToDateWhen { false }
+    modelFiles.set(listOf(
+        "qwen3/Qwen3-1.7B-Q4_K_M.gguf|https://huggingface.co/lmstudio-community/Qwen3-1.7B-GGUF/resolve/e5e31bf4d96de5da2ce124fa86673f0be7c82346/Qwen3-1.7B-Q4_K_M.gguf?download=true|e0801cbda7e2f3fd00bea4d73b53b422b14b13aa130e778f6414b6b641920b7e"
+    ))
+}
+val includeQwen3 = providers.gradleProperty("carelipik.includeQwen3").orNull == "true"
+val prepareWhisperVulkanModel = tasks.register<PrepareOfflineModels>("prepareWhisperVulkanModel") {
+    dependsOn(prepareQwen3Model)
+    group = "build setup"
+    description = "Installs official multilingual Whisper Small Q8_0 for the Vulkan backend"
+    destination.set(layout.projectDirectory.dir("src/main/assets/models"))
+    offline.set(gradle.startParameter.isOffline)
+    outputs.upToDateWhen { false }
+    modelFiles.set(listOf(
+        "whisper-vulkan/ggml-small-q8_0.bin|https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-small-q8_0.bin?download=true|49c8fb02b65e6049d5fa6c04f81f53b867b5ec9540406812c643f177317f779f"
+    ))
+}
+
 // assemble, bundle, install, and Android Studio Run all merge assets before packaging.
 // JVM tests and Gradle sync do not need to download hundreds of MB of native model data.
 tasks.configureEach {
     if (name.startsWith("merge") && name.endsWith("Assets")) {
         dependsOn(prepareOfflineModels)
+        if (includeQwen3) dependsOn(prepareWhisperVulkanModel)
     }
     if (name.contains("lint", ignoreCase = true)) {
         // Lint reads the assets directory too. Order it after preparation when both run,
         // without making lint-only invocations download models.
         mustRunAfter(prepareOfflineModels)
+        mustRunAfter(prepareQwen3Model)
+        mustRunAfter(prepareWhisperVulkanModel)
     }
 }

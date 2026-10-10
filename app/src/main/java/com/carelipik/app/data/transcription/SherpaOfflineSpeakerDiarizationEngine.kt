@@ -1,6 +1,7 @@
 package com.carelipik.app.data.transcription
 
 import android.content.Context
+import android.util.Log
 import com.carelipik.app.domain.transcription.DiarizedAudioTurn
 import com.carelipik.app.domain.transcription.SpeakerDiarizationEngine
 import com.carelipik.app.domain.transcription.SpeakerDiarizationResult
@@ -34,6 +35,7 @@ class SherpaOfflineSpeakerDiarizationEngine(
             return SpeakerDiarizationResult.Failure("The recording contains no audio.")
         }
         return runCatching {
+            Log.i("CareLipikDiarization", "Starting speaker clustering: requested count=$expectedSpeakerCount")
             val turns = createDiarizer(expectedSpeakerCount).useDiarizer { diarizer ->
                 require(sampleRate == diarizer.sampleRate()) {
                     "Speaker detection requires ${diarizer.sampleRate()} Hz audio."
@@ -57,8 +59,12 @@ class SherpaOfflineSpeakerDiarizationEngine(
             }
         }.fold(
             onSuccess = { turns ->
+                val count = turns.map { it.speakerId }.distinct().size
+                Log.i("CareLipikDiarization", "Speaker clustering complete: count=$count, turns=${turns.size}")
                 if (turns.isEmpty()) {
                     SpeakerDiarizationResult.Failure("No speaker turns were detected.")
+                } else if (expectedSpeakerCount > 0 && count > expectedSpeakerCount) {
+                    SpeakerDiarizationResult.Failure("Speaker clustering exceeded the selected count.")
                 } else {
                     SpeakerDiarizationResult.Success(turns)
                 }

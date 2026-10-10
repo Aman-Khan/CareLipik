@@ -31,6 +31,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -65,6 +67,8 @@ fun TranscriptScreen(
     onAcceptHybridCorrection: (String) -> Unit = {},
     onRejectHybridCorrection: (String) -> Unit = {},
     onCancelTranscription: () -> Unit = {},
+    onAcceptMedAsrCorrection: (String) -> Unit = {},
+    onManualHybridCorrection: (String, String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -80,7 +84,7 @@ fun TranscriptScreen(
             title = "Review transcript",
             subtitle = "Check every line against the consultation and correct anything that is unclear.",
             currentStep = 4,
-            totalSteps = 7,
+            totalSteps = 8,
             onBack = onBack,
             backEnabled = uiState.status != TranscriptStatus.Processing
         )
@@ -92,7 +96,7 @@ fun TranscriptScreen(
         when (uiState.status) {
             TranscriptStatus.Idle,
             TranscriptStatus.Processing -> {
-                ProcessingTranscript(uiState.engine.isOffline, uiState.transcriptionStage?.displayName)
+                ProcessingTranscript(uiState.engine.isOffline, uiState.transcriptionStage?.displayName, uiState.transcriptionDetail)
                 if (uiState.status == TranscriptStatus.Processing && uiState.transcriptionStage != null) {
                     OutlinedButton(onClick = onCancelTranscription, modifier = Modifier.fillMaxWidth()) {
                         Text("Cancel transcription")
@@ -104,14 +108,6 @@ fun TranscriptScreen(
                 onRetry = onRetry
             )
             TranscriptStatus.Ready -> {
-                uiState.hybridReview?.let { review ->
-                    val playback = remember { RegionPlaybackController() }
-                    CompositionLocalProvider(LocalRegionPlayback provides playback) {
-                        HybridTranscriptReviewPanel(review, onAcceptHybridCorrection, onRejectHybridCorrection,
-                            uiState.sourceAudioPath)
-                        HybridWordReviewPanel(uiState, onAcceptHybridCorrection)
-                    }
-                }
                 uiState.speakerSeparationWarning?.let { warning ->
                     SpeakerSeparationWarning(warning)
                 }
@@ -123,11 +119,15 @@ fun TranscriptScreen(
                     onConsentChanged = onOnlineAnalysisConsentChanged,
                     onAnalyze = onAnalyzeTermsOnline
                 )
-                if (uiState.concerns.isNotEmpty()) {
+                if (uiState.concerns.isNotEmpty() || uiState.hybridReview != null) {
                     TranscriptTermReviewPanel(
                         uiState = uiState,
                         onConfirmConcern = onConfirmConcern,
-                        onApplySuggestion = onApplySuggestion
+                        onApplySuggestion = onApplySuggestion,
+                        onAcceptHybridCorrection = onAcceptHybridCorrection,
+                        onRejectHybridCorrection = onRejectHybridCorrection,
+                        onAcceptMedAsrCorrection = onAcceptMedAsrCorrection,
+                        onManualHybridCorrection = onManualHybridCorrection
                     )
                 }
                 if (uiState.canShowConversation) {
@@ -460,7 +460,11 @@ private fun reviewSupportingText(uiState: TranscriptUiState): String =
 private fun TranscriptTermReviewPanel(
     uiState: TranscriptUiState,
     onConfirmConcern: (String) -> Unit,
-    onApplySuggestion: (String) -> Unit
+    onApplySuggestion: (String) -> Unit,
+    onAcceptHybridCorrection: (String) -> Unit = {},
+    onRejectHybridCorrection: (String) -> Unit = {},
+    onAcceptMedAsrCorrection: (String) -> Unit = {},
+    onManualHybridCorrection: (String, String) -> Unit = { _, _ -> }
 ) {
     val pendingColor = MaterialTheme.colorScheme.tertiaryContainer
     val confirmedColor = MaterialTheme.colorScheme.primaryContainer
@@ -493,8 +497,11 @@ private fun TranscriptTermReviewPanel(
                     )
                 }
                 ReviewCountBadge(
-                    reviewed = uiState.confirmedConcernCount,
-                    total = uiState.concerns.size
+                    reviewed = uiState.confirmedConcernCount + uiState.hybridReview?.corrections.orEmpty().count {
+                        it.status in setOf(com.carelipik.app.domain.transcription.CorrectionStatus.Accepted,
+                            com.carelipik.app.domain.transcription.CorrectionStatus.Rejected)
+                    },
+                    total = uiState.concerns.size + uiState.hybridReview?.corrections.orEmpty().size
                 )
             }
             Surface(
@@ -513,7 +520,14 @@ private fun TranscriptTermReviewPanel(
                         },
                         confirmedConcernIds = uiState.confirmedConcernIds,
                         pendingColor = pendingColor,
-                        confirmedColor = confirmedColor
+                        confirmedColor = confirmedColor,
+                        modelRanges = uiState.hybridReview?.corrections.orEmpty().filter {
+                            it.status == com.carelipik.app.domain.transcription.CorrectionStatus.Suggested
+                        }.mapNotNull { correction ->
+                            val start = correction.transcriptStartIndex ?: return@mapNotNull null
+                            val end = correction.transcriptEndIndex ?: return@mapNotNull null
+                            uiState.labelProjection.displayOffset(start) to uiState.labelProjection.displayOffset(end)
+                        }
                     ),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -522,7 +536,21 @@ private fun TranscriptTermReviewPanel(
                     style = MaterialTheme.typography.bodyLarge
                 )
             }
-            uiState.pendingConcerns.firstOrNull()?.let { concern ->
+            uiState.hybridReview?.let { review ->
+                val playback = remember { RegionPlaybackController() }
+                CompositionLocalProvider(LocalRegionPlayback provides playback) {
+                    HybridTranscriptReviewPanel(review, onAcceptHybridCorrection, onRejectHybridCorrection,
+                        uiState.sourceAudioPath, onAcceptMedAsrCorrection, onManualHybridCorrection)
+                }
+            }
+            uiState.pendingConcerns.firstOrNull { concern ->
+                uiState.hybridReview?.corrections.orEmpty().none { correction ->
+                    val start = correction.transcriptStartIndex
+                    val end = correction.transcriptEndIndex
+                    correction.status == com.carelipik.app.domain.transcription.CorrectionStatus.Suggested &&
+                        start != null && end != null && concern.startIndex < end && concern.endIndexExclusive > start
+                }
+            }?.let { concern ->
                 ConcernReviewCard(
                     concern = concern,
                     isConfirmed = false,
@@ -535,7 +563,8 @@ private fun TranscriptTermReviewPanel(
                 color = MaterialTheme.colorScheme.primaryContainer
             ) {
                 Text(
-                    text = "All highlighted terms reviewed",
+                    text = if (uiState.pendingHybridCorrections) "Review the highlighted model suggestions above"
+                        else "All highlighted terms reviewed",
                     modifier = Modifier.padding(14.dp),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
@@ -660,7 +689,8 @@ private fun buildHighlightedTranscript(
     concerns: List<TranscriptConcern>,
     confirmedConcernIds: Set<String>,
     pendingColor: Color,
-    confirmedColor: Color
+    confirmedColor: Color,
+    modelRanges: List<Pair<Int, Int>> = emptyList()
 ): AnnotatedString = buildAnnotatedString {
     var cursor = 0
     concerns.sortedBy { it.startIndex }.forEach { concern ->
@@ -687,6 +717,11 @@ private fun buildHighlightedTranscript(
         cursor = concern.endIndexExclusive
     }
     append(transcript.substring(cursor))
+    modelRanges.forEach { (start, end) ->
+        if (start >= 0 && end > start && end <= transcript.length) {
+            addStyle(SpanStyle(background = pendingColor, fontWeight = FontWeight.Bold), start, end)
+        }
+    }
 }
 
 private fun pluralize(count: Int, singular: String, plural: String): String =
@@ -738,7 +773,13 @@ private fun TranscriptNotice(
 }
 
 @Composable
-private fun ProcessingTranscript(isOffline: Boolean, stage: String? = null) {
+private fun ProcessingTranscript(isOffline: Boolean, stage: String? = null, detail: String? = null) {
+    val started = remember { android.os.SystemClock.elapsedRealtime() }
+    val lastUpdate = remember(stage, detail) { android.os.SystemClock.elapsedRealtime() }
+    var now by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(started) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        while (true) { kotlinx.coroutines.delay(1000); now = android.os.SystemClock.elapsedRealtime() }
+    }
     Column(
         modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -746,6 +787,13 @@ private fun ProcessingTranscript(isOffline: Boolean, stage: String? = null) {
     ) {
         CircularProgressIndicator()
         Text(stage ?: "Preparing transcript…", style = MaterialTheme.typography.titleMedium)
+        detail?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        Text("Elapsed: ${(now - started) / 1000}s · Last progress: ${maxOf(0, now - lastUpdate) / 1000}s ago",
+            style = MaterialTheme.typography.labelMedium)
+        if (now - lastUpdate > 60_000) {
+            Text("This step has not reported progress for over a minute. You can cancel and retry.",
+                style = MaterialTheme.typography.bodySmall)
+        }
         Text(
             if (isOffline) {
                 "Processing stays on this device."

@@ -8,6 +8,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -25,9 +26,10 @@ internal fun HybridTranscriptReviewPanel(
     review: HybridTranscriptionReview,
     onAccept: (String) -> Unit,
     onReject: (String) -> Unit,
-    audioPath: String? = null
+    audioPath: String? = null,
+    onAcceptMedAsr: (String) -> Unit = {},
+    onManualCorrection: (String, String) -> Unit = { _, _ -> }
 ) {
-    var showOriginal by rememberSaveable { mutableStateOf(false) }
     val pending = review.corrections.filter {
         it.status == CorrectionStatus.Suggested || it.status == CorrectionStatus.Unresolved
     }
@@ -36,7 +38,7 @@ internal fun HybridTranscriptReviewPanel(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("Hybrid review · Experimental", style = MaterialTheme.typography.titleMedium)
+            Text("Doubtful phrase", style = MaterialTheme.typography.titleMedium)
             Text(
                 "Whisper is the original transcript. MedASR checks selected English audio only. " +
                     "No changes are automatic; review disagreements against the recording.",
@@ -45,16 +47,13 @@ internal fun HybridTranscriptReviewPanel(
             review.notices.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
             Text("${review.verifiedAudio.size} audio regions selected for automatic MedASR checking",
                 style = MaterialTheme.typography.labelMedium)
-            OutlinedButton(onClick = { showOriginal = !showOriginal }, modifier = Modifier.fillMaxWidth()) {
-                Text(if (showOriginal) "Hide original Whisper transcript" else "Show original Whisper transcript")
-            }
-            if (showOriginal) Text(review.originalWhisperTranscript, style = MaterialTheme.typography.bodyMedium)
             Text(
                 if (pending.isEmpty()) "No pending model disagreements"
                 else "${pending.size} model disagreements to review",
                 style = MaterialTheme.typography.labelLarge
             )
             pending.firstOrNull()?.let { correction ->
+                var manualText by rememberSaveable(correction.id) { mutableStateOf(correction.originalText.ifBlank { correction.whisperContext }) }
                 AudioRegionReplayButton(audioPath, correction.startMs, correction.endMs)
                 Text(
                     String.format(Locale.ROOT, "Audio %.1f–%.1f seconds", correction.startMs / 1_000.0, correction.endMs / 1_000.0),
@@ -62,8 +61,20 @@ internal fun HybridTranscriptReviewPanel(
                 )
                 Text("Whisper context", style = MaterialTheme.typography.labelLarge)
                 Text(correction.whisperContext)
-                Text("MedASR alternative", style = MaterialTheme.typography.labelLarge)
-                Text(correction.medAsrAlternative)
+                correction.speakerId?.let { Text("Speaker: $it", style = MaterialTheme.typography.labelMedium) }
+                correction.qwenSuggestion?.let {
+                    Text("Qwen3 suggestion: ${correction.originalText} → $it")
+                    Text(when {
+                        correction.medAsrAlternative.isBlank() -> "Unverified by MedASR (language, limits, or inference unavailable)"
+                        correction.modelsAgree == true -> "Qwen3 and MedASR agree on this phrase"
+                        correction.modelsAgree == false -> "Qwen3 and MedASR disagree on this phrase"
+                        else -> "MedASR ran; agreement on this phrase could not be established"
+                    }, style = MaterialTheme.typography.labelMedium)
+                }
+                if (correction.medAsrAlternative.isNotBlank()) {
+                    Text("MedASR alternative", style = MaterialTheme.typography.labelLarge)
+                    Text(correction.medAsrAlternative)
+                }
                 correction.reasons.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
                 if (correction.status == CorrectionStatus.Suggested) {
                     Text(
@@ -72,13 +83,23 @@ internal fun HybridTranscriptReviewPanel(
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Button(onClick = { onAccept(correction.id) }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Use suggested phrase")
+                        Text(if (correction.qwenSuggestion != null) "Use Qwen3: ${correction.suggestedText}" else "Use MedASR: ${correction.suggestedText}")
+                    }
+                    correction.medAsrSuggestedText?.let { alternative ->
+                        OutlinedButton(onClick = { onAcceptMedAsr(correction.id) }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Use MedASR phrase: $alternative")
+                        }
                     }
                 } else {
-                    Text("This alternative cannot be aligned safely. Keep Whisper or edit the full transcript manually.")
+                    Text("Model replacements could not be aligned safely. Manual replacement is applied only when the original phrase is uniquely located; otherwise edit the full transcript.")
+                }
+                OutlinedTextField(value = manualText, onValueChange = { manualText = it },
+                    label = { Text("Manual replacement for this phrase") }, modifier = Modifier.fillMaxWidth())
+                OutlinedButton(onClick = { onManualCorrection(correction.id, manualText) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Use manual text")
                 }
                 OutlinedButton(onClick = { onReject(correction.id) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Keep current transcript")
+                    Text("Keep Whisper: ${correction.originalText}")
                 }
             }
         }

@@ -45,7 +45,9 @@ class CareLipikTranscriptionEngineResolver(
             expectedSpeakerCount = speakerCount
         ),
         whisper,
-        HybridWhisperMedAsrTranscriptionEngine(whisper, medAsr)
+        HybridWhisperMedAsrTranscriptionEngine(whisper, medAsr),
+        LlmGuidedHybridTranscriptionEngine(SherpaWhisperTranscriptionEngine(context.applicationContext,
+            diarizationEngine, doctorVoiceRoleMatcher, preferVulkan = true), medAsr, Qwen3TranscriptAdvisor(context))
     ).associateBy(AudioTranscriptionEngine::option)
 
     override fun resolve(option: TranscriptionEngineOption): AudioTranscriptionEngine {

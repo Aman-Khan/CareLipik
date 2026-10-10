@@ -125,7 +125,7 @@ fun RecordingScreen(
             title = "Record consultation",
             subtitle = "Record now or import a reusable WAV test file.",
             currentStep = 3,
-            totalSteps = 7,
+            totalSteps = 8,
             onBack = onBack,
             backEnabled = !isBusy && !uiState.isImporting &&
                 uiState.status !in setOf(RecordingStatus.Recording, RecordingStatus.Paused)
@@ -409,7 +409,7 @@ private fun TranscriptionSetupPanel(
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = "Choose the conversation language first. We will recommend the best engine.",
+                    text = "Choose the conversation language for offline hybrid transcription.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -422,19 +422,17 @@ private fun TranscriptionSetupPanel(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             SectionLabel(number = "2", title = "Transcription engine")
             Text(
-                text = "Saaras provides online speaker separation for English, Hindi, and " +
-                    "Hinglish. MedASR and Whisper remain offline options.",
+                text = "Whisper transcribes, Qwen3 checks context, and MedASR verifies selected English phrases.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                TranscriptionEngineOption.entries.forEach { engine ->
+                listOf(TranscriptionEngineOption.LlmGuidedHybrid).forEach { engine ->
                     EngineOptionCard(
                         engine = engine,
                         selectedLanguage = selectedLanguage,
                         isSelected = selectedEngine == engine,
-                        isRecommended = TranscriptionEngineOption.defaultFor(selectedLanguage) ==
-                            engine,
+                        isRecommended = true,
                         onSelected = { onEngineChanged(engine) }
                     )
                 }
@@ -730,7 +728,8 @@ private fun engineUnavailableMessage(engine: TranscriptionEngineOption): String 
     TranscriptionEngineOption.SaarasHindiHinglish ->
         "Choose English, Hindi, or Hinglish to use Saaras."
     TranscriptionEngineOption.WhisperMultilingual -> "Unavailable for this language."
-    TranscriptionEngineOption.WhisperMedAsrHybrid -> "Unavailable for this language."
+    TranscriptionEngineOption.WhisperMedAsrHybrid,
+    TranscriptionEngineOption.LlmGuidedHybrid -> "Unavailable for this language."
 }
 
 @Composable

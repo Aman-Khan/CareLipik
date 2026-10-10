@@ -47,8 +47,13 @@ data class WhisperDecodingSegment(
     val event: String? = null,
     val tokenLogProbabilities: List<Float> = emptyList(),
     val wordConfidences: List<WhisperWordConfidence> = emptyList(),
-    val hasNativeConfidence: Boolean = false
+    val hasNativeConfidence: Boolean = false,
+    val wordTimings: List<WhisperWordTiming> = emptyList()
 )
+
+/** Decoder-derived times on the original recording; never inferred from word count. */
+data class WhisperWordTiming(val startIndex: Int, val endIndex: Int, val startMs: Long, val endMs: Long,
+    val alignmentMs: Long? = null)
 
 /** Character ranges are local to the decoding segment. Scores are not calibrated accuracy. */
 data class WhisperWordConfidence(
@@ -86,7 +91,13 @@ data class HybridCorrection(
     val whisperContext: String,
     val medAsrAlternative: String,
     val reasons: List<String>,
-    val status: CorrectionStatus
+    val status: CorrectionStatus,
+    val qwenSuggestion: String? = null,
+    val medAsrSuggestedText: String? = null,
+    val speakerId: String? = null,
+    val wordIds: List<String> = emptyList(),
+    val priority: String? = null,
+    val modelsAgree: Boolean? = null
 )
 
 data class HybridTranscriptionReview(
@@ -95,19 +106,24 @@ data class HybridTranscriptionReview(
     val uncertainSegments: List<UncertainSegment>,
     val corrections: List<HybridCorrection> = emptyList(),
     val notices: List<String> = emptyList(),
-    val verifiedAudio: List<VerifiedAudioInterval> = emptyList()
+    val verifiedAudio: List<VerifiedAudioInterval> = emptyList(),
+    val isLlmGuided: Boolean = false
 )
 
 data class VerifiedAudioInterval(val startMs: Long, val endMs: Long, val calls: Int)
 
 enum class TranscriptionStage(val displayName: String) {
     Whisper("Transcribing with Whisper on this device…"),
+    QwenAnalysis("Checking possible transcription errors with local Qwen3…"),
     MedAsrVerification("Checking selected English audio with MedASR…"),
     Comparing("Comparing Whisper and MedASR suggestions…")
 }
 
 /** Progress and cancellation belong to the request, never to a shared recognizer instance. */
 interface ProgressAwareTranscriptionEngine : AudioTranscriptionEngine {
+    fun transcribeWithDetails(audioPath: String, language: TranscriptionLanguage,
+        onProgress: (TranscriptionStage) -> Unit, checkCancelled: () -> Unit,
+        onDetail: (String) -> Unit): TranscriptionResult = transcribe(audioPath, language, onProgress, checkCancelled)
     fun transcribe(
         audioPath: String,
         language: TranscriptionLanguage,

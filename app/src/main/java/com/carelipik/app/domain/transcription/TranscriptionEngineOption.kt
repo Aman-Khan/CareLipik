@@ -33,6 +33,12 @@ enum class TranscriptionEngineOption(
         description = "Experimental · Automatically checks doubtful English phrases; tap suggestions to apply",
         isOffline = true,
         supportedLanguages = TranscriptionLanguage.entries.toSet()
+    ),
+    LlmGuidedHybrid(
+        displayName = "LLM-Guided Hybrid",
+        description = "Experimental · Local Qwen3 reviews Whisper; MedASR checks selected English audio",
+        isOffline = true,
+        supportedLanguages = TranscriptionLanguage.entries.toSet()
     );
 
     fun supports(language: TranscriptionLanguage): Boolean = language in supportedLanguages

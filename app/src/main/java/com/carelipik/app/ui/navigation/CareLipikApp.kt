@@ -40,6 +40,10 @@ import com.carelipik.app.ui.screens.welcome.WelcomeScreen
 import com.carelipik.app.ui.screens.welcome.WelcomeViewModel
 import com.carelipik.app.ui.screens.savedrecordings.SavedRecordingsScreen
 import com.carelipik.app.ui.screens.savedrecordings.SavedRecordingsViewModel
+import com.carelipik.app.ui.screens.prescription.PrescriptionScreen
+import com.carelipik.app.ui.screens.prescription.PrescriptionViewModel
+import com.carelipik.app.data.export.AndroidLatexPrescriptionExporter
+import androidx.compose.runtime.remember
 
 @Composable
 fun CareLipikApp(
@@ -58,6 +62,9 @@ fun CareLipikApp(
     savedRecordingsViewModel: SavedRecordingsViewModel? = null
 ) {
     val context = LocalContext.current
+    val prescriptionViewModel: PrescriptionViewModel = viewModel()
+    val prescriptionUiState by prescriptionViewModel.uiState.collectAsState()
+    val prescriptionExporter = remember(context) { AndroidLatexPrescriptionExporter(context) }
     val activeHomeViewModel = homeViewModel ?: viewModel(
         factory = HomeViewModel.Factory(context)
     )
@@ -118,6 +125,7 @@ fun CareLipikApp(
             ConsultationDestination.Home -> HomeScreen(
                 uiState = homeUiState,
                 onStartConsultation = {
+                    prescriptionViewModel.reset()
                     activeSavedRecordingsViewModel.startNewConsultation()
                     welcomeViewModel.resetForNewConsultation()
                     patientDetailsViewModel.resetForNewConsultation()
@@ -154,6 +162,7 @@ fun CareLipikApp(
                 onResume = { id ->
                     activeSavedRecordingsViewModel.resume(id) { restored ->
                         if (activeRecordingViewModel.restoreSavedRecording(restored)) {
+                            prescriptionViewModel.reset()
                             patientDetailsViewModel.restore(restored.recording)
                             welcomeViewModel.setRecordingConsent(restored.recording.hasRecordingConsent)
                             activeTranscriptViewModel.resetForNewConsultation()
@@ -247,6 +256,8 @@ fun CareLipikApp(
                 onSpeakerRoleAssigned = activeTranscriptViewModel::assignSpeakerRole,
                 onSpeakerNameChanged = activeTranscriptViewModel::setSpeakerName,
                 onAcceptHybridCorrection = activeTranscriptViewModel::acceptHybridCorrection,
+                onAcceptMedAsrCorrection = activeTranscriptViewModel::acceptMedAsrCorrection,
+                onManualHybridCorrection = activeTranscriptViewModel::applyManualHybridCorrection,
                 onRejectHybridCorrection = activeTranscriptViewModel::rejectHybridCorrection,
                 onCancelTranscription = activeTranscriptViewModel::cancelTranscription,
                 onRetry = activeTranscriptViewModel::retry,
@@ -276,19 +287,34 @@ fun CareLipikApp(
                 onOnlineGenerationConsentChanged =
                     activeClinicalDraftViewModel::setOnlineGenerationConsent,
                 onGenerateWithGemini = activeClinicalDraftViewModel::generateWithGemini,
+                onGenerateWithQwen = activeClinicalDraftViewModel::generateWithQwen,
+                onCancelLocalGeneration = activeClinicalDraftViewModel::cancelLocalGeneration,
                 onAddMedication = activeClinicalDraftViewModel::addMedication,
                 onMedicationChanged = activeClinicalDraftViewModel::updateMedication,
                 onRemoveMedication = activeClinicalDraftViewModel::removeMedication,
                 onRetry = activeClinicalDraftViewModel::retry,
-                onBack = navigator::navigateBack,
+                onBack = {
+                    activeClinicalDraftViewModel.cancelLocalGeneration()
+                    navigator.navigateBack()
+                },
                 onContinue = {
                     if (activeClinicalDraftViewModel.validateForContinue()) {
+                        prescriptionViewModel.load(activeClinicalDraftViewModel.currentDraft(),
+                            patientDetailsUiState.patientName, patientDetailsUiState.age, savedDoctorProfile)
                         activeDoctorReviewViewModel.loadDraft(
                             activeClinicalDraftViewModel.currentDraft()
                         )
                         navigator.navigateToNext()
                     }
                 },
+                modifier = Modifier.padding(innerPadding)
+            )
+            ConsultationDestination.Prescription -> PrescriptionScreen(
+                uiState = prescriptionUiState,
+                viewModel = prescriptionViewModel,
+                exporter = prescriptionExporter,
+                onBack = navigator::navigateBack,
+                onContinue = navigator::navigateToNext,
                 modifier = Modifier.padding(innerPadding)
             )
             ConsultationDestination.DoctorReview -> DoctorReviewScreen(
@@ -374,7 +400,12 @@ fun CareLipikApp(
                             audioPath,
                             activeRecordingViewModel.transcriptionLanguage(),
                             activeRecordingViewModel.transcriptionEngine(),
-                            activeRecordingViewModel.speakerCount()
+                            activeRecordingViewModel.speakerCount(),
+                            com.carelipik.app.domain.transcription.TranscriptionConsultationContext(
+                                patientName = patientDetailsUiState.patientName,
+                                patientAge = patientDetailsUiState.age,
+                                visitReason = patientDetailsUiState.visitReason
+                            )
                         )
                         navigator.navigateToNext()
                     }

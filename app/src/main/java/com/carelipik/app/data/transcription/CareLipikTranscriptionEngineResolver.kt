@@ -37,6 +37,12 @@ class CareLipikTranscriptionEngineResolver(context: Context) : TranscriptionEngi
             context.applicationContext,
             diarizationEngine,
             doctorVoiceRoleMatcher
+        ),
+        SherpaWhisperTranscriptionEngine(
+            context.applicationContext,
+            diarizationEngine,
+            doctorVoiceRoleMatcher,
+            WhisperModelVariant.Turbo
         )
     ).associateBy(AudioTranscriptionEngine::option)
 

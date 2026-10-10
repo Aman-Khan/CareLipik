@@ -15,6 +15,7 @@ development recordings, screenshots, fixtures, or tests.
 - Optional online English, Hindi, and Hinglish transcription with Sarvam Saaras Batch diarization.
 - Offline two-speaker diarization.
 - Offline doctor-voice enrollment and confidence-gated Doctor/Patient role matching.
+- Optional on-device Whisper Turbo engine alongside the existing Whisper Small baseline.
 - Manual correction of transcript text, medical terms, and speaker roles.
 - Offline transcript-backed clinical drafts that preserve every reviewed patient statement and the
   complete reviewed transcript for doctor approval.
@@ -47,6 +48,18 @@ development recordings, screenshots, fixtures, or tests.
 
 Model binaries are intentionally ignored by Git. Obtain them through the repository download
 scripts rather than committing them.
+
+Whisper Turbo is optional because its INT8 encoder, decoder, and tokens require approximately
+1.04 GB before APK packaging. Install it without replacing Whisper Small:
+
+```sh
+./tools/offline_whisper_turbo/setup.sh
+./tools/offline_whisper_turbo/setup.sh --check
+```
+
+After rebuilding and reinstalling, choose **Multilingual (Whisper Turbo)** on the recording
+screen. It uses 128-bin Whisper features and the same fully offline diarization and doctor-role
+matching path as Whisper Small.
 
 The local diarization path uses Sherpa-ONNX 1.13.6 on CPU with Pyannote Segmentation 3.0,
 NeMo TitaNet Small speaker embeddings, and automatic fast clustering. Gemini is not used

@@ -13,4 +13,15 @@ class TranscriptionEngineOptionTest {
         assertFalse(medAsr.supports(TranscriptionLanguage.Hindi))
         assertFalse(medAsr.supports(TranscriptionLanguage.Hinglish))
     }
+
+    @Test
+    fun whisperTurbo_isAnAdditionalOfflineMultilingualOption() {
+        val turbo = TranscriptionEngineOption.WhisperTurboMultilingual
+
+        assertTrue(turbo.isOffline)
+        assertTrue(turbo.supports(TranscriptionLanguage.English))
+        assertTrue(turbo.supports(TranscriptionLanguage.Hindi))
+        assertTrue(turbo.supports(TranscriptionLanguage.Hinglish))
+        assertTrue(TranscriptionEngineOption.entries.contains(TranscriptionEngineOption.WhisperMultilingual))
+    }
 }

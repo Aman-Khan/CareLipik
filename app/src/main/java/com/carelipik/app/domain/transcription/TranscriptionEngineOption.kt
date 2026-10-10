@@ -27,6 +27,12 @@ enum class TranscriptionEngineOption(
         description = "Offline baseline for English, Hindi, and mixed speech",
         isOffline = true,
         supportedLanguages = TranscriptionLanguage.entries.toSet()
+    ),
+    WhisperTurboMultilingual(
+        displayName = "Multilingual (Whisper Turbo)",
+        description = "Higher-capacity offline model; requires about 1.04 GB of local assets",
+        isOffline = true,
+        supportedLanguages = TranscriptionLanguage.entries.toSet()
     );
 
     fun supports(language: TranscriptionLanguage): Boolean = language in supportedLanguages

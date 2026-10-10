@@ -345,7 +345,7 @@ private fun TranscriptionSetupPanel(
             SectionLabel(number = "2", title = "Transcription engine")
             Text(
                 text = "Saaras provides online two-speaker separation for English, Hindi, and " +
-                    "Hinglish. MedASR and Whisper remain offline options.",
+                    "Hinglish. MedASR, Whisper Small, and Whisper Turbo remain offline options.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -651,6 +651,7 @@ private fun engineUnavailableMessage(engine: TranscriptionEngineOption): String 
     TranscriptionEngineOption.SaarasHindiHinglish ->
         "Choose English, Hindi, or Hinglish to use Saaras."
     TranscriptionEngineOption.WhisperMultilingual -> "Unavailable for this language."
+    TranscriptionEngineOption.WhisperTurboMultilingual -> "Unavailable for this language."
 }
 
 @Composable

@@ -18,9 +18,10 @@ import java.io.File
 class SherpaWhisperTranscriptionEngine(
     private val context: Context,
     private val diarizationEngine: SpeakerDiarizationEngine? = null,
-    private val doctorVoiceRoleMatcher: DoctorVoiceRoleMatcher? = null
+    private val doctorVoiceRoleMatcher: DoctorVoiceRoleMatcher? = null,
+    private val variant: WhisperModelVariant = WhisperModelVariant.Small
 ) : AudioTranscriptionEngine {
-    override val option: TranscriptionEngineOption = TranscriptionEngineOption.WhisperMultilingual
+    override val option: TranscriptionEngineOption = variant.option
 
     override fun transcribe(
         audioPath: String,
@@ -76,13 +77,13 @@ class SherpaWhisperTranscriptionEngine(
     private fun createRecognizer(language: TranscriptionLanguage): OfflineRecognizer {
         val modelConfig = OfflineModelConfig(
             whisper = OfflineWhisperModelConfig(
-                encoder = "$MODEL_DIR/small-encoder.int8.onnx",
-                decoder = "$MODEL_DIR/small-decoder.int8.onnx",
+                encoder = "${variant.modelDirectory}/${variant.filePrefix}-encoder.int8.onnx",
+                decoder = "${variant.modelDirectory}/${variant.filePrefix}-decoder.int8.onnx",
                 language = language.whisperCode,
                 task = "transcribe",
                 tailPaddings = -1
             ),
-            tokens = "$MODEL_DIR/small-tokens.txt",
+            tokens = "${variant.modelDirectory}/${variant.filePrefix}-tokens.txt",
             numThreads = Runtime.getRuntime().availableProcessors().coerceIn(1, 4),
             provider = "cpu",
             modelType = "whisper"
@@ -90,7 +91,10 @@ class SherpaWhisperTranscriptionEngine(
         return OfflineRecognizer(
             assetManager = context.assets,
             config = OfflineRecognizerConfig(
-                featConfig = FeatureConfig(sampleRate = PcmWaveAudio.sampleRate, featureDim = 80),
+                featConfig = FeatureConfig(
+                    sampleRate = PcmWaveAudio.sampleRate,
+                    featureDim = variant.featureDimension
+                ),
                 modelConfig = modelConfig,
                 decodingMethod = "greedy_search"
             )
@@ -98,10 +102,11 @@ class SherpaWhisperTranscriptionEngine(
     }
 
     private fun checkModelAssets() {
-        val availableFiles = context.assets.list(MODEL_DIR)?.toSet().orEmpty()
-        val missing = REQUIRED_MODEL_FILES - availableFiles
+        val availableFiles = context.assets.list(variant.modelDirectory)?.toSet().orEmpty()
+        val missing = variant.requiredModelFiles - availableFiles
         require(missing.isEmpty()) {
-            "Offline transcription model is not installed in this build."
+            "${variant.option.displayName} model is not installed. " +
+                "Run ${variant.setupCommand}, rebuild, and reinstall the app."
         }
     }
 
@@ -116,11 +121,35 @@ class SherpaWhisperTranscriptionEngine(
     private companion object {
         const val MAX_CHUNK_SECONDS = 20
         const val MAX_CHUNK_SAMPLES = PcmWaveAudio.sampleRate * MAX_CHUNK_SECONDS
-        const val MODEL_DIR = "models/sherpa-onnx-whisper-small"
-        val REQUIRED_MODEL_FILES = setOf(
-            "small-encoder.int8.onnx",
-            "small-decoder.int8.onnx",
-            "small-tokens.txt"
-        )
     }
+}
+
+enum class WhisperModelVariant(
+    val option: TranscriptionEngineOption,
+    val modelDirectory: String,
+    val filePrefix: String,
+    val featureDimension: Int,
+    val setupCommand: String
+) {
+    Small(
+        option = TranscriptionEngineOption.WhisperMultilingual,
+        modelDirectory = "models/sherpa-onnx-whisper-small",
+        filePrefix = "small",
+        featureDimension = 80,
+        setupCommand = "the existing Whisper Small setup"
+    ),
+    Turbo(
+        option = TranscriptionEngineOption.WhisperTurboMultilingual,
+        modelDirectory = "models/sherpa-onnx-whisper-turbo",
+        filePrefix = "turbo",
+        featureDimension = 128,
+        setupCommand = "./tools/offline_whisper_turbo/setup.sh"
+    );
+
+    val requiredModelFiles: Set<String>
+        get() = setOf(
+            "$filePrefix-encoder.int8.onnx",
+            "$filePrefix-decoder.int8.onnx",
+            "$filePrefix-tokens.txt"
+        )
 }

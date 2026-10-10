@@ -16,6 +16,16 @@ import com.carelipik.app.domain.export.RecordingAudioExportResult
 
 class RecordingViewModelTest {
     @Test
+    fun speakerCount_defaultsToTwoAndResetsForNewConsultation() {
+        val viewModel = RecordingViewModel(TrackingRecorder(), useAutomaticTimer = false)
+        assertEquals(2, viewModel.speakerCount())
+        viewModel.setSpeakerCount(4)
+        assertEquals(4, viewModel.uiState.value.speakerCount)
+        viewModel.resetForNewConsultation()
+        assertEquals(2, viewModel.speakerCount())
+    }
+
+    @Test
     fun download_copiesCurrentRecordingWithoutDiscardingOrTranscribingIt() {
         val recorder = TrackingRecorder()
         var exportedPath: String? = null
@@ -102,9 +112,11 @@ class RecordingViewModelTest {
         val saved = com.carelipik.app.domain.model.SavedRecording(
             "00000000-0000-0000-0000-000000000001", 1_000L, "Synthetic patient", "30", "Synthetic visit",
             TranscriptionLanguage.Hinglish, TranscriptionEngineOption.SaarasHindiHinglish,
-            "Synthetic WAV", 1_000L, com.carelipik.app.domain.model.RecordedAudioSource.Microphone, true
+            "Synthetic WAV", 1_000L, com.carelipik.app.domain.model.RecordedAudioSource.Microphone, true,
+            speakerCount = 3
         )
         assertTrue(viewModel.restoreSavedRecording(com.carelipik.app.domain.model.RestoredSavedRecording(saved, audio)))
+        assertEquals(3, viewModel.speakerCount())
         assertEquals(RecordingStatus.Completed, viewModel.uiState.value.status)
         assertEquals(TranscriptionLanguage.Hinglish, viewModel.transcriptionLanguage())
         assertEquals(TranscriptionEngineOption.SaarasHindiHinglish, viewModel.transcriptionEngine())

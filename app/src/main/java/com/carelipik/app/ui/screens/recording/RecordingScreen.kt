@@ -75,7 +75,8 @@ fun RecordingScreen(
     onSaveForLater: (() -> Unit)? = null,
     isSavingForLater: Boolean = false,
     saveError: String? = null,
-    onDownloadAudio: ((String) -> Unit)? = null
+    onDownloadAudio: ((String) -> Unit)? = null,
+    onSpeakerCountChanged: (Int) -> Unit = {}
 ) {
     val context = LocalContext.current
     var permissionDenied by remember { mutableStateOf(false) }
@@ -273,6 +274,26 @@ fun RecordingScreen(
                 )
                 saveError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
+            Text("Number of speakers", style = MaterialTheme.typography.titleMedium)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    onClick = { onSpeakerCountChanged(uiState.speakerCount - 1) },
+                    enabled = !isBusy && uiState.speakerCount > 1
+                ) { Text("−") }
+                Text("${uiState.speakerCount}", style = MaterialTheme.typography.titleLarge)
+                OutlinedButton(
+                    onClick = { onSpeakerCountChanged(uiState.speakerCount + 1) },
+                    enabled = !isBusy && uiState.speakerCount < 10
+                ) { Text("+") }
+            }
+            Text(
+                "Count everyone who speaks, including the doctor, patient and attendants. " +
+                    "Speech will be grouped by voice into this many speakers.",
+                style = MaterialTheme.typography.bodySmall
+            )
             TranscriptionSetupPanel(
                 selectedLanguage = uiState.transcriptionLanguage,
                 selectedEngine = uiState.transcriptionEngine,

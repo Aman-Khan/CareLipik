@@ -20,6 +20,26 @@ class SavedRecordingCodecTest {
         assertEquals(recording, SavedRecordingCodec.decode(SavedRecordingCodec.encode(recording)))
     }
 
+    @Test
+    fun metadata_preservesSpeakerCount() {
+        val configured = recording.copy(speakerCount = 4)
+        assertEquals(configured, SavedRecordingCodec.decode(SavedRecordingCodec.encode(configured)))
+    }
+
+    @Test
+    fun metadata_readsOldRecordingsWithDefaultSpeakerCount() {
+        val bytes = SavedRecordingCodec.encode(recording)
+        // Version 1 has identical fields without the trailing speaker-count integer.
+        val legacy = bytes.copyOf(bytes.size - 4)
+        legacy[3] = 1
+        assertEquals(2, SavedRecordingCodec.decode(legacy).speakerCount)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun metadata_rejectsInvalidSpeakerCount() {
+        SavedRecordingCodec.decode(SavedRecordingCodec.encode(recording.copy(speakerCount = 0)))
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun metadata_rejectsUnsupportedLanguageEngineCombination() {
         SavedRecordingCodec.decode(SavedRecordingCodec.encode(recording.copy(engine = TranscriptionEngineOption.MedAsrEnglish)))

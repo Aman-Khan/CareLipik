@@ -4,12 +4,17 @@ import android.content.Context
 import com.carelipik.app.domain.transcription.DiarizedAudioTurn
 import com.carelipik.app.domain.transcription.SpeakerDiarizationEngine
 import com.carelipik.app.domain.transcription.SpeakerDiarizationResult
+import com.carelipik.app.domain.transcription.SpeakerIdentityResolver
+import com.carelipik.app.domain.transcription.FixedCountVoiceClusterer
 import com.k2fsa.sherpa.onnx.FastClusteringConfig
 import com.k2fsa.sherpa.onnx.OfflineSpeakerDiarization
 import com.k2fsa.sherpa.onnx.OfflineSpeakerDiarizationConfig
 import com.k2fsa.sherpa.onnx.OfflineSpeakerSegmentationModelConfig
 import com.k2fsa.sherpa.onnx.OfflineSpeakerSegmentationPyannoteModelConfig
 import com.k2fsa.sherpa.onnx.SpeakerEmbeddingExtractorConfig
+import com.k2fsa.sherpa.onnx.SpeakerEmbeddingExtractor
+import kotlin.math.ceil
+import kotlin.math.floor
 
 /** On-device diarization; a negative speaker count enables automatic clustering. */
 class SherpaOfflineSpeakerDiarizationEngine(
@@ -29,7 +34,7 @@ class SherpaOfflineSpeakerDiarizationEngine(
             return SpeakerDiarizationResult.Failure("The recording contains no audio.")
         }
         return runCatching {
-            createDiarizer(expectedSpeakerCount).useDiarizer { diarizer ->
+            val turns = createDiarizer(expectedSpeakerCount).useDiarizer { diarizer ->
                 require(sampleRate == diarizer.sampleRate()) {
                     "Speaker detection requires ${diarizer.sampleRate()} Hz audio."
                 }
@@ -42,6 +47,13 @@ class SherpaOfflineSpeakerDiarizationEngine(
                         )
                     }
                     .normalizeTurns(samples.size / sampleRate.toFloat())
+            }
+            if (expectedSpeakerCount > 0 && turns.map { it.speakerId }.distinct().size != expectedSpeakerCount) {
+                recoverFixedCount(samples, sampleRate, turns, expectedSpeakerCount)
+            } else if (expectedSpeakerCount <= 0 && turns.map { it.speakerId }.distinct().size > 1) {
+                reconcileIdentities(samples, sampleRate, turns)
+            } else {
+                turns
             }
         }.fold(
             onSuccess = { turns ->
@@ -57,6 +69,94 @@ class SherpaOfflineSpeakerDiarizationEngine(
                 )
             }
         )
+    }
+
+    private fun recoverFixedCount(
+        samples: FloatArray,
+        sampleRate: Int,
+        turns: List<DiarizedAudioTurn>,
+        speakerCount: Int
+    ): List<DiarizedAudioTurn> {
+        val extractor = SpeakerEmbeddingExtractor(context.assets, SpeakerEmbeddingExtractorConfig(
+            model = "$MODEL_DIR/$EMBEDDING_MODEL",
+            numThreads = Runtime.getRuntime().availableProcessors().coerceIn(1, 4),
+            debug = false,
+            provider = "cpu"
+        ))
+        return try {
+            val windows = turns.sortedBy { it.startSeconds }.flatMap { turn ->
+                val duration = turn.endSeconds - turn.startSeconds
+                val count = ceil(duration / 2f).toInt().coerceAtLeast(1)
+                (0 until count).map { index ->
+                    turn.copy(
+                        startSeconds = turn.startSeconds + duration * index / count,
+                        endSeconds = turn.startSeconds + duration * (index + 1) / count
+                    )
+                }
+            }
+            val evidence = windows.map { window ->
+                val start = floor(window.startSeconds * sampleRate).toInt().coerceIn(0, samples.size)
+                val end = ceil(window.endSeconds * sampleRate).toInt().coerceIn(start, samples.size)
+                val stream = extractor.createStream()
+                try {
+                    stream.acceptWaveform(samples.copyOfRange(start, end), sampleRate)
+                    stream.inputFinished()
+                    require(extractor.isReady(stream)) { "Speech is too short for reliable fixed-count clustering." }
+                    extractor.compute(stream)
+                } finally {
+                    stream.release()
+                }
+            }
+            val labels = FixedCountVoiceClusterer.cluster(evidence, speakerCount)
+            windows.mapIndexed { index, turn -> turn.copy(speakerId = "speaker-${labels[index] + 1}") }
+                .normalizeTurns(samples.size / sampleRate.toFloat())
+        } finally {
+            extractor.release()
+        }
+    }
+
+    private fun reconcileIdentities(
+        samples: FloatArray,
+        sampleRate: Int,
+        turns: List<DiarizedAudioTurn>
+    ): List<DiarizedAudioTurn> {
+        val extractor = SpeakerEmbeddingExtractor(
+            context.assets,
+            SpeakerEmbeddingExtractorConfig(
+                model = "$MODEL_DIR/$EMBEDDING_MODEL",
+                numThreads = Runtime.getRuntime().availableProcessors().coerceIn(1, 4),
+                debug = false,
+                provider = "cpu"
+            )
+        )
+        return try {
+            val embeddings = turns.groupBy { it.speakerId }.mapNotNull { (id, speakerTurns) ->
+                // Pool speech across pauses: silence length never decides who is speaking.
+                val ranges = speakerTurns.map { turn ->
+                    floor(turn.startSeconds * sampleRate).toInt().coerceIn(0, samples.size) until
+                        ceil(turn.endSeconds * sampleRate).toInt().coerceIn(0, samples.size)
+                }
+                val audio = FloatArray(ranges.sumOf { it.count() })
+                var offset = 0
+                ranges.forEach { range ->
+                    samples.copyInto(audio, offset, range.first, range.last + 1)
+                    offset += range.count()
+                }
+                // A short acknowledgement is insufficient evidence for merging identities.
+                if (audio.size < sampleRate * 2) return@mapNotNull null
+                val stream = extractor.createStream()
+                try {
+                    stream.acceptWaveform(audio, sampleRate)
+                    stream.inputFinished()
+                    if (extractor.isReady(stream)) id to extractor.compute(stream) else null
+                } finally {
+                    stream.release()
+                }
+            }.toMap()
+            SpeakerIdentityResolver.resolve(turns, embeddings)
+        } finally {
+            extractor.release()
+        }
     }
 
     private fun createDiarizer(expectedSpeakerCount: Int): OfflineSpeakerDiarization {

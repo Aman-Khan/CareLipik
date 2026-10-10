@@ -48,7 +48,8 @@ class SherpaMedAsrTranscriptionEngine(
         }
     }.fold(
         onSuccess = {
-            TranscriptionResult.Success(it.transcript, it.segments, it.doctorVoiceMatch)
+            TranscriptionResult.Success(it.transcript, it.segments, it.doctorVoiceMatch,
+                speakerSeparationWarning = it.speakerSeparationWarning)
         },
         onFailure = { error ->
             if (error is CancellationException) throw error

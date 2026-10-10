@@ -13,7 +13,7 @@ import java.util.UUID
 internal object SavedRecordingCodec {
     fun encode(recording: SavedRecording): ByteArray = ByteArrayOutputStream().use { bytes ->
         DataOutputStream(bytes).use { output ->
-            output.writeInt(1)
+            output.writeInt(2)
             output.writeUTF(recording.id)
             output.writeLong(recording.savedAtMillis)
             output.writeUTF(recording.patientName)
@@ -25,12 +25,14 @@ internal object SavedRecordingCodec {
             output.writeLong(recording.durationMillis)
             output.writeUTF(recording.audioSource.name)
             output.writeBoolean(recording.hasRecordingConsent)
+            output.writeInt(recording.speakerCount)
         }
         bytes.toByteArray()
     }
 
     fun decode(bytes: ByteArray): SavedRecording = DataInputStream(ByteArrayInputStream(bytes)).use {
-        require(it.readInt() == 1) { "Unsupported saved recording format." }
+        val version = it.readInt()
+        require(version in 1..2) { "Unsupported saved recording format." }
         SavedRecording(
             id = it.readUTF(),
             savedAtMillis = it.readLong(),
@@ -42,12 +44,14 @@ internal object SavedRecordingCodec {
             audioDisplayName = it.readUTF(),
             durationMillis = it.readLong(),
             audioSource = RecordedAudioSource.valueOf(it.readUTF()),
-            hasRecordingConsent = it.readBoolean()
+            hasRecordingConsent = it.readBoolean(),
+            speakerCount = if (version >= 2) it.readInt() else 2
         ).also { recording ->
             require(UUID.fromString(recording.id).toString() == recording.id)
             require(recording.patientName.isNotBlank() && recording.durationMillis > 0)
             require(recording.engine.supports(recording.language))
             require(recording.hasRecordingConsent)
+            com.carelipik.app.domain.transcription.SpeakerCount.validate(recording.speakerCount)
         }
     }
 }

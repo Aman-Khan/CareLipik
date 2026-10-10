@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -18,6 +19,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -144,15 +146,20 @@ fun TranscriptScreen(
                 } else {
                     UnsegmentedTranscriptNotice()
                 }
+                if (uiState.isAnalyzingTerms) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth().testTag("medical_term_loader"))
+                    Text("Enhancing medical terms with Gemini…", style = MaterialTheme.typography.bodyMedium)
+                }
                 when (uiState.viewMode) {
                     TranscriptViewMode.FullTranscript -> OutlinedTextField(
-                        value = uiState.transcript,
+                        value = uiState.labelProjection.text,
                         onValueChange = onTranscriptChanged,
                         label = { Text("Edit full transcript") },
                         supportingText = { Text(reviewSupportingText(uiState)) },
                         isError = uiState.transcriptError != null,
                         minLines = 12,
-                        modifier = Modifier.fillMaxWidth()
+                        enabled = !uiState.isAnalyzingTerms,
+                        modifier = Modifier.fillMaxWidth().testTag("full_transcript_editor")
                     )
                     TranscriptViewMode.Conversation -> ConversationTranscript(
                         uiState = uiState
@@ -232,7 +239,9 @@ private fun OnlineClinicalAnalysisPanel(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (isAnalyzing) {
-                    CircularProgressIndicator(modifier = Modifier.padding(4.dp))
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Text("Enhancing medical terms…")
                 } else {
                     Text(if (source == null) "Enhance terms with Gemini" else "Analyze again")
                 }
@@ -495,8 +504,13 @@ private fun TranscriptTermReviewPanel(
             ) {
                 Text(
                     text = buildHighlightedTranscript(
-                        transcript = uiState.transcript,
-                        concerns = uiState.concerns,
+                        transcript = uiState.labelProjection.text,
+                        concerns = uiState.concerns.map { concern ->
+                            concern.copy(
+                                startIndex = uiState.labelProjection.displayOffset(concern.startIndex),
+                                endIndexExclusive = uiState.labelProjection.displayOffset(concern.endIndexExclusive)
+                            )
+                        },
                         confirmedConcernIds = uiState.confirmedConcernIds,
                         pendingColor = pendingColor,
                         confirmedColor = confirmedColor

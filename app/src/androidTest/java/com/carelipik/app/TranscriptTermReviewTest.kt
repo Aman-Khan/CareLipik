@@ -7,6 +7,14 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performClick
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import com.carelipik.app.ui.screens.transcript.TranscriptViewModel
+import com.carelipik.app.domain.transcription.OnlineTranscriptReviewAnalyzer
+import com.carelipik.app.domain.transcription.OnlineTranscriptReviewResult
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import com.carelipik.app.data.transcription.RuleBasedTranscriptReviewAnalyzer
 import com.carelipik.app.domain.transcription.TranscriptionLanguage
 import com.carelipik.app.domain.transcription.TranscriptionEngineOption
@@ -21,6 +29,40 @@ import org.junit.Test
 class TranscriptTermReviewTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+    @Test
+    fun enhancement_showsLoaderUntilAnalyzerCompletes() {
+        val completion = CountDownLatch(1)
+        val model = TranscriptViewModel(onlineReviewAnalyzer = OnlineTranscriptReviewAnalyzer { _, _ ->
+            completion.await(15, TimeUnit.SECONDS)
+            OnlineTranscriptReviewResult.Success(emptyList(), "Synthetic provider", false)
+        }).apply {
+            setTranscript("Synthetic consultation text")
+            setOnlineAnalysisConsent(true)
+        }
+        composeRule.setContent {
+            val state by model.uiState.collectAsState()
+            CareLipikTheme {
+                TranscriptScreen(
+                    uiState = state, onTranscriptChanged = model::setDisplayedTranscript,
+                    onConfirmConcern = model::confirmConcern, onApplySuggestion = model::applySuggestedReplacement,
+                    onOnlineAnalysisConsentChanged = model::setOnlineAnalysisConsent,
+                    onAnalyzeTermsOnline = model::analyzeTermsOnline, onViewModeChanged = model::setViewMode,
+                    onSpeakerRoleAssigned = model::assignSpeakerRole, onRetry = {}, onBack = {}, onContinue = {}
+                )
+            }
+        }
+        try {
+            composeRule.onNodeWithText("Enhance terms with Gemini").performScrollTo().performClick()
+            composeRule.onNodeWithTag("medical_term_loader").performScrollTo().assertIsDisplayed()
+            composeRule.onNodeWithTag("full_transcript_editor").performScrollTo().assertIsNotEnabled()
+            completion.countDown()
+            composeRule.waitUntil(5_000) { !model.uiState.value.isAnalyzingTerms }
+            composeRule.onNodeWithTag("medical_term_loader").assertDoesNotExist()
+        } finally {
+            completion.countDown()
+        }
+    }
 
     @Test
     fun offlineTranscript_showsConsentGatedGeminiEnhancement() {

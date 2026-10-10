@@ -26,6 +26,27 @@ class SavedRecordingScreenTest {
     val composeRule = createComposeRule()
 
     @Test
+    fun speakerCountSelector_forwardsChosenCount() {
+        var count = 2
+        composeRule.setContent {
+            CareLipikTheme {
+                RecordingScreen(
+                    uiState = RecordingUiState(status = RecordingStatus.Completed, hasSavedAudio = true),
+                    onStart = {}, onPause = {}, onResume = {}, onStop = {}, onDiscard = {},
+                    onImportAudio = {}, onTogglePlayback = {}, onTranscriptionLanguageChanged = {},
+                    onTranscriptionEngineChanged = {}, onOnlineProcessingConsentChanged = {},
+                    onBack = {}, onContinue = {}, onSpeakerCountChanged = { count = it }
+                )
+            }
+        }
+        composeRule.onNodeWithText("Number of speakers").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("+").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(3, count) }
+        composeRule.onNodeWithText("−").performClick()
+        composeRule.runOnIdle { assertEquals(1, count) }
+    }
+
+    @Test
     fun completedRecording_offersDownloadForReuse() {
         renderDownload(RecordingUiState(status = RecordingStatus.Completed, hasSavedAudio = true))
         composeRule.onNodeWithText("Download recording").performScrollTo().assertIsDisplayed().assertIsEnabled()

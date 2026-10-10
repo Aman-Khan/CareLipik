@@ -11,7 +11,8 @@ import kotlin.math.floor
 internal data class OfflineTranscriptionPayload(
     val transcript: String,
     val segments: List<TranscriptSegment> = emptyList(),
-    val doctorVoiceMatch: DoctorVoiceRoleMatchResult? = null
+    val doctorVoiceMatch: DoctorVoiceRoleMatchResult? = null,
+    val speakerSeparationWarning: String? = null
 )
 
 internal object OfflineDiarizedTranscription {
@@ -68,7 +69,12 @@ internal object OfflineDiarizedTranscription {
             if (!fallbackAfterEmptyDiarization) return OfflineTranscriptionPayload(transcript = "")
         }
         return OfflineTranscriptionPayload(
-            transcript = (recognizeWithTiming?.invoke(samples, 0.0, null) ?: recognize(samples)).trim()
+            transcript = (recognizeWithTiming?.invoke(samples, 0.0, null) ?: recognize(samples)).trim(),
+            speakerSeparationWarning = when (diarization) {
+                is SpeakerDiarizationResult.Failure -> "Speaker separation failed: ${diarization.message}"
+                is SpeakerDiarizationResult.Unavailable -> diarization.message
+                else -> null
+            }
         )
     }
 

@@ -10,6 +10,14 @@ import org.junit.Test
 
 class SaarasTranscriptionEngineTest {
     @Test
+    fun selectedSpeakerCount_isForwardedToRemoteDiarization() {
+        val gateway = CapturingGateway(RemoteTranscriptionResult.Success("Synthetic transcript"))
+        SaarasTranscriptionEngine(gateway, expectedSpeakerCount = 3)
+            .transcribe("/private/test.wav", TranscriptionLanguage.English)
+        assertEquals(3, gateway.request?.expectedSpeakerCount)
+    }
+
+    @Test
     fun automaticSpeakerCount_preservesFourRemoteSpeakers() {
         val gateway = CapturingGateway(RemoteTranscriptionResult.Success(
             transcript = "Fallback",

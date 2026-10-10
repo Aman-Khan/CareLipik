@@ -57,6 +57,7 @@ class TranscriptViewModel(
     private var sourceAudioPath: String? = null
     private var sourceLanguage: TranscriptionLanguage = TranscriptionLanguage.English
     private var sourceEngine: TranscriptionEngineOption = TranscriptionEngineOption.MedAsrEnglish
+    private var sourceSpeakerCount = com.carelipik.app.domain.transcription.SpeakerCount.DEFAULT
     private var transcriptionJob: Job? = null
     @Volatile
     private var transcriptionRequest = 0L
@@ -65,8 +66,10 @@ class TranscriptViewModel(
     fun transcribe(
         audioPath: String,
         language: TranscriptionLanguage = TranscriptionLanguage.English,
-        engineOption: TranscriptionEngineOption = TranscriptionEngineOption.defaultFor(language)
+        engineOption: TranscriptionEngineOption = TranscriptionEngineOption.defaultFor(language),
+        speakerCount: Int = com.carelipik.app.domain.transcription.SpeakerCount.DEFAULT
     ) {
+        com.carelipik.app.domain.transcription.SpeakerCount.validate(speakerCount)
         require(engineOption.supports(language)) {
             "${engineOption.displayName} does not support ${language.displayName}."
         }
@@ -75,6 +78,7 @@ class TranscriptViewModel(
         sourceAudioPath = audioPath
         sourceLanguage = language
         sourceEngine = engineOption
+        sourceSpeakerCount = speakerCount
         _uiState.value = TranscriptUiState(
             status = TranscriptStatus.Processing,
             language = language,
@@ -87,13 +91,13 @@ class TranscriptViewModel(
                 val dispatcher = if (engineOption.isOffline) Dispatchers.Default else Dispatchers.IO
                 val result = inferenceMutex.withLock {
                     withContext(dispatcher) {
-                        runTranscription(audioPath, language, engineOption, request) { requestContext.ensureActive() }
+                        runTranscription(audioPath, language, engineOption, speakerCount, request) { requestContext.ensureActive() }
                     }
                 }
                 if (request == transcriptionRequest) applyResult(result)
             }
         } else {
-            applyResult(runTranscription(audioPath, language, engineOption, request) {})
+            applyResult(runTranscription(audioPath, language, engineOption, speakerCount, request) {})
         }
     }
 
@@ -101,11 +105,12 @@ class TranscriptViewModel(
         audioPath: String,
         language: TranscriptionLanguage,
         engineOption: TranscriptionEngineOption,
+        speakerCount: Int,
         request: Long,
         checkCancelled: () -> Unit
     ): TranscriptionResult = try {
         checkCancelled()
-        val engine = engineResolver.resolve(engineOption)
+        val engine = engineResolver.resolve(engineOption, speakerCount)
         val result = if (engine is ProgressAwareTranscriptionEngine) {
             engine.transcribe(audioPath, language, { stage ->
                 _uiState.update { if (request == transcriptionRequest) it.copy(transcriptionStage = stage) else it }
@@ -129,7 +134,7 @@ class TranscriptViewModel(
     }
 
     fun retry() {
-        sourceAudioPath?.let { transcribe(it, sourceLanguage, sourceEngine) }
+        sourceAudioPath?.let { transcribe(it, sourceLanguage, sourceEngine, sourceSpeakerCount) }
     }
 
     fun setTranscript(transcript: String) {
@@ -163,6 +168,11 @@ class TranscriptViewModel(
         }
     }
 
+    fun setDisplayedTranscript(transcript: String) {
+        if (_uiState.value.isAnalyzingTerms) return
+        setTranscript(_uiState.value.labelProjection.restore(transcript))
+    }
+
     fun analyzeTermsOnline() {
         val analyzer = onlineReviewAnalyzer ?: return
         val state = _uiState.value
@@ -179,19 +189,31 @@ class TranscriptViewModel(
         _uiState.update {
             it.copy(isAnalyzingTerms = true, clinicalAnalysisWarning = null)
         }
+        val request = transcriptionRequest
         if (processAsynchronously) {
             viewModelScope.launch {
                 val result = withContext(Dispatchers.IO) {
-                    analyzer.analyze(state.transcript, state.language)
+                    runOnlineReview(analyzer, state)
                 }
-                applyOnlineReview(result, state.transcript)
+                if (request == transcriptionRequest) applyOnlineReview(result, state.transcript)
             }
         } else {
             applyOnlineReview(
-                result = analyzer.analyze(state.transcript, state.language),
+                result = runOnlineReview(analyzer, state),
                 analyzedTranscript = state.transcript
             )
         }
+    }
+
+    private fun runOnlineReview(
+        analyzer: OnlineTranscriptReviewAnalyzer,
+        state: TranscriptUiState
+    ): OnlineTranscriptReviewResult = try {
+        analyzer.analyze(state.transcript, state.language)
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Exception) {
+        OnlineTranscriptReviewResult.Failure(error.message ?: "Medical term enhancement could not be completed.")
     }
 
     fun setOnlineAnalysisConsent(hasConsent: Boolean) {
@@ -223,6 +245,7 @@ class TranscriptViewModel(
         if (role == SpeakerRole.Unassigned) return
         _uiState.update { state ->
             if (speakerId !in state.speakerIds) return@update state
+            if (state.isAnalyzingTerms) return@update state
             val updatedRoles = state.speakerRoles.toMutableMap()
             updatedRoles.entries
                 .filter { role != SpeakerRole.Other && it.key != speakerId && it.value == role }
@@ -245,8 +268,8 @@ class TranscriptViewModel(
 
     fun setSpeakerName(speakerId: String, name: String) {
         _uiState.update { state ->
-            if (speakerId !in state.speakerIds) state else state.copy(
-                speakerNames = state.speakerNames + (speakerId to name.replace('\n', ' ').replace('\r', ' '))
+            if (speakerId !in state.speakerIds || state.isAnalyzingTerms) state else state.copy(
+                speakerNames = state.speakerNames + (speakerId to name.replace('\n', ' ').replace('\r', ' ').replace(':', ' '))
             )
         }
     }
@@ -422,6 +445,13 @@ class TranscriptViewModel(
         _uiState.value = when (result) {
             is TranscriptionResult.Success -> {
                 val fallbackConcerns = reviewAnalyzer.analyze(result.transcript, sourceLanguage)
+                val segments = result.segments.ifEmpty { segmentParser.parse(result.transcript) }
+                val actualSpeakerCount = segments.map { it.speakerId }.distinct().size
+                val countWarning = if (actualSpeakerCount != sourceSpeakerCount) {
+                    "You selected $sourceSpeakerCount speakers, but the transcript contains " +
+                        "$actualSpeakerCount speaker groups. Speaker separation is incomplete; " +
+                        "review the recording and speaker assignments before continuing."
+                } else null
                 TranscriptUiState(
                     status = TranscriptStatus.Ready,
                     transcript = result.transcript,
@@ -434,7 +464,8 @@ class TranscriptViewModel(
                         doctorVoiceMatch = result.doctorVoiceMatch
                     ),
                     doctorVoiceMatch = result.doctorVoiceMatch,
-                    speakerSeparationWarning = result.speakerSeparationWarning,
+                    speakerSeparationWarning = listOfNotNull(result.speakerSeparationWarning, countWarning)
+                        .joinToString(" ").ifBlank { null },
                     clinicalAnalysisSource = null,
                     clinicalAnalysisWarning = null,
                     hybridReview = result.hybridReview,

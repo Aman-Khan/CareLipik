@@ -183,6 +183,7 @@ class RecordingViewModel(
                     audioSizeBytes = result.audio.sizeBytes,
                     transcriptionLanguage = saved.recording.language,
                     transcriptionEngine = saved.recording.engine,
+                    speakerCount = saved.recording.speakerCount,
                     hasOnlineProcessingConsent = false
                 )
                 return true
@@ -267,6 +268,13 @@ class RecordingViewModel(
     }
 
     fun transcriptionEngine(): TranscriptionEngineOption = _uiState.value.transcriptionEngine
+
+    fun setSpeakerCount(count: Int) {
+        com.carelipik.app.domain.transcription.SpeakerCount.validate(count)
+        _uiState.update { it.copy(speakerCount = count) }
+    }
+
+    fun speakerCount(): Int = _uiState.value.speakerCount
 
     fun setOnlineProcessingConsent(hasConsent: Boolean) {
         _uiState.update { it.copy(hasOnlineProcessingConsent = hasConsent) }

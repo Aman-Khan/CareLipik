@@ -237,7 +237,7 @@ fun CareLipikApp(
             )
             ConsultationDestination.Transcript -> TranscriptScreen(
                 uiState = transcriptUiState,
-                onTranscriptChanged = activeTranscriptViewModel::setTranscript,
+                onTranscriptChanged = activeTranscriptViewModel::setDisplayedTranscript,
                 onConfirmConcern = activeTranscriptViewModel::confirmConcern,
                 onApplySuggestion = activeTranscriptViewModel::applySuggestedReplacement,
                 onOnlineAnalysisConsentChanged =
@@ -326,6 +326,7 @@ fun CareLipikApp(
             ConsultationDestination.ConsultationRecording -> RecordingScreen(
                 uiState = recordingUiState,
                 onDownloadAudio = activeRecordingViewModel::downloadAudio,
+                onSpeakerCountChanged = activeRecordingViewModel::setSpeakerCount,
                 isSavingForLater = savedRecordingsUiState.isBusy,
                 saveError = savedRecordingsUiState.error,
                 onSaveForLater = {
@@ -342,6 +343,7 @@ fun CareLipikApp(
                             language = activeRecordingViewModel.transcriptionLanguage(),
                             engine = activeRecordingViewModel.transcriptionEngine(),
                             hasRecordingConsent = welcomeUiState.hasRecordingConsent,
+                            speakerCount = activeRecordingViewModel.speakerCount(),
                             onSaved = {
                                 activeRecordingViewModel.resetForNewConsultation()
                                 Toast.makeText(context, "Recording saved for later", Toast.LENGTH_SHORT).show()
@@ -371,7 +373,8 @@ fun CareLipikApp(
                         activeTranscriptViewModel.transcribe(
                             audioPath,
                             activeRecordingViewModel.transcriptionLanguage(),
-                            activeRecordingViewModel.transcriptionEngine()
+                            activeRecordingViewModel.transcriptionEngine(),
+                            activeRecordingViewModel.speakerCount()
                         )
                         navigator.navigateToNext()
                     }

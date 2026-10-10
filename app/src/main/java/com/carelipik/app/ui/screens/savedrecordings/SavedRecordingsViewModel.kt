@@ -52,9 +52,11 @@ class SavedRecordingsViewModel(
         language: TranscriptionLanguage,
         engine: TranscriptionEngineOption,
         hasRecordingConsent: Boolean,
+        speakerCount: Int = com.carelipik.app.domain.transcription.SpeakerCount.DEFAULT,
         onSaved: () -> Unit
     ) = runOperation {
         require(audio != null) { "Finish recording before saving for later." }
+        com.carelipik.app.domain.transcription.SpeakerCount.validate(speakerCount)
         require(patientName.isNotBlank()) { "Enter a patient name or reference before saving." }
         require(hasRecordingConsent) { "Recording consent is required before saving." }
         require(engine.supports(language)) { "Choose an engine that supports the conversation language." }
@@ -69,7 +71,8 @@ class SavedRecordingsViewModel(
             audioDisplayName = audio.displayName,
             durationMillis = audio.durationMillis,
             audioSource = audio.source,
-            hasRecordingConsent = hasRecordingConsent
+            hasRecordingConsent = hasRecordingConsent,
+            speakerCount = speakerCount
         )
         repository.save(recording, audio)
         activeRecordingId = recording.id

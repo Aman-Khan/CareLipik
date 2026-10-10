@@ -96,7 +96,8 @@ class SherpaWhisperTranscriptionEngine(
             mapped += segment.copy(transcriptStartIndex = start, transcriptEndIndex = text.length)
         }
         return WhisperPrimaryResult(
-            result = TranscriptionResult.Success(payload.transcript, payload.segments, payload.doctorVoiceMatch),
+            result = TranscriptionResult.Success(payload.transcript, payload.segments, payload.doctorVoiceMatch,
+                speakerSeparationWarning = payload.speakerSeparationWarning),
             decodingSegments = if (text.toString() == payload.transcript) mapped else decoded.toList()
         )
     }

@@ -76,11 +76,9 @@ class HttpRemoteTranscriptionGateway(
                 output.writeFormField(boundary, "language_code", request.languageCode)
                 output.writeFormField(boundary, "mode", request.mode.wireValue)
                 output.writeFormField(boundary, "with_diarization", "true")
-                output.writeFormField(
-                    boundary,
-                    "num_speakers",
-                    request.expectedSpeakerCount.toString()
-                )
+                request.expectedSpeakerCount?.let { count ->
+                    output.writeFormField(boundary, "num_speakers", count.toString())
+                }
                 output.writeAudioFile(boundary, audioFile)
                 output.writeBytes("--$boundary--\r\n")
             }

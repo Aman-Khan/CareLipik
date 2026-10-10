@@ -245,6 +245,7 @@ fun CareLipikApp(
                 onAnalyzeTermsOnline = activeTranscriptViewModel::analyzeTermsOnline,
                 onViewModeChanged = activeTranscriptViewModel::setViewMode,
                 onSpeakerRoleAssigned = activeTranscriptViewModel::assignSpeakerRole,
+                onSpeakerNameChanged = activeTranscriptViewModel::setSpeakerName,
                 onRetry = activeTranscriptViewModel::retry,
                 onBack = navigator::navigateBack,
                 onContinue = {

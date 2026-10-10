@@ -11,7 +11,7 @@ import com.k2fsa.sherpa.onnx.OfflineSpeakerSegmentationModelConfig
 import com.k2fsa.sherpa.onnx.OfflineSpeakerSegmentationPyannoteModelConfig
 import com.k2fsa.sherpa.onnx.SpeakerEmbeddingExtractorConfig
 
-/** Fully on-device two-speaker diarization using Sherpa-ONNX. */
+/** On-device diarization; a negative speaker count enables automatic clustering. */
 class SherpaOfflineSpeakerDiarizationEngine(
     private val context: Context
 ) : SpeakerDiarizationEngine {

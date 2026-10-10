@@ -98,6 +98,7 @@ class TranscriptViewModel(
                 ),
                 segments = segments,
                 speakerRoles = rolesFor(segments, it.speakerRoles),
+                speakerNames = it.speakerNames.filterKeys { id -> segments.any { it.speakerId == id } },
                 viewMode = if (segments.hasMultipleSpeakers()) {
                     it.viewMode
                 } else {
@@ -175,18 +176,29 @@ class TranscriptViewModel(
             if (speakerId !in state.speakerIds) return@update state
             val updatedRoles = state.speakerRoles.toMutableMap()
             updatedRoles.entries
-                .filter { it.key != speakerId && it.value == role }
+                .filter { role != SpeakerRole.Other && it.key != speakerId && it.value == role }
                 .forEach { updatedRoles[it.key] = SpeakerRole.Unassigned }
             updatedRoles[speakerId] = role
-            if (state.speakerIds.size == 2) {
+            if (state.speakerIds.size == 2 && role != SpeakerRole.Other) {
                 val otherSpeaker = state.speakerIds.first { it != speakerId }
-                updatedRoles[otherSpeaker] = when (role) {
-                    SpeakerRole.Doctor -> SpeakerRole.Patient
-                    SpeakerRole.Patient -> SpeakerRole.Doctor
-                    SpeakerRole.Unassigned -> SpeakerRole.Unassigned
+                if (updatedRoles[otherSpeaker] != SpeakerRole.Other) {
+                    updatedRoles[otherSpeaker] = when (role) {
+                        SpeakerRole.Doctor -> SpeakerRole.Patient
+                        SpeakerRole.Patient -> SpeakerRole.Doctor
+                        SpeakerRole.Unassigned -> SpeakerRole.Unassigned
+                        SpeakerRole.Other -> SpeakerRole.Other
+                    }
                 }
             }
             state.copy(speakerRoles = updatedRoles, hasAttemptedContinue = false)
+        }
+    }
+
+    fun setSpeakerName(speakerId: String, name: String) {
+        _uiState.update { state ->
+            if (speakerId !in state.speakerIds) state else state.copy(
+                speakerNames = state.speakerNames + (speakerId to name.replace('\n', ' ').replace('\r', ' '))
+            )
         }
     }
 
@@ -235,6 +247,9 @@ class TranscriptViewModel(
                 },
                 segments = updatedSegments,
                 speakerRoles = rolesFor(updatedSegments, state.speakerRoles),
+                speakerNames = state.speakerNames.filterKeys { id ->
+                    updatedSegments.any { it.speakerId == id }
+                },
                 viewMode = if (updatedSegments.hasMultipleSpeakers()) {
                     state.viewMode
                 } else {
@@ -262,8 +277,7 @@ class TranscriptViewModel(
             return state.transcript
         }
         return state.segments.joinToString(separator = "\n\n") { segment ->
-            val role = state.speakerRoles[segment.speakerId] ?: SpeakerRole.Unassigned
-            "${role.displayName}: ${segment.transcript}"
+            "${state.speakerLabel(segment.speakerId)}: ${segment.transcript}"
         }
     }
 

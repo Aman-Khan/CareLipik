@@ -30,6 +30,7 @@ data class TranscriptUiState(
     val confirmedConcernIds: Set<String> = emptySet(),
     val segments: List<TranscriptSegment> = emptyList(),
     val speakerRoles: Map<String, SpeakerRole> = emptyMap(),
+    val speakerNames: Map<String, String> = emptyMap(),
     val doctorVoiceMatch: DoctorVoiceRoleMatchResult? = null,
     val speakerSeparationWarning: String? = null,
     val clinicalAnalysisSource: String? = null,
@@ -50,6 +51,20 @@ data class TranscriptUiState(
     val canShowConversation: Boolean
         get() = speakerIds.size >= 2
 
+    fun personLabel(speakerId: String): String = "Person ${speakerIds.indexOf(speakerId) + 1}"
+
+    fun speakerLabel(speakerId: String): String {
+        val name = speakerNames[speakerId]?.trim().orEmpty()
+        val role = speakerRoles[speakerId] ?: SpeakerRole.Unassigned
+        return when {
+            name.isNotEmpty() && role in setOf(SpeakerRole.Doctor, SpeakerRole.Patient) ->
+                "$name (${role.displayName})"
+            name.isNotEmpty() -> name
+            role in setOf(SpeakerRole.Doctor, SpeakerRole.Patient) -> role.displayName
+            else -> personLabel(speakerId)
+        }
+    }
+
     val pendingSpeakerIds: List<String>
         get() = if (speakerIds.size < 2) {
             emptyList()
@@ -62,7 +77,7 @@ data class TranscriptUiState(
             !hasAttemptedContinue -> null
             transcript.isBlank() -> "Add or enter a transcript before continuing"
             pendingSpeakerIds.isNotEmpty() ->
-                "Confirm which detected speaker is the doctor and patient"
+                "Confirm each person's role: Doctor, Patient, or Other"
             pendingConcerns.isNotEmpty() ->
                 "Confirm or correct every highlighted term before continuing"
             else -> null

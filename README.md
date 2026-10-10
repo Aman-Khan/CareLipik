@@ -13,7 +13,7 @@ development recordings, screenshots, fixtures, or tests.
 - Offline English transcription with MedASR.
 - Offline multilingual transcription with Whisper.
 - Optional online English, Hindi, and Hinglish transcription with Sarvam Saaras Batch diarization.
-- Offline two-speaker diarization.
+- Offline diarization with automatic speaker-count detection.
 - Offline doctor-voice enrollment and confidence-gated Doctor/Patient role matching.
 - Manual correction of transcript text, medical terms, and speaker roles.
 - Offline transcript-backed clinical drafts that preserve every reviewed patient statement and the
@@ -457,9 +457,17 @@ On the recording screen:
 Doctor-profile language preferences provide recommendations; they do not select the language for
 the current recording. The transcript screen's `Selected mode` label shows what was actually sent.
 Hinglish uses `mode=codemix`; English and Hindi use `mode=transcribe`. Saaras Batch is requested
-with `with_diarization=true` and `num_speakers=2`. The app preserves the provider's chronological
-speaker turns and timestamps. If exactly two usable voices are not returned, it shows the full
-transcript with a warning instead of presenting unreliable Doctor/Patient labels.
+with `with_diarization=true` and no fixed `num_speakers`, allowing automatic speaker counting.
+The app preserves the provider's chronological speaker turns and timestamps. Offline Sherpa
+also estimates speaker count using threshold-based clustering instead of forcing two clusters.
+The transcript review screen lists Person 1, Person 2, Person 3, and subsequent detected people
+without an app-imposed count limit. Each person can have an optional name and a Doctor, Patient,
+or Other role; multiple people can be Other. Names remain separate from speaker IDs and appear
+in conversation view and the reviewed transcript used for draft generation. Clearing a name
+restores the default label. Names and roles reset for a new consultation and survive rotation.
+Automatic speaker counts still need review against the recording; no speaker turns are invented
+when diarization is unavailable. An external backend must preserve automatic counting when the
+optional `num_speakers` field is absent; Sarvam's own service limits still apply online.
 
 After transcription, the backend can send the transcript text to Gemini for structured medical
 term candidates after separate consent. This option is available for Whisper, MedASR, and Saaras

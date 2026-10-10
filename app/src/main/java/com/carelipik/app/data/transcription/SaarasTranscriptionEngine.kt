@@ -35,8 +35,7 @@ class SaarasTranscriptionEngine(
                     audioPath = audioPath,
                     model = MODEL,
                     languageCode = language.saarasLanguageCode(),
-                    mode = mode,
-                    expectedSpeakerCount = EXPECTED_SPEAKER_COUNT
+                    mode = mode
                 )
             )
         ) {
@@ -92,6 +91,5 @@ class SaarasTranscriptionEngine(
         const val MODEL = "saaras:v3"
         const val ENGLISH_LANGUAGE_CODE = "en-IN"
         const val HINDI_LANGUAGE_CODE = "hi-IN"
-        const val EXPECTED_SPEAKER_COUNT = 2
     }
 }

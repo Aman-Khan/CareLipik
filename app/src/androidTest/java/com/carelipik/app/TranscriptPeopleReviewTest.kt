@@ -5,6 +5,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
@@ -36,7 +37,7 @@ class TranscriptPeopleReviewTest {
             CareLipikTheme {
                 TranscriptScreen(
                     uiState = state,
-                    onTranscriptChanged = model::setTranscript,
+                    onTranscriptChanged = model::setDisplayedTranscript,
                     onConfirmConcern = model::confirmConcern,
                     onApplySuggestion = model::applySuggestedReplacement,
                     onOnlineAnalysisConsentChanged = model::setOnlineAnalysisConsent,
@@ -53,12 +54,16 @@ class TranscriptPeopleReviewTest {
 
         composeRule.onNodeWithTag("speaker_name_speaker-4")
             .performScrollTo().performTextInput("Synthetic interpreter")
+        composeRule.onNodeWithTag("full_transcript_editor").performScrollTo()
+            .assertTextContains("Doctor: Synthetic greeting 1", substring = true)
+            .assertTextContains("Patient: Synthetic greeting 2", substring = true)
+            .assertTextContains("Synthetic interpreter (Other): Synthetic greeting 4", substring = true)
         composeRule.runOnIdle {
             assertEquals("Synthetic interpreter", model.uiState.value.speakerNames["speaker-4"])
             model.setViewMode(TranscriptViewMode.Conversation)
         }
         composeRule.onNodeWithTag("conversation_label_speaker-4")
-            .performScrollTo().assertTextEquals("Synthetic interpreter")
+            .performScrollTo().assertTextEquals("Synthetic interpreter (Other)")
         composeRule.onNodeWithText("Synthetic greeting 4").performScrollTo().assertExists()
     }
 }

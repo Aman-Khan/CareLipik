@@ -15,6 +15,60 @@ class LocalSpeakerDiarizationIntegrationTest {
     private val audioFile = File(context.filesDir, TEST_AUDIO_FILE)
 
     @Test
+    fun shortRecording_requestedThreeClustersBypassesNativeShortClipShortcut() {
+        val fixture = File(context.cacheDir, "short-clustering-test.wav")
+        InstrumentationRegistry.getInstrumentation().context.assets.open("jfk.wav").use { input ->
+            fixture.outputStream().use { input.copyTo(it) }
+        }
+        val samples = try {
+            PcmWaveAudio.readMono16Khz(fixture).copyOfRange(0, PcmWaveAudio.sampleRate * 7)
+        } finally {
+            fixture.delete()
+        }
+        // Tests count enforcement, not recognition of three real people in this one-voice fixture.
+        val result = SherpaOfflineSpeakerDiarizationEngine(context).diarize(samples, PcmWaveAudio.sampleRate, 3)
+        assertTrue("Expected fixed-count clustering but received $result", result is SpeakerDiarizationResult.Success)
+        assertEquals(3, (result as SpeakerDiarizationResult.Success).turns.map { it.speakerId }.distinct().size)
+    }
+
+    @Test
+    fun fixedSingleSpeakerCount_keepsOneIdentityAcrossPauses() {
+        // Existing public speech fixture contains one speaker and no patient information.
+        val fixture = File(context.cacheDir, "speaker-identity-test.wav")
+        InstrumentationRegistry.getInstrumentation().context.assets.open("jfk.wav").use { input ->
+            fixture.outputStream().use { output -> input.copyTo(output) }
+        }
+        val voice = try {
+            PcmWaveAudio.readMono16Khz(fixture).copyOfRange(0, PcmWaveAudio.sampleRate * 5)
+        } finally {
+            fixture.delete()
+        }
+        val samples = voice + FloatArray(PcmWaveAudio.sampleRate) + voice +
+            FloatArray(PcmWaveAudio.sampleRate * 4) + voice
+        val result = SherpaOfflineSpeakerDiarizationEngine(context).diarize(
+            samples, PcmWaveAudio.sampleRate, 1
+        )
+        assertTrue("Expected speaker turns but received $result", result is SpeakerDiarizationResult.Success)
+        val turns = (result as SpeakerDiarizationResult.Success).turns
+        val lastRepeatStart = 2 * voice.size / PcmWaveAudio.sampleRate.toFloat() + 5f
+        assertTrue("Expected speech after the long pause: $turns",
+            turns.any { it.endSeconds > lastRepeatStart + 1f })
+        assertEquals("A pause must not create another identity: $turns", 1,
+            turns.map { it.speakerId }.distinct().size)
+    }
+
+    @Test
+    fun automaticSpeakerCount_preservesTwoSyntheticVoices() {
+        assumeTrue("Push $TEST_AUDIO_FILE into app files before this test", audioFile.isFile)
+        val result = SherpaOfflineSpeakerDiarizationEngine(context).diarize(
+            PcmWaveAudio.readMono16Khz(audioFile), PcmWaveAudio.sampleRate, -1
+        )
+        assertTrue("Expected speaker turns but received $result", result is SpeakerDiarizationResult.Success)
+        assertEquals(2, (result as SpeakerDiarizationResult.Success).turns
+            .map { it.speakerId }.distinct().size)
+    }
+
+    @Test
     fun syntheticTwoVoiceAudio_detectsTwoLocalSpeakers() {
         assumeTrue("Push $TEST_AUDIO_FILE into app files before this test", audioFile.isFile)
         val samples = PcmWaveAudio.readMono16Khz(audioFile)

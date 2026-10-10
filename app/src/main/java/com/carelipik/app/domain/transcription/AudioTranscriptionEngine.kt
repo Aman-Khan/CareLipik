@@ -7,7 +7,8 @@ sealed interface TranscriptionResult {
         val transcript: String,
         val segments: List<TranscriptSegment> = emptyList(),
         val doctorVoiceMatch: DoctorVoiceRoleMatchResult? = null,
-        val speakerSeparationWarning: String? = null
+        val speakerSeparationWarning: String? = null,
+        val hybridReview: HybridTranscriptionReview? = null
     ) : TranscriptionResult
     data class Failure(val message: String) : TranscriptionResult
 }

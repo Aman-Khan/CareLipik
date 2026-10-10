@@ -6,6 +6,7 @@ plugins {
 }
 
 apply(from = rootProject.file("gradle/offline-models.gradle.kts"))
+apply(from = rootProject.file("gradle/sherpa-confidence.gradle.kts"))
 
 val careLipikLocalProperties = Properties().apply {
     val localPropertiesFile = rootProject.file("local.properties")
@@ -73,10 +74,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation(libs.sherpa.onnx) {
-        // The 1.13.6 Android AAR already bundles these classes but also declares the JVM jar.
-        exclude(group = "com.github.k2-fsa.sherpa-onnx", module = "sherpa-onnx-jvm")
-    }
+    // Sherpa's unchanged Kotlin API and ONNX binaries are packaged with our patched 1.13.6 JNI runtime.
+    // The build task in sherpa-confidence.gradle.kts generates this AAR; no native/model binaries are committed.
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

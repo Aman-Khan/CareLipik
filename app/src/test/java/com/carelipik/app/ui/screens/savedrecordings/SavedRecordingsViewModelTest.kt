@@ -109,7 +109,7 @@ class SavedRecordingsViewModelTest {
     private fun save(viewModel: SavedRecordingsViewModel, onSaved: () -> Unit) {
         viewModel.save(audio, " Synthetic patient ", "30", "Synthetic visit",
             TranscriptionLanguage.Hinglish, TranscriptionEngineOption.SaarasHindiHinglish,
-            true, onSaved)
+            true, onSaved = onSaved)
     }
 
     private inner class FakeRepository : SavedRecordingRepository {

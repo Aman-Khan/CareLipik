@@ -15,7 +15,8 @@ data class SavedRecording(
     val audioDisplayName: String,
     val durationMillis: Long,
     val audioSource: RecordedAudioSource,
-    val hasRecordingConsent: Boolean
+    val hasRecordingConsent: Boolean,
+    val speakerCount: Int = com.carelipik.app.domain.transcription.SpeakerCount.DEFAULT
 )
 
 data class RestoredSavedRecording(val recording: SavedRecording, val audio: RecordedAudio)

@@ -11,6 +11,8 @@ development recordings, screenshots, fixtures, or tests.
 ## Current capabilities
 
 - Offline English transcription with MedASR.
+- Experimental **Whisper + MedASR (Hybrid)** with native word-confidence detection, automatic
+  selective offline verification, and prepared phrase suggestions applied by tapping. See [hybrid usage and settings](docs/hybrid-whisper-medasr.md).
 - Offline multilingual transcription with Whisper.
 - Optional online English, Hindi, and Hinglish transcription with Sarvam Saaras Batch diarization.
 - Offline diarization with automatic speaker-count detection.
@@ -29,6 +31,9 @@ development recordings, screenshots, fixtures, or tests.
 - Approved report files linked to consultation history as encrypted A4 PDF, structured JSON, HL7
   FHIR R4 Bundle, or plain text, with open, share, regenerate, and delete controls.
 - Temporary consultation audio in the Android cache by default.
+- **Download recording** exports a finished, imported, or reopened recording as an unchanged WAV
+  through Android's Save file dialog. Choose a folder and filename for reuse in tests or future
+  reference. The exported copy survives consultation cleanup and is outside encrypted app storage.
 - **Save and continue later** after finishing a recording: encrypted recording and patient details
   survive app/phone restarts. Open **Saved recordings** on Home to resume at recording review before
   transcription. The language and engine are retained; online-processing consent must be confirmed

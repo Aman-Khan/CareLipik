@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -18,6 +19,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -27,6 +29,8 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -58,6 +62,9 @@ fun TranscriptScreen(
     onBack: () -> Unit,
     onContinue: () -> Unit,
     onSpeakerNameChanged: (String, String) -> Unit = { _, _ -> },
+    onAcceptHybridCorrection: (String) -> Unit = {},
+    onRejectHybridCorrection: (String) -> Unit = {},
+    onCancelTranscription: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -84,12 +91,27 @@ fun TranscriptScreen(
         )
         when (uiState.status) {
             TranscriptStatus.Idle,
-            TranscriptStatus.Processing -> ProcessingTranscript(uiState.engine.isOffline)
+            TranscriptStatus.Processing -> {
+                ProcessingTranscript(uiState.engine.isOffline, uiState.transcriptionStage?.displayName)
+                if (uiState.status == TranscriptStatus.Processing && uiState.transcriptionStage != null) {
+                    OutlinedButton(onClick = onCancelTranscription, modifier = Modifier.fillMaxWidth()) {
+                        Text("Cancel transcription")
+                    }
+                }
+            }
             TranscriptStatus.Error -> ErrorTranscript(
                 message = uiState.errorMessage ?: "Transcription could not be completed.",
                 onRetry = onRetry
             )
             TranscriptStatus.Ready -> {
+                uiState.hybridReview?.let { review ->
+                    val playback = remember { RegionPlaybackController() }
+                    CompositionLocalProvider(LocalRegionPlayback provides playback) {
+                        HybridTranscriptReviewPanel(review, onAcceptHybridCorrection, onRejectHybridCorrection,
+                            uiState.sourceAudioPath)
+                        HybridWordReviewPanel(uiState, onAcceptHybridCorrection)
+                    }
+                }
                 uiState.speakerSeparationWarning?.let { warning ->
                     SpeakerSeparationWarning(warning)
                 }
@@ -124,15 +146,20 @@ fun TranscriptScreen(
                 } else {
                     UnsegmentedTranscriptNotice()
                 }
+                if (uiState.isAnalyzingTerms) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth().testTag("medical_term_loader"))
+                    Text("Enhancing medical terms with Gemini…", style = MaterialTheme.typography.bodyMedium)
+                }
                 when (uiState.viewMode) {
                     TranscriptViewMode.FullTranscript -> OutlinedTextField(
-                        value = uiState.transcript,
+                        value = uiState.labelProjection.text,
                         onValueChange = onTranscriptChanged,
                         label = { Text("Edit full transcript") },
                         supportingText = { Text(reviewSupportingText(uiState)) },
                         isError = uiState.transcriptError != null,
                         minLines = 12,
-                        modifier = Modifier.fillMaxWidth()
+                        enabled = !uiState.isAnalyzingTerms,
+                        modifier = Modifier.fillMaxWidth().testTag("full_transcript_editor")
                     )
                     TranscriptViewMode.Conversation -> ConversationTranscript(
                         uiState = uiState
@@ -144,7 +171,9 @@ fun TranscriptScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        if (uiState.pendingConcerns.isEmpty()) {
+                        if (uiState.pendingHybridCorrections) {
+                            "Review model disagreements to continue"
+                        } else if (uiState.pendingConcerns.isEmpty()) {
                             if (uiState.pendingSpeakerIds.isEmpty()) {
                                 "Continue to clinical draft"
                             } else {
@@ -210,7 +239,9 @@ private fun OnlineClinicalAnalysisPanel(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (isAnalyzing) {
-                    CircularProgressIndicator(modifier = Modifier.padding(4.dp))
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Text("Enhancing medical terms…")
                 } else {
                     Text(if (source == null) "Enhance terms with Gemini" else "Analyze again")
                 }
@@ -415,6 +446,7 @@ private fun ConversationBubble(segment: TranscriptSegment, role: SpeakerRole, la
 
 private fun reviewSupportingText(uiState: TranscriptUiState): String =
     uiState.transcriptError ?: when {
+        uiState.pendingHybridCorrections -> "Review the Whisper/MedASR disagreements above."
         uiState.pendingSpeakerIds.isNotEmpty() ->
             "Confirm each person's role above."
         uiState.pendingConcerns.isNotEmpty() ->
@@ -472,8 +504,13 @@ private fun TranscriptTermReviewPanel(
             ) {
                 Text(
                     text = buildHighlightedTranscript(
-                        transcript = uiState.transcript,
-                        concerns = uiState.concerns,
+                        transcript = uiState.labelProjection.text,
+                        concerns = uiState.concerns.map { concern ->
+                            concern.copy(
+                                startIndex = uiState.labelProjection.displayOffset(concern.startIndex),
+                                endIndexExclusive = uiState.labelProjection.displayOffset(concern.endIndexExclusive)
+                            )
+                        },
                         confirmedConcernIds = uiState.confirmedConcernIds,
                         pendingColor = pendingColor,
                         confirmedColor = confirmedColor
@@ -701,14 +738,14 @@ private fun TranscriptNotice(
 }
 
 @Composable
-private fun ProcessingTranscript(isOffline: Boolean) {
+private fun ProcessingTranscript(isOffline: Boolean, stage: String? = null) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         CircularProgressIndicator()
-        Text("Preparing transcript…", style = MaterialTheme.typography.titleMedium)
+        Text(stage ?: "Preparing transcript…", style = MaterialTheme.typography.titleMedium)
         Text(
             if (isOffline) {
                 "Processing stays on this device."

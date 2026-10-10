@@ -8,7 +8,8 @@ import com.carelipik.app.domain.transcription.TranscriptSegment
 
 /** Multilingual online transcription and diarization through the CareLipik backend. */
 class SaarasTranscriptionEngine(
-    private val gateway: RemoteTranscriptionGateway
+    private val gateway: RemoteTranscriptionGateway,
+    private val expectedSpeakerCount: Int? = null
 ) : AudioTranscriptionEngine {
     override val option: TranscriptionEngineOption =
         TranscriptionEngineOption.SaarasHindiHinglish
@@ -35,7 +36,8 @@ class SaarasTranscriptionEngine(
                     audioPath = audioPath,
                     model = MODEL,
                     languageCode = language.saarasLanguageCode(),
-                    mode = mode
+                    mode = mode,
+                    expectedSpeakerCount = expectedSpeakerCount
                 )
             )
         ) {

@@ -8,19 +8,29 @@ import com.carelipik.app.domain.transcription.TranscriptionEngineResolver
 import com.carelipik.app.data.voice.SherpaDoctorVoiceRoleMatcher
 import com.carelipik.app.data.local.DeviceApiKeyProvider
 import com.carelipik.app.domain.repository.ApiProvider
+import com.carelipik.app.domain.transcription.SpeakerCount
+import com.carelipik.app.domain.transcription.FixedCountSpeakerDiarizationEngine
 
-class CareLipikTranscriptionEngineResolver(context: Context) : TranscriptionEngineResolver {
+class CareLipikTranscriptionEngineResolver(
+    private val context: Context,
+    private val speakerCount: Int? = null
+) : TranscriptionEngineResolver {
     private val deviceApiKeyProvider = DeviceApiKeyProvider(context.applicationContext)
-    private val diarizationEngine = SherpaOfflineSpeakerDiarizationEngine(
+    private val localDiarizationEngine = SherpaOfflineSpeakerDiarizationEngine(
         context.applicationContext
     )
+    private val diarizationEngine = speakerCount?.let {
+        FixedCountSpeakerDiarizationEngine(localDiarizationEngine, it)
+    } ?: localDiarizationEngine
     private val doctorVoiceRoleMatcher = SherpaDoctorVoiceRoleMatcher(context.applicationContext)
+    private val whisper = SherpaWhisperTranscriptionEngine(
+        context.applicationContext, diarizationEngine, doctorVoiceRoleMatcher
+    )
+    private val medAsr = SherpaMedAsrTranscriptionEngine(
+        context.applicationContext, diarizationEngine, doctorVoiceRoleMatcher
+    )
     private val engines: Map<TranscriptionEngineOption, AudioTranscriptionEngine> = listOf(
-        SherpaMedAsrTranscriptionEngine(
-            context.applicationContext,
-            diarizationEngine,
-            doctorVoiceRoleMatcher
-        ),
+        medAsr,
         SaarasTranscriptionEngine(
             PreferDeviceKeyTranscriptionGateway(
                 hasDeviceKey = { deviceApiKeyProvider.get(ApiProvider.Sarvam) != null },
@@ -31,13 +41,11 @@ class CareLipikTranscriptionEngineResolver(context: Context) : TranscriptionEngi
                     backendBaseUrl = BuildConfig.TRANSCRIPTION_BACKEND_URL,
                     allowInsecureLocalhost = BuildConfig.DEBUG
                 )
-            )
+            ),
+            expectedSpeakerCount = speakerCount
         ),
-        SherpaWhisperTranscriptionEngine(
-            context.applicationContext,
-            diarizationEngine,
-            doctorVoiceRoleMatcher
-        )
+        whisper,
+        HybridWhisperMedAsrTranscriptionEngine(whisper, medAsr)
     ).associateBy(AudioTranscriptionEngine::option)
 
     override fun resolve(option: TranscriptionEngineOption): AudioTranscriptionEngine {
@@ -45,4 +53,7 @@ class CareLipikTranscriptionEngineResolver(context: Context) : TranscriptionEngi
             "Transcription engine ${option.displayName} is unavailable."
         }
     }
+
+    override fun resolve(option: TranscriptionEngineOption, speakerCount: Int): AudioTranscriptionEngine =
+        CareLipikTranscriptionEngineResolver(context, SpeakerCount.validate(speakerCount)).resolve(option)
 }

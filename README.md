@@ -8,36 +8,136 @@ after final doctor approval.
 CareLipik is not an autonomous diagnosis or prescription system. Never use real patient data in
 development recordings, screenshots, fixtures, or tests.
 
+**Presentation:** [CareLipik evaluation deck on Canva](https://canva.link/rf6h0csl1umypty)
+
+## System architecture
+
+CareLipik follows a seven-stage, evidence-linked workflow from a consented consultation to a
+doctor-approved report:
+
+```mermaid
+flowchart LR
+    A[1. Consultation input<br/>Patient details, consent, audio] --> B[2. Speech processing<br/>Transcription, diarization, role matching]
+    B --> C[3. Transcript review<br/>Correct text, terms, and speakers]
+    C --> D[4. Clinical entity extraction<br/>Apollo Medical-NER plus rules]
+    D --> E[5. Structured note generation<br/>Gemini when online; Gemma 4 or MedGemma on device]
+    E --> F[6. Doctor review and approval<br/>Verify claims and prescribed medicines]
+    F --> G[7. Secure history and export<br/>PDF, JSON, FHIR R4, and text]
+```
+
+### Pipeline stages
+
+1. **Consultation input:** the Android app records patient details, captures recording consent,
+   and records or imports consultation audio.
+2. **Speech processing:** **Multilingual V3 Turbo** uses AssemblyAI Universal-3.5 Pro when a
+   validated network and configured key are available. If that request fails or the phone is
+   offline, the same option falls back to on-device Whisper V3 Turbo. **Online multilingual
+   (Saaras)** remains available for English, Hindi, and Hinglish consultations. Provider
+   diarization supplies speaker turns for the online paths. The offline path runs through
+   Sherpa-ONNX with Pyannote Segmentation 3.0, TitaNet speaker embeddings, and fast clustering.
+   Enrolled doctor-voice embeddings may identify the doctor when the confidence and separation
+   thresholds both pass; all roles remain editable.
+3. **Transcript review:** the doctor confirms speaker roles, edits transcription errors, and
+   accepts or replaces highlighted terms. With explicit consent, a confirmed correction can be
+   stored locally as encrypted training data containing the original ASR sentence, corrected
+   sentence, language, engine, and an opaque reference to encrypted source audio.
+4. **Clinical entity extraction:** the optional Apollo Medical-NER DeBERTa token classifier runs
+   as an INT8 ONNX model on the phone. Deterministic rules add medication strength, dose,
+   frequency, duration, route, negation, and common ASR-error candidates. Optional Gemini analysis
+   can add candidates when the doctor consents. Candidates are highlighted for confirmation and
+   never silently replace transcript text.
+5. **Structured note generation:** the reviewed transcript is indexed with evidence IDs such as
+   `T1` and `T2`. Gemini can generate the requested format when online. The offline path prefers
+   the longer-context Gemma 4 E2B LiteRT model when installed and otherwise uses MedGemma 1.5 4B.
+   Every generated section and prescribed medicine remains an unverified draft until the doctor
+   approves it.
+6. **Doctor review and approval:** the doctor verifies clinical content, confirms prescribed
+   medicines and dosages, corrects or removes unsupported content, and explicitly approves the
+   final note.
+7. **Secure storage and export:** approved consultations and generated files are encrypted in
+   app-private storage. The doctor can reopen and share PDF, structured JSON, HL7 FHIR R4, and
+   plain-text EHR exports from consultation history.
+
+### Models, runtimes, and responsibilities
+
+| Component | Type | Runtime/location | Responsibility |
+| --- | --- | --- | --- |
+| Whisper V3 Turbo | Speech-recognition model | Sherpa-ONNX on Android | Offline multilingual transcription fallback |
+| AssemblyAI Universal-3.5 Pro | Hosted speech model | AssemblyAI API | Adaptive online transcription, language detection, and speaker labels |
+| Sarvam Saaras | Hosted speech model | Sarvam API | Optional English, Hindi, and Hinglish transcription with diarization |
+| Pyannote Segmentation 3.0 | Speaker-segmentation model | Sherpa-ONNX on Android | Finds speech regions and speaker-change boundaries offline |
+| TitaNet Small | Speaker-embedding model | Sherpa-ONNX on Android | Creates voice embeddings for clustering and doctor-voice matching |
+| Apollo Medical-NER | DeBERTa token-classification model | ONNX Runtime on Android | Finds candidate diseases, symptoms, medicines, and clinical entities |
+| Gemini | Hosted language model | Gemini API | Optional medical-term enhancement and structured clinical notes |
+| Gemma 4 E2B | General language model | LiteRT-LM on Android GPU | Preferred long-context offline structured-note generation |
+| MedGemma 1.5 4B | Medical language model | LiteRT-LM on Android CPU | Offline structured-note fallback |
+
+CareLipik keeps model inference separate from clinical approval. Models propose transcript text,
+entities, speaker roles, and note sections; the doctor verifies and approves the final record.
+
 ## Current capabilities
 
-- Offline English transcription with MedASR.
-- Offline multilingual transcription with Whisper.
-- Optional online English, Hindi, and Hinglish transcription with Sarvam Saaras Batch diarization.
-- Experimental AssemblyAI Universal-3.5 Pro transcription with automatic language detection and
-  multi-speaker diarization, using a user-supplied key stored with Android Keystore.
-- Offline two-speaker diarization.
+### Speech transcription and diarization
+
+- Offline English and multilingual transcription using Whisper V3 Large Turbo.
+- Online English, Hindi, and Hinglish transcription using Sarvam Saaras, with optional Saaras
+  Batch diarization.
+- An adaptive **Multilingual V3 Turbo** option that uses AssemblyAI Universal-3.5 Pro when its
+  online path is configured and falls back to on-device Whisper V3 Turbo when unavailable.
+- Offline speaker segmentation with Pyannote Segmentation 3.0 and speaker embeddings with TitaNet.
 - Offline doctor-voice enrollment and confidence-gated Doctor/Patient role matching.
-- Optional on-device Whisper Turbo engine alongside the existing Whisper Small baseline.
-- Manual correction of transcript text, medical terms, and speaker roles.
-- Offline transcript-backed clinical drafts that preserve every reviewed patient statement and the
-  complete reviewed transcript for doctor approval.
-- Optional Gemini drafts in SOAP, APSO, H&P, problem-oriented, progress, DAP, BIRP, GIRP,
-  procedure, and doctor-specialty formats, with transcript-turn evidence and coverage warnings.
+- Internal development support for MedASR, Whisper Small, and Whisper Turbo engines.
+- Manual correction of transcript text, medical terms, speaker labels, and doctor/patient roles.
+
+### Medical-term identification
+
+- Apollo Medical-NER identifies candidate medicines, diseases, symptoms, allergies,
+  investigations, dosages, strengths, frequencies, durations, and routes.
+- Apollo Medical-NER uses
+  [Microsoft DeBERTa V3 Base](https://huggingface.co/microsoft/deberta-v3-base) as its base model
+  and runs as an INT8 ONNX model on the phone.
+- Deterministic rules complement NER for dosage patterns, medication relationships, negation, and
+  common transcription errors.
+- Optional Gemini-assisted analysis can identify additional medical terms after consent.
+- Every detected term must be confirmed or corrected by the doctor; candidates never silently
+  replace the transcript.
+
+### Clinical-note generation
+
+- MedGemma structures the reviewed transcript into standard clinical-note formats.
+- Supported formats include SOAP, APSO, H&P, problem-oriented, progress, DAP, BIRP, GIRP,
+  procedure, and specialty-specific notes.
 - Optional fully on-device MedGemma 1.5 4B report drafting through LiteRT-LM, using an externally
-  installed, license-approved INT4 model bundle and transcript-turn evidence IDs.
-- Optional English clinical-note generation from a reviewed Hindi or Hinglish transcript; the
-  original conversation log is always retained unchanged.
-- A separate prescribed-medicine and dosage section whose entries must each be verified by the
-  doctor before final approval.
-- AES-GCM encrypted, app-private consultation history after final doctor approval.
-- AES-GCM encrypted doctor profile that restores after app and phone restarts.
-- Approved report files linked to consultation history as encrypted A4 PDF, structured JSON, HL7
-  FHIR R4 Bundle, or plain text, with open, share, regenerate, and delete controls.
-- Temporary consultation audio in the Android cache by default.
-- Optional consent-gated Gemini medical-term enhancement for transcripts produced by Whisper,
-  MedASR, or Saaras, plus structured-note drafting. Keys can be entered at runtime and encrypted
-  with Android Keystore; they are never compiled into the APK.
+  installed, license-approved INT4 model bundle and transcript evidence IDs.
+- Optional Gemini-assisted note generation when online, with evidence references and transcript
+  coverage warnings.
+- Offline transcript-backed drafts preserve reviewed patient statements for doctor approval.
+- Reviewed Hindi or Hinglish consultations can produce an English clinical note while retaining
+  the original conversation log unchanged.
+- Prescribed medicines and dosages appear in a separate section and require doctor verification.
+- All generated notes remain unverified drafts until explicitly approved by the doctor.
+
+### Secure storage and export
+
+- AES-GCM encrypted doctor profiles and app-private consultation history, protected by Android
+  Keystore and restored after app or phone restarts.
+- Approved reports linked to consultation history as encrypted A4 PDF, structured JSON, HL7 FHIR
+  R4 Bundle, or plain text.
+- Doctors can preview, reopen, share, regenerate, or delete generated reports.
+- Temporary consultation audio is stored in Android app-private cache by default.
+- Runtime provider API keys are encrypted with Android Keystore and are never compiled into the
+  APK.
 - No cloud consultation database. All AI output remains subject to doctor confirmation.
+
+### Continuous model improvement
+
+- With explicit consent, CareLipik stores doctor-confirmed transcript and medical-term corrections
+  as AES-GCM encrypted, app-private training examples.
+- Each example can retain the original ASR text, corrected text, language and engine metadata, and
+  an opaque reference to the encrypted source-audio clip.
+- The resulting dataset can later be governed, de-identified, reviewed, and used to fine-tune the
+  transcription and medical-NER models.
+- Correction data is never uploaded or used for training automatically.
 
 ## Requirements
 
@@ -114,6 +214,7 @@ that keeps provider credentials off the phone.
 
 | Feature | Runs where | Backend | Required key |
 | --- | --- | --- | --- |
+| Adaptive Multilingual V3 Turbo | AssemblyAI when online; Whisper V3 Turbo fallback on Android | Optional | AssemblyAI for online path |
 | Whisper transcription | Android phone | No | None |
 | MedASR transcription | Android phone | No | None |
 | Pyannote + TitaNet diarization | Android phone | No | None |
@@ -122,6 +223,28 @@ that keeps provider credentials off the phone.
 | Gemini medical-term enhancement | Gemini, direct or proxy | Optional | Gemini |
 | Gemini structured/English note | Gemini, direct or proxy | Optional | Gemini |
 | MedGemma structured/English note | Android phone | No | None |
+| Gemma 4 long-context structured note | Android phone | No | None |
+| Apollo medical entity extraction | Android phone | No | None |
+
+### Doctor-confirmed learning-data feedback loop
+
+When the doctor corrects an ASR error and explicitly opts in, CareLipik can store an encrypted,
+app-private training example for future model improvement. A conceptual record looks like this:
+
+```json
+{
+  "audio_clip": "encrypted-local-reference:<uuid>",
+  "asr_text": "I take net-forming 500 milligrams",
+  "corrected_text": "I take metformin 500 milligrams",
+  "language": "en-IN",
+  "transcription_engine": "WhisperTurboMultilingual",
+  "confirmed_by_doctor": true
+}
+```
+
+The application does not upload these records or retrain a model on the phone. Any future export,
+annotation, or training workflow must preserve consent, de-identification, encryption, access
+control, and dataset-version provenance.
 
 ### Optional on-device MedGemma report generation
 
@@ -266,8 +389,10 @@ adb devices
 ./tools/install_debug_preserve_data.sh
 ```
 
-Open CareLipik and select **Offline medical English (MedASR)** or **Offline multilingual
-(Whisper)**. Use only synthetic test audio during development.
+Open CareLipik and select **Multilingual V3 Turbo**. Without a working online provider path, the
+adaptive engine falls back to the installed on-device Whisper V3 Turbo model. MedASR and the
+lower-level Whisper choices remain available internally for development tests. Use only synthetic
+test audio during development.
 
 ### C. Phone-only online setup (no Mac server)
 
@@ -353,7 +478,12 @@ provider request validates those conditions.
 | --- | --- |
 | `scripts/download-medasr-model.sh` | Downloads ignored MedASR assets |
 | `scripts/download-whisper-model.sh` | Downloads ignored Whisper assets |
+| `tools/offline_whisper_turbo/setup.sh` | Installs/checks ignored Whisper V3 Turbo assets |
 | `tools/offline_speaker_diarization/setup.sh` | Installs/checks ignored local diarization assets |
+| `tools/export_apollo_medical_ner.sh` | Exports and verifies the Apollo Medical-NER ONNX bundle |
+| `tools/install_apollo_medical_ner.sh` | Installs Apollo Medical-NER assets on an Android device |
+| `tools/install_medgemma_model.sh` | Installs a local MedGemma LiteRT-LM bundle without clearing app data |
+| `tools/install_gemma4_model.sh` | Installs a local Gemma 4 LiteRT-LM bundle without clearing app data |
 | `tools/local_transcription_backend/store_sarvam_key.sh` | Adds or replaces the Sarvam Keychain credential |
 | `tools/local_transcription_backend/store_gemini_key.sh` | Adds or replaces the Gemini Keychain credential |
 | `tools/local_transcription_backend/run.sh` | Starts or reuses the backend on port 8787 |
@@ -809,6 +939,9 @@ backend URL changed.
 ## Privacy and storage behavior
 
 - Enrollment audio and consultation history stay in app-private storage.
+- Doctor-confirmed transcript correction examples are opt-in, AES-GCM encrypted, stored in
+  app-private storage, and excluded from backup and device transfer. They are not uploaded by the
+  application.
 - Approved consultation records are encrypted with AES-GCM using an Android Keystore key.
 - New approved records retain patient details, the selected clinical-note format, doctor-reviewed
   prescribed medicines, coverage warnings, and the complete reviewed conversation log inside the
@@ -893,5 +1026,3 @@ terminology requirements before production import. No export contains consultati
 - Do not commit secrets, local configuration, model binaries, patient data, or recordings.
 
 See [`AGENTS.md`](AGENTS.md) for the complete repository guidelines.
-
-[`Presentation`](https://drive.google.com/file/d/1pT_5gudn0GTlpnxekA1Mbfcwol3dJ193/view?usp=sharing)

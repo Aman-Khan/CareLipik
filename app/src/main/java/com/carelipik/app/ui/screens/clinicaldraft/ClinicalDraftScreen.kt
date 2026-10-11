@@ -20,11 +20,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.material3.FilterChip
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -44,16 +39,11 @@ fun ClinicalDraftScreen(
     onGenerateWithMedGemma: () -> Unit,
     onOnlineGenerationConsentChanged: (Boolean) -> Unit,
     onGenerateWithGemini: () -> Unit,
-    onAddMedication: () -> Unit,
-    onMedicationChanged: (Int, MedicationDraft) -> Unit,
-    onRemoveMedication: (Int) -> Unit,
     onRetry: () -> Unit,
     onBack: () -> Unit,
     onContinue: () -> Unit,
-    modifier: Modifier = Modifier,
-    prescriptionContent: @Composable () -> Unit = {}
+    modifier: Modifier = Modifier
 ) {
-    var showPrescription by rememberSaveable { mutableStateOf(false) }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -64,10 +54,10 @@ fun ClinicalDraftScreen(
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
         ConsultationScreenHeader(
-            title = "Report and prescription",
+            title = "Report",
             subtitle = "Turn the reviewed transcript into structured notes, then verify every section.",
             currentStep = 5,
-            totalSteps = 7,
+            totalSteps = 8,
             onBack = onBack,
             backEnabled = uiState.status != ClinicalDraftStatus.Processing
         )
@@ -80,10 +70,6 @@ fun ClinicalDraftScreen(
                 onRetry = onRetry
             )
             ClinicalDraftStatus.Ready -> {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    FilterChip(selected = !showPrescription, onClick = { showPrescription = false }, label = { Text("Report") })
-                    FilterChip(selected = showPrescription, onClick = { showPrescription = true }, label = { Text("Prescription") })
-                }
                 MedGemmaGenerationCard(
                     isGenerating = uiState.isGeneratingOnDevice || uiState.isGeneratingOnline,
                     generationSource = uiState.draft.generationSource.displayName,
@@ -98,64 +84,54 @@ fun ClinicalDraftScreen(
                     onConsentChanged = onOnlineGenerationConsentChanged,
                     onGenerate = onGenerateWithGemini
                 )
-                if (showPrescription) {
-                    prescriptionContent()
-                } else {
+                DraftField(
+                    label = "Patient age from reviewed transcript",
+                    value = uiState.draft.patientAge,
+                    onValueChanged = onPatientAgeChanged,
+                    minLines = 1
+                )
+                NoteFormatOptions(
+                    selected = uiState.draft.noteFormat,
+                    onSelected = onNoteFormatSelected
+                )
+                NoteLanguageOptions(
+                    selected = uiState.draft.noteLanguage,
+                    onSelected = onNoteLanguageSelected
+                )
+                if (uiState.draft.noteFormat == ClinicalNoteFormat.CustomSpecialty) {
                     DraftField(
-                        label = "Patient age from reviewed transcript",
-                        value = uiState.draft.patientAge,
-                        onValueChanged = onPatientAgeChanged,
+                        label = "Clinical specialty",
+                        value = uiState.draft.specialtyName,
+                        onValueChanged = onSpecialtyNameChanged,
                         minLines = 1
                     )
-                    NoteFormatOptions(
-                        selected = uiState.draft.noteFormat,
-                        onSelected = onNoteFormatSelected
-                    )
-                    NoteLanguageOptions(
-                        selected = uiState.draft.noteLanguage,
-                        onSelected = onNoteLanguageSelected
-                    )
-                    if (uiState.draft.noteFormat == ClinicalNoteFormat.CustomSpecialty) {
-                        DraftField(
-                            label = "Clinical specialty",
-                            value = uiState.draft.specialtyName,
-                            onValueChanged = onSpecialtyNameChanged,
-                            minLines = 1
-                        )
-                    }
-                    if (uiState.draft.coverageWarnings.isNotEmpty()) {
-                        CoverageWarnings(uiState.draft.coverageWarnings)
-                    }
-                    Text(
-                        "${uiState.draft.noteFormat.displayName} sections",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    uiState.draft.structuredSections.forEachIndexed { index, section ->
-                        DraftField(
-                            label = section.title,
-                            value = section.content,
-                            onValueChanged = { onSectionChanged(index, it) }
-                        )
-                        if (section.sourceTurnIds.isNotEmpty()) {
-                            Text(
-                                "Transcript evidence: ${section.sourceTurnIds.joinToString()}",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                    }
-                    MedicationEditor(
-                        medications = uiState.draft.medications,
-                        onAdd = onAddMedication,
-                        onChanged = onMedicationChanged,
-                        onRemove = onRemoveMedication
-                    )
-                    ReadOnlySourceTranscript(uiState.draft.reviewedTranscript)
                 }
+                if (uiState.draft.coverageWarnings.isNotEmpty()) {
+                    CoverageWarnings(uiState.draft.coverageWarnings)
+                }
+                Text(
+                    "${uiState.draft.noteFormat.displayName} sections",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                uiState.draft.structuredSections.forEachIndexed { index, section ->
+                    DraftField(
+                        label = section.title,
+                        value = section.content,
+                        onValueChanged = { onSectionChanged(index, it) }
+                    )
+                    if (section.sourceTurnIds.isNotEmpty()) {
+                        Text(
+                            "Transcript evidence: ${section.sourceTurnIds.joinToString()}",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+                ReadOnlySourceTranscript(uiState.draft.reviewedTranscript)
                 uiState.draftError?.let { error ->
                     Text(error, color = MaterialTheme.colorScheme.error)
                 }
                 Button(onClick = onContinue, modifier = Modifier.fillMaxWidth()) {
-                    Text("Continue to doctor review")
+                    Text("Continue to prescription")
                 }
             }
         }
@@ -279,7 +255,7 @@ private fun CoverageWarnings(warnings: List<String>) {
 }
 
 @Composable
-private fun MedicationEditor(
+fun PrescriptionSupportEditor(
     medications: List<MedicationDraft>,
     onAdd: () -> Unit,
     onChanged: (Int, MedicationDraft) -> Unit,

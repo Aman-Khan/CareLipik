@@ -98,7 +98,7 @@ fun CareLipikApp(
     )
     val savedRecordingsUiState by activeSavedRecordingsViewModel.uiState.collectAsState()
     val homeUiState by activeHomeViewModel.uiState.collectAsState()
-    val doctorProfileUiState by activeDoctorProfileViewModel.uiState.collectAsState()
+    val doctorProfileUiState by activeDoctorProfileViewModel.uiState.collectAsState() 
     val apiCredentialsUiState by activeApiCredentialsViewModel.uiState.collectAsState()
     val savedDoctorProfile by activeDoctorProfileViewModel.savedProfile.collectAsState()
     val doctorVoiceEnrollmentUiState by
@@ -285,7 +285,29 @@ fun CareLipikApp(
             )
             ConsultationDestination.ClinicalDraft -> ClinicalDraftScreen(
                 uiState = clinicalDraftUiState,
-                prescriptionContent = {
+                onPatientAgeChanged = activeClinicalDraftViewModel::setPatientAge,
+                onNoteFormatSelected = activeClinicalDraftViewModel::selectNoteFormat,
+                onNoteLanguageSelected = activeClinicalDraftViewModel::selectNoteLanguage,
+                onSpecialtyNameChanged = activeClinicalDraftViewModel::setSpecialtyName,
+                onSectionChanged = activeClinicalDraftViewModel::setSectionContent,
+                onOnlineGenerationConsentChanged =
+                    activeClinicalDraftViewModel::setOnlineGenerationConsent,
+                onGenerateWithMedGemma = activeClinicalDraftViewModel::generateWithMedGemma,
+                onGenerateWithGemini = activeClinicalDraftViewModel::generateWithGemini,
+                onRetry = activeClinicalDraftViewModel::retry,
+                onBack = navigator::navigateBack,
+                onContinue = navigator::navigateToNext,
+                modifier = Modifier.padding(innerPadding)
+            )
+            ConsultationDestination.Prescription -> com.carelipik.app.ui.screens.prescription.PrescriptionScreen(
+                onBack = navigator::navigateBack,
+                onContinue = {
+                    if (activeClinicalDraftViewModel.validateForContinue()) {
+                        activeDoctorReviewViewModel.loadDraft(activeClinicalDraftViewModel.currentDraft())
+                        navigator.navigateToNext()
+                    }
+                },
+                generationContent = {
                     if (clinicalDraftUiState.isGeneratingOnDevice || clinicalDraftUiState.isGeneratingOnline) {
                         androidx.compose.material3.Text("Extracting discussed medicines and symptom references...")
                     }
@@ -310,27 +332,14 @@ fun CareLipikApp(
                         )
                     }
                 },
-                onPatientAgeChanged = activeClinicalDraftViewModel::setPatientAge,
-                onNoteFormatSelected = activeClinicalDraftViewModel::selectNoteFormat,
-                onNoteLanguageSelected = activeClinicalDraftViewModel::selectNoteLanguage,
-                onSpecialtyNameChanged = activeClinicalDraftViewModel::setSpecialtyName,
-                onSectionChanged = activeClinicalDraftViewModel::setSectionContent,
-                onOnlineGenerationConsentChanged =
-                    activeClinicalDraftViewModel::setOnlineGenerationConsent,
-                onGenerateWithMedGemma = activeClinicalDraftViewModel::generateWithMedGemma,
-                onGenerateWithGemini = activeClinicalDraftViewModel::generateWithGemini,
-                onAddMedication = activeClinicalDraftViewModel::addMedication,
-                onMedicationChanged = activeClinicalDraftViewModel::updateMedication,
-                onRemoveMedication = activeClinicalDraftViewModel::removeMedication,
-                onRetry = activeClinicalDraftViewModel::retry,
-                onBack = navigator::navigateBack,
-                onContinue = {
-                    if (activeClinicalDraftViewModel.validateForContinue()) {
-                        activeDoctorReviewViewModel.loadDraft(
-                            activeClinicalDraftViewModel.currentDraft()
-                        )
-                        navigator.navigateToNext()
-                    }
+                supportContent = {
+                    com.carelipik.app.ui.screens.clinicaldraft.PrescriptionSupportEditor(
+                        medications = clinicalDraftUiState.draft.medications,
+                        onAdd = activeClinicalDraftViewModel::addMedication,
+                        onChanged = activeClinicalDraftViewModel::updateMedication,
+                        onRemove = activeClinicalDraftViewModel::removeMedication
+                    )
+                    clinicalDraftUiState.draftError?.let { androidx.compose.material3.Text(it) }
                 },
                 modifier = Modifier.padding(innerPadding)
             )

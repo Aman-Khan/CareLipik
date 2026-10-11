@@ -6,7 +6,6 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performClick
-import androidx.compose.material3.Text
 import com.carelipik.app.domain.model.ClinicalDraft
 import com.carelipik.app.domain.model.ClinicalNoteFormat
 import com.carelipik.app.domain.model.ClinicalNoteSection
@@ -23,7 +22,7 @@ class ClinicalDraftReportScreenTest {
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     @Test
-    fun reportOptionsEnglishGenerationAndMedicationReviewAreVisible() {
+    fun reportOptionsAndGenerationAreVisibleWithoutPrescriptionToggle() {
         var onDeviceRequests = 0
         composeRule.setContent {
             CareLipikTheme {
@@ -48,34 +47,22 @@ class ClinicalDraftReportScreenTest {
                     onOnlineGenerationConsentChanged = {},
                     onGenerateWithGemini = {},
                     onGenerateWithMedGemma = { onDeviceRequests++ },
-                    onAddMedication = {},
-                    onMedicationChanged = { _, _ -> },
-                    onRemoveMedication = {},
                     onRetry = {},
                     onBack = {},
-                    onContinue = {},
-                    prescriptionContent = { Text("Prescription source editor") }
+                    onContinue = {}
                 )
             }
         }
 
         composeRule.onNodeWithText("Generate on device").performScrollTo().performClick()
         org.junit.Assert.assertEquals(1, onDeviceRequests)
-        composeRule.onNodeWithText("Prescription").performScrollTo().performClick()
-        composeRule.onNodeWithText("Generate on device").performScrollTo().performClick()
-        org.junit.Assert.assertEquals(2, onDeviceRequests)
-        composeRule.onNodeWithText("Prescription source editor").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("H&P").assertDoesNotExist()
-        composeRule.onNodeWithText("Report").performScrollTo().performClick()
-        composeRule.onNodeWithText("Prescription source editor").assertDoesNotExist()
+        composeRule.onNodeWithText("Prescription generation").assertDoesNotExist()
+        composeRule.onNodeWithText("Continue to prescription").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("H&P").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("English").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("On-device clinical note")
             .performScrollTo()
             .assertIsDisplayed()
-        composeRule.onNodeWithText("Synthetic medicine").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("I verified this medicine and dosage")
-            .performScrollTo()
-            .assertIsDisplayed()
+        composeRule.onNodeWithText("Prescribed medicines and dosages").assertDoesNotExist()
     }
 }

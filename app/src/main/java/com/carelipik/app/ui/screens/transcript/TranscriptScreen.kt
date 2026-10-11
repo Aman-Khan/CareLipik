@@ -86,7 +86,7 @@ fun TranscriptScreen(
             title = "Review transcript",
             subtitle = "Check every line against the consultation and correct anything that is unclear.",
             currentStep = 4,
-            totalSteps = 7,
+            totalSteps = 8,
             onBack = onBack,
             backEnabled = uiState.status != TranscriptStatus.Processing
         )

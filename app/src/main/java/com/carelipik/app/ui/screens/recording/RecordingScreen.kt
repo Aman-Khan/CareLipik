@@ -111,7 +111,7 @@ fun RecordingScreen(
             title = "Record consultation",
             subtitle = "Record now or import a reusable WAV test file.",
             currentStep = 3,
-            totalSteps = 7,
+            totalSteps = 8,
             onBack = onBack,
             backEnabled = uiState.status !in setOf(RecordingStatus.Recording, RecordingStatus.Paused)
         )

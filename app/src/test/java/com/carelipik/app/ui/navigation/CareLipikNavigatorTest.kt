@@ -6,6 +6,22 @@ import org.junit.Test
 
 class CareLipikNavigatorTest {
     @Test
+    fun reportPrescriptionAndReview_areSeparateDestinationsWithBackNavigation() {
+        val navigator = CareLipikNavigator()
+        navigator.resumeRecording()
+        navigator.navigateToNext()
+        navigator.navigateToNext()
+        assertEquals(ConsultationDestination.ClinicalDraft, navigator.currentDestination)
+        navigator.navigateToNext()
+        assertEquals(ConsultationDestination.Prescription, navigator.currentDestination)
+        navigator.navigateToNext()
+        assertEquals(ConsultationDestination.DoctorReview, navigator.currentDestination)
+        navigator.navigateBack()
+        assertEquals(ConsultationDestination.Prescription, navigator.currentDestination)
+        navigator.navigateBack()
+        assertEquals(ConsultationDestination.ClinicalDraft, navigator.currentDestination)
+    }
+    @Test
     fun savedRecording_resumesAtRecordingAndCanReturnHome() {
         val navigator = CareLipikNavigator()
         navigator.openSavedRecordings()

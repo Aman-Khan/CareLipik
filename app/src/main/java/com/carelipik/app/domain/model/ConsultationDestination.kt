@@ -10,7 +10,8 @@ enum class ConsultationDestination(val title: String) {
     PatientDetails("Patient details"),
     ConsultationRecording("Consultation recording"),
     Transcript("Transcript"),
-    ClinicalDraft("Clinical draft"),
+    ClinicalDraft("Report"),
+    Prescription("Prescription"),
     DoctorReview("Doctor review"),
     Export("Export")
 }

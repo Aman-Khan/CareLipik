@@ -21,6 +21,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,7 +41,8 @@ fun HomeScreen(
     onOpenProfile: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenConsultation: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenSavedRecordings: (() -> Unit)? = null
 ) {
     Column(
         modifier = modifier
@@ -52,6 +54,11 @@ fun HomeScreen(
         HomeTopBar(onOpenProfile = onOpenProfile)
         WelcomeHeader(uiState = uiState)
         NewConsultationCard(onStartConsultation = onStartConsultation)
+        onOpenSavedRecordings?.let { open ->
+            OutlinedButton(onClick = open, modifier = Modifier.fillMaxWidth()) {
+                Text("Saved recordings · Continue later")
+            }
+        }
         ProcessingStatusCard(uiState = uiState)
         QuickActions(
             uiState = uiState,

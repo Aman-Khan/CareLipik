@@ -11,8 +11,120 @@ import org.junit.Test
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import com.carelipik.app.domain.model.RecordedAudio
+import com.carelipik.app.domain.export.RecordingAudioExporter
+import com.carelipik.app.domain.export.RecordingAudioExportResult
 
 class RecordingViewModelTest {
+    @Test
+    fun speakerCount_defaultsToTwoAndResetsForNewConsultation() {
+        val viewModel = RecordingViewModel(TrackingRecorder(), useAutomaticTimer = false)
+        assertEquals(2, viewModel.speakerCount())
+        viewModel.setSpeakerCount(4)
+        assertEquals(4, viewModel.uiState.value.speakerCount)
+        viewModel.resetForNewConsultation()
+        assertEquals(2, viewModel.speakerCount())
+    }
+
+    @Test
+    fun download_copiesCurrentRecordingWithoutDiscardingOrTranscribingIt() {
+        val recorder = TrackingRecorder()
+        var exportedPath: String? = null
+        var exportedDestination: String? = null
+        val viewModel = RecordingViewModel(
+            recorder, useAutomaticTimer = false, exportAsynchronously = false,
+            audioExporter = RecordingAudioExporter { audio, destination ->
+                exportedPath = audio.localPath
+                exportedDestination = destination
+                RecordingAudioExportResult.Success(audio.sizeBytes)
+            }
+        )
+        viewModel.startRecording()
+        viewModel.stopRecording()
+        viewModel.downloadAudio("content://synthetic/new.wav")
+
+        assertEquals("/private/test.wav", exportedPath)
+        assertEquals("content://synthetic/new.wav", exportedDestination)
+        assertEquals(RecordingStatus.Completed, viewModel.uiState.value.status)
+        assertTrue(viewModel.uiState.value.downloadMessage!!.contains("downloaded"))
+        assertFalse(viewModel.uiState.value.isDownloading)
+        assertTrue(viewModel.uiState.value.canContinue)
+        assertFalse(recorder.calls.contains("discard"))
+    }
+
+    @Test
+    fun failedDownload_keepsOriginalRecordingAvailableForRetry() {
+        val viewModel = RecordingViewModel(
+            TrackingRecorder(), useAutomaticTimer = false, exportAsynchronously = false,
+            audioExporter = RecordingAudioExporter { _, _ -> RecordingAudioExportResult.Failure("Synthetic write failure") }
+        )
+        viewModel.startRecording()
+        viewModel.stopRecording()
+        viewModel.downloadAudio("content://synthetic/new.wav")
+
+        assertEquals("Synthetic write failure", viewModel.uiState.value.downloadError)
+        assertFalse(viewModel.uiState.value.isDownloading)
+        assertTrue(viewModel.uiState.value.hasSavedAudio)
+        assertTrue(viewModel.uiState.value.canContinue)
+    }
+
+    @Test
+    fun unfinishedRecording_cannotBeDownloaded() {
+        var exported = false
+        val viewModel = RecordingViewModel(
+            TrackingRecorder(), useAutomaticTimer = false, exportAsynchronously = false,
+            audioExporter = RecordingAudioExporter { _, _ ->
+                exported = true
+                RecordingAudioExportResult.Success(1)
+            }
+        )
+        viewModel.downloadAudio("content://synthetic/new.wav")
+
+        assertFalse(exported)
+        assertTrue(viewModel.uiState.value.downloadError!!.contains("Finish recording"))
+    }
+
+    @Test
+    fun download_blocksDiscardAndContinueUntilCopyFinishes() {
+        val recorder = TrackingRecorder()
+        lateinit var viewModel: RecordingViewModel
+        viewModel = RecordingViewModel(
+            recorder, useAutomaticTimer = false, exportAsynchronously = false,
+            audioExporter = RecordingAudioExporter { _, _ ->
+                assertTrue(viewModel.uiState.value.isDownloading)
+                assertFalse(viewModel.uiState.value.canContinue)
+                viewModel.discardRecording()
+                assertFalse(recorder.calls.contains("discard"))
+                RecordingAudioExportResult.Success(128)
+            }
+        )
+        viewModel.startRecording()
+        viewModel.stopRecording()
+        viewModel.downloadAudio("content://synthetic/new.wav")
+
+        assertFalse(viewModel.uiState.value.isDownloading)
+        assertTrue(viewModel.uiState.value.canContinue)
+    }
+    @Test
+    fun restoredRecording_preservesSelectionsAndRequiresNewOnlineConsent() = kotlinx.coroutines.runBlocking {
+        val recorder = TrackingRecorder()
+        val viewModel = RecordingViewModel(recorder, useAutomaticTimer = false)
+        val audio = RecordedAudio("synthetic.wav", 32_044L, durationMillis = 1_000L)
+        val saved = com.carelipik.app.domain.model.SavedRecording(
+            "00000000-0000-0000-0000-000000000001", 1_000L, "Synthetic patient", "30", "Synthetic visit",
+            TranscriptionLanguage.Hinglish, TranscriptionEngineOption.SaarasHindiHinglish,
+            "Synthetic WAV", 1_000L, com.carelipik.app.domain.model.RecordedAudioSource.Microphone, true,
+            speakerCount = 3
+        )
+        assertTrue(viewModel.restoreSavedRecording(com.carelipik.app.domain.model.RestoredSavedRecording(saved, audio)))
+        assertEquals(3, viewModel.speakerCount())
+        assertEquals(RecordingStatus.Completed, viewModel.uiState.value.status)
+        assertEquals(TranscriptionLanguage.Hinglish, viewModel.transcriptionLanguage())
+        assertEquals(TranscriptionEngineOption.SaarasHindiHinglish, viewModel.transcriptionEngine())
+        assertFalse(viewModel.uiState.value.hasOnlineProcessingConsent)
+        assertFalse(viewModel.uiState.value.canContinue)
+        viewModel.setOnlineProcessingConsent(true)
+        assertTrue(viewModel.uiState.value.canContinue)
+    }
     @Test
     fun recording_canBePausedResumedAndCompleted() {
         val recorder = TrackingRecorder()
@@ -176,5 +288,9 @@ class RecordingViewModelTest {
         override fun stopPlayback() { calls += "stopPlayback" }
         override suspend fun importAudio(sourceUri: String): AudioImportResult =
             AudioImportResult.Failure("Test import is unavailable")
+        override suspend fun restoreAudio(audio: RecordedAudio): AudioImportResult {
+            recordedAudio.value = audio
+            return AudioImportResult.Success(audio)
+        }
     }
 }

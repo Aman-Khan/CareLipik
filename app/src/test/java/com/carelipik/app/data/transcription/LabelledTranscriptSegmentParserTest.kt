@@ -8,6 +8,14 @@ class LabelledTranscriptSegmentParserTest {
     private val parser = LabelledTranscriptSegmentParser()
 
     @Test
+    fun personLabels_preserveStableSpeakerIdsBeyondTwo() {
+        assertEquals(
+            listOf(TranscriptSegment("speaker-3", "Third reply"), TranscriptSegment("speaker-12", "Later reply")),
+            parser.parse("Person 3: Third reply\nPerson 12: Later reply")
+        )
+    }
+
+    @Test
     fun parse_preservesExplicitSpeakerOrder() {
         val segments = parser.parse(
             "Speaker 1: Good morning\n\n" +

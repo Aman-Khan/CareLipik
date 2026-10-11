@@ -1,6 +1,7 @@
 package com.carelipik.app.ui.screens.patientdetails
 
 import androidx.lifecycle.ViewModel
+import com.carelipik.app.domain.model.SavedRecording
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,6 +31,14 @@ class PatientDetailsViewModel : ViewModel() {
     }
 
     fun currentDetails(): PatientDetailsUiState = _uiState.value
+
+    fun restore(recording: SavedRecording) {
+        _uiState.value = PatientDetailsUiState(
+            patientName = recording.patientName,
+            age = recording.patientAge,
+            visitReason = recording.visitReason
+        )
+    }
 
     fun resetForNewConsultation() {
         _uiState.value = PatientDetailsUiState()

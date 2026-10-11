@@ -10,7 +10,7 @@ data class RemoteTranscriptionRequest(
     val model: String,
     val languageCode: String,
     val mode: RemoteTranscriptionMode,
-    val expectedSpeakerCount: Int
+    val expectedSpeakerCount: Int? = null
 )
 
 data class RemoteSpeakerSegment(

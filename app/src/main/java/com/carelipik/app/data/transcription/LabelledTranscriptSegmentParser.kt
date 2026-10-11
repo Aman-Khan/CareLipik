@@ -3,7 +3,7 @@ package com.carelipik.app.data.transcription
 import com.carelipik.app.domain.transcription.TranscriptSegment
 import com.carelipik.app.domain.transcription.TranscriptSegmentParser
 
-/** Supports Doctor, Patient and numbered Speaker labels already present in a transcript. */
+/** Supports Doctor, Patient and numbered Speaker/Person labels in a transcript. */
 class LabelledTranscriptSegmentParser : TranscriptSegmentParser {
     override fun parse(transcript: String): List<TranscriptSegment> {
         val segments = mutableListOf<TranscriptSegment>()
@@ -39,7 +39,7 @@ class LabelledTranscriptSegmentParser : TranscriptSegmentParser {
     private fun normalizedSpeakerId(label: String): String = when {
         label.equals("doctor", ignoreCase = true) -> DOCTOR_ID
         label.equals("patient", ignoreCase = true) -> PATIENT_ID
-        else -> label.lowercase().replace(whitespace, "-")
+        else -> label.lowercase().replace(Regex("^person\\s+"), "speaker ").replace(whitespace, "-")
     }
 
     private companion object {
@@ -47,7 +47,7 @@ class LabelledTranscriptSegmentParser : TranscriptSegmentParser {
         const val PATIENT_ID = "patient"
         val whitespace = Regex("\\s+")
         val labelledLine = Regex(
-            "^(Doctor|Patient|Speaker\\s+[A-Za-z0-9._-]+)\\s*:\\s*(.+)$",
+            "^(Doctor|Patient|(?:Speaker|Person)\\s+[A-Za-z0-9._-]+)\\s*:\\s*(.+)$",
             RegexOption.IGNORE_CASE
         )
     }

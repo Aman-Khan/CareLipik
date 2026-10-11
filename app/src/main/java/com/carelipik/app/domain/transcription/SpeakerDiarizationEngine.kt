@@ -17,6 +17,6 @@ fun interface SpeakerDiarizationEngine {
     fun diarize(
         samples: FloatArray,
         sampleRate: Int,
-        expectedSpeakerCount: Int
+        expectedSpeakerCount: Int // -1 estimates the speaker count from the audio.
     ): SpeakerDiarizationResult
 }

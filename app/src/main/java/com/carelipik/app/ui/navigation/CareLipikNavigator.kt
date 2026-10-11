@@ -29,6 +29,18 @@ class CareLipikNavigator : ViewModel() {
         currentDestination = ConsultationDestination.ConsultationHistory
     }
 
+    fun openSavedRecordings() {
+        currentDestination = ConsultationDestination.SavedRecordings
+    }
+
+    fun resumeRecording() {
+        currentDestination = ConsultationDestination.ConsultationRecording
+    }
+
+    fun returnHome() {
+        currentDestination = ConsultationDestination.Home
+    }
+
     fun openExportFromHistory() {
         exportReturnDestination = ConsultationDestination.ConsultationHistory
         currentDestination = ConsultationDestination.Export
@@ -42,6 +54,7 @@ class CareLipikNavigator : ViewModel() {
         currentDestination = when (currentDestination) {
             ConsultationDestination.Home -> ConsultationDestination.Welcome
             ConsultationDestination.DoctorProfile,
+            ConsultationDestination.SavedRecordings,
             ConsultationDestination.ConsultationHistory -> ConsultationDestination.Home
             ConsultationDestination.Welcome -> ConsultationDestination.PatientDetails
             ConsultationDestination.PatientDetails -> ConsultationDestination.ConsultationRecording
@@ -60,6 +73,7 @@ class CareLipikNavigator : ViewModel() {
         currentDestination = when (currentDestination) {
             ConsultationDestination.Home -> ConsultationDestination.Home
             ConsultationDestination.DoctorProfile,
+            ConsultationDestination.SavedRecordings,
             ConsultationDestination.ConsultationHistory,
             ConsultationDestination.Welcome -> ConsultationDestination.Home
             ConsultationDestination.PatientDetails -> ConsultationDestination.Welcome

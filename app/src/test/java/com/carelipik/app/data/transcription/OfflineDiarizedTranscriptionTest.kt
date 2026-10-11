@@ -10,6 +10,42 @@ import org.junit.Test
 
 class OfflineDiarizedTranscriptionTest {
     @Test
+    fun automaticDiarization_preservesFourDistinctSpeakers() {
+        val diarizer = SpeakerDiarizationEngine { _, _, count ->
+            assertEquals(-1, count)
+            SpeakerDiarizationResult.Success((1..4).map { number ->
+                DiarizedAudioTurn("speaker-$number", (number - 1).toFloat(), number.toFloat())
+            })
+        }
+        var turn = 0
+        val result = OfflineDiarizedTranscription.transcribe(
+            samples = FloatArray(64_000),
+            sampleRate = 16_000,
+            diarizationEngine = diarizer,
+            recognize = { "Synthetic turn ${++turn}" }
+        )
+
+        assertEquals((1..4).map { "speaker-$it" }, result.segments.map { it.speakerId })
+        assertEquals(4, turn)
+    }
+
+    @Test
+    fun automaticDiarization_preservesSingleSpeakerWithoutTranscribingAgain() {
+        var calls = 0
+        val result = OfflineDiarizedTranscription.transcribe(
+            samples = FloatArray(16_000),
+            sampleRate = 16_000,
+            diarizationEngine = SpeakerDiarizationEngine { _, _, _ ->
+                SpeakerDiarizationResult.Success(listOf(DiarizedAudioTurn("speaker-1", 0f, 1f)))
+            },
+            recognize = { calls++; "Synthetic speech" }
+        )
+
+        assertEquals(1, result.segments.size)
+        assertEquals(1, calls)
+    }
+
+    @Test
     fun twoDetectedSpeakers_areTranscribedAsStructuredTurns() {
         val samples = FloatArray(32_000) { index -> if (index < 16_000) 0.1f else 0.2f }
         val diarizer = SpeakerDiarizationEngine { _, _, _ ->

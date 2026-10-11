@@ -5,6 +5,7 @@ enum class ConsultationDestination(val title: String) {
     Home("Home"),
     DoctorProfile("Doctor profile"),
     ConsultationHistory("Consultation history"),
+    SavedRecordings("Saved recordings"),
     Welcome("Recording consent"),
     PatientDetails("Patient details"),
     ConsultationRecording("Consultation recording"),

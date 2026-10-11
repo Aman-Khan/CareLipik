@@ -21,6 +21,7 @@ import com.carelipik.app.domain.model.ClinicalNoteLanguage
 import com.carelipik.app.domain.model.MedicationDraft
 import com.carelipik.app.domain.transcription.TranscriptionLanguage
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -214,6 +215,7 @@ class ClinicalDraftViewModel(
     fun currentDraft(): com.carelipik.app.domain.model.ClinicalDraft = _uiState.value.draft
 
     fun resetForNewConsultation() {
+        viewModelScope.coroutineContext.cancelChildren()
         sourceTranscript = null
         sourceLanguage = TranscriptionLanguage.English
         sourceSpecialtyName = ""

@@ -1,0 +1,26 @@
+{
+  "onnxruntime_c_api.h": {
+    "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.27.1/include/onnxruntime/core/session/onnxruntime_c_api.h",
+    "sha256": "523131bab81173fe287c578f7dda344e1dc5c749fa3f70b55fbbf8f210850313"
+  },
+  "onnxruntime_cxx_api.h": {
+    "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.27.1/include/onnxruntime/core/session/onnxruntime_cxx_api.h",
+    "sha256": "c5f9bb73d7674cf99a197b383a144eb2a5eda71cc060193a86c7d24e6fa36ed7"
+  },
+  "onnxruntime_cxx_inline.h": {
+    "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.27.1/include/onnxruntime/core/session/onnxruntime_cxx_inline.h",
+    "sha256": "114b4d008351eaa4462560438474cebd104f74259cc8af607acc0b97453200d2"
+  },
+  "onnxruntime_float16.h": {
+    "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.27.1/include/onnxruntime/core/session/onnxruntime_float16.h",
+    "sha256": "88b242845d25981633a0bbd1c148e273cf8bfb016ea3f57c4af41a06530f72b0"
+  },
+  "onnxruntime_ep_c_api.h": {
+    "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.27.1/include/onnxruntime/core/session/onnxruntime_ep_c_api.h",
+    "sha256": "f65ac849718cabe3ff4902698dd2de643c3b3dbe0010242b2b0407548e7ee00c"
+  },
+  "nnapi_provider_factory.h": {
+    "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.27.1/include/onnxruntime/core/providers/nnapi/nnapi_provider_factory.h",
+    "sha256": "49f7e0952e57b7e2942f69d8df61a9d99836f05b49a89700e1f5a16278c945e2"
+  }
+}

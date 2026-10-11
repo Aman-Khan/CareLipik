@@ -77,67 +77,79 @@ entities, speaker roles, and note sections; the doctor verifies and approves the
 
 ## Current capabilities
 
-### Speech transcription and diarization
+### Speech Transcription and Diarization
 
 - Offline English and multilingual transcription using Whisper V3 Large Turbo.
-- Online English, Hindi, and Hinglish transcription using Sarvam Saaras, with optional Saaras
-  Batch diarization.
-- An adaptive **Multilingual V3 Turbo** option that uses AssemblyAI Universal-3.5 Pro when its
-  online path is configured and falls back to on-device Whisper V3 Turbo when unavailable.
-- Offline speaker segmentation with Pyannote Segmentation 3.0 and speaker embeddings with TitaNet.
-- Offline doctor-voice enrollment and confidence-gated Doctor/Patient role matching.
-- Internal development support for MedASR, Whisper Small, and Whisper Turbo engines.
-- Manual correction of transcript text, medical terms, speaker labels, and doctor/patient roles.
+- Online English, Hindi, and Hinglish transcription using Sarvam Saaras.
+- Sarvam Saaras Batch provides online speaker diarization.
+- Offline diarization uses:
+  - Pyannote for speaker segmentation.
+  - TitaNet for speaker embeddings and voice matching.
+- Doctors can manually correct transcript text, medical terms, speaker labels, and doctor/patient
+  roles.
 
-### Medical-term identification
+### Medical-Term Identification
 
-- Apollo Medical-NER identifies candidate medicines, diseases, symptoms, allergies,
-  investigations, dosages, strengths, frequencies, durations, and routes.
-- Apollo Medical-NER uses
-  [Microsoft DeBERTa V3 Base](https://huggingface.co/microsoft/deberta-v3-base) as its base model
-  and runs as an INT8 ONNX model on the phone.
-- Deterministic rules complement NER for dosage patterns, medication relationships, negation, and
-  common transcription errors.
-- Optional Gemini-assisted analysis can identify additional medical terms after consent.
-- Every detected term must be confirmed or corrected by the doctor; candidates never silently
-  replace the transcript.
+- Apollo Medical-NER identifies medicines, diseases, symptoms, allergies, investigations,
+  dosages, strengths, frequencies, durations, and routes.
+- The NER model is based on
+  [Microsoft DeBERTa V3 Base](https://huggingface.co/microsoft/deberta-v3-base).
+- Rule-based processing complements NER for dosage patterns, medication relationships, negation,
+  and common transcription errors.
+- Optional Gemini-assisted analysis can identify additional medical terms with user consent.
+- Every detected term must be confirmed or corrected by the doctor.
 
-### Clinical-note generation
+### Clinical-Note Generation
 
-- MedGemma structures the reviewed transcript into standard clinical-note formats.
-- Supported formats include SOAP, APSO, H&P, problem-oriented, progress, DAP, BIRP, GIRP,
-  procedure, and specialty-specific notes.
-- Optional fully on-device MedGemma 1.5 4B report drafting through LiteRT-LM, using an externally
-  installed, license-approved INT4 model bundle and transcript evidence IDs.
-- Optional Gemini-assisted note generation when online, with evidence references and transcript
-  coverage warnings.
-- Offline transcript-backed drafts preserve reviewed patient statements for doctor approval.
-- Reviewed Hindi or Hinglish consultations can produce an English clinical note while retaining
-  the original conversation log unchanged.
+- MedGemma structures reviewed transcripts into standard clinical-note formats.
+- Supported formats include:
+  - SOAP
+  - APSO
+  - H&P
+  - Problem-oriented notes
+  - Progress notes
+  - DAP
+  - BIRP
+  - GIRP
+  - Procedure notes
+  - Specialty-specific notes
+- MedGemma 1.5 4B can run on-device through LiteRT-LM using an externally installed,
+  license-approved INT4 model.
+- Optional Gemini-assisted generation is available when online.
+- Generated claims include transcript evidence references and coverage warnings.
+- Hindi and Hinglish consultations can be converted into English clinical notes while preserving
+  the original transcript.
 - Prescribed medicines and dosages appear in a separate section and require doctor verification.
-- All generated notes remain unverified drafts until explicitly approved by the doctor.
+- All generated notes remain unverified drafts until approved by the doctor.
 
-### Secure storage and export
+### Secure Storage and Export
 
-- AES-GCM encrypted doctor profiles and app-private consultation history, protected by Android
-  Keystore and restored after app or phone restarts.
-- Approved reports linked to consultation history as encrypted A4 PDF, structured JSON, HL7 FHIR
-  R4 Bundle, or plain text.
+- Doctor profiles and consultation history are encrypted using AES-GCM.
+- Encryption keys are protected through Android Keystore.
+- Approved reports are linked to their consultation history.
+- Supported export formats include:
+  - A4 PDF
+  - Structured JSON
+  - HL7 FHIR R4 Bundle
+  - Plain-text EHR note
 - Doctors can preview, reopen, share, regenerate, or delete generated reports.
-- Temporary consultation audio is stored in Android app-private cache by default.
-- Runtime provider API keys are encrypted with Android Keystore and are never compiled into the
-  APK.
-- No cloud consultation database. All AI output remains subject to doctor confirmation.
+- Temporary consultation audio is stored in the Android app cache.
+- Provider API keys are encrypted at runtime and are never compiled into the APK.
+- CareLipik does not use a cloud consultation database.
 
-### Continuous model improvement
+### Continuous Model Improvement
 
 - With explicit consent, CareLipik stores doctor-confirmed transcript and medical-term corrections
-  as AES-GCM encrypted, app-private training examples.
-- Each example can retain the original ASR text, corrected text, language and engine metadata, and
-  an opaque reference to the encrypted source-audio clip.
-- The resulting dataset can later be governed, de-identified, reviewed, and used to fine-tune the
-  transcription and medical-NER models.
-- Correction data is never uploaded or used for training automatically.
+  as encrypted, app-private training examples.
+- Each example can contain:
+  - The original ASR text
+  - The doctor-corrected text
+  - Language and transcription-engine metadata
+  - An encrypted reference to the relevant audio clip
+- This dataset can later be reviewed, de-identified, and used to fine-tune the transcription and
+  medical-NER models.
+- Corrections are never uploaded automatically.
+- All AI-generated content remains subject to doctor confirmation.
 
 ## Requirements
 

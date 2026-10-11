@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.rememberScrollState
@@ -111,64 +112,9 @@ fun ConsultationExportScreen(
             onBack = onBack,
             backEnabled = uiState.status != ConsultationExportStatus.Generating
         )
-        PrivacyCard()
         val consultation = uiState.consultation
-        if (consultation != null) {
-            Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text("Approved consultation", fontWeight = FontWeight.Bold)
-                    Text(consultation.patientName)
-                    Text(
-                        consultation.visitReason.ifBlank { "No visit reason recorded" },
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        "Report: ${consultation.draft.noteFormat.displayName} • " +
-                            consultation.draft.noteLanguage.displayName,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-        ExportFormatOptions(
-            selected = uiState.selectedFormat,
-            enabled = uiState.isConfigurationEditable,
-            onSelected = onFormatSelected
-        )
-        PrescriptionAttachmentCard(
-            imagePaths = uiState.prescriptionImagePaths,
-            message = uiState.prescriptionMessage,
-            enabled = uiState.isConfigurationEditable,
-            onCamera = capturePrescription,
-            onGallery = { galleryLauncher.launch(arrayOf("image/*")) },
-            onRemove = onRemovePrescriptionImage
-        )
-        ElectronicSignatureOptions(
-            enabled = uiState.electronicallySign,
-            signerName = uiState.signerName,
-            isEditable = uiState.isConfigurationEditable,
-            onEnabledChanged = onElectronicSignatureChanged,
-            onSignerNameChanged = onSignerNameChanged,
-            signature = uiState.handwrittenSignature,
-            onSignatureChanged = onHandwrittenSignatureChanged
-        )
-        when (uiState.status) {
-            ConsultationExportStatus.Empty -> Text(
-                "No approved consultation is available for export.",
-                color = MaterialTheme.colorScheme.error
-            )
-            ConsultationExportStatus.Generating -> Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                CircularProgressIndicator()
-                Text("Creating ${uiState.selectedFormat.displayName} privately on this device...")
-            }
-            ConsultationExportStatus.Generated -> GeneratedExportCard(
+        if (uiState.status == ConsultationExportStatus.Generated) {
+            GeneratedExportCard(
                 displayName = uiState.exportedFile?.displayName.orEmpty(),
                 sizeBytes = uiState.exportedFile?.sizeBytes ?: 0L,
                 formatName = uiState.exportedFile?.format?.displayName.orEmpty(),
@@ -177,13 +123,69 @@ fun ConsultationExportScreen(
                 exportedFile = uiState.exportedFile,
                 onShare = onShare
             )
-            ConsultationExportStatus.Error -> Text(
-                uiState.errorMessage ?: "The export could not be created.",
-                color = MaterialTheme.colorScheme.error
+        } else {
+            PrivacyCard()
+            if (consultation != null) {
+                Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("Approved consultation", fontWeight = FontWeight.Bold)
+                        Text(consultation.patientName)
+                        Text(
+                            consultation.visitReason.ifBlank { "No visit reason recorded" },
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            "Report: ${consultation.draft.noteFormat.displayName} • " +
+                                consultation.draft.noteLanguage.displayName,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            ExportFormatOptions(
+                selected = uiState.selectedFormat,
+                enabled = uiState.isConfigurationEditable,
+                onSelected = onFormatSelected
             )
-            ConsultationExportStatus.ReadyToGenerate -> Unit
-        }
-        if (uiState.status != ConsultationExportStatus.Generated) {
+            PrescriptionAttachmentCard(
+                imagePaths = uiState.prescriptionImagePaths,
+                message = uiState.prescriptionMessage,
+                enabled = uiState.isConfigurationEditable,
+                onCamera = capturePrescription,
+                onGallery = { galleryLauncher.launch(arrayOf("image/*")) },
+                onRemove = onRemovePrescriptionImage
+            )
+            ElectronicSignatureOptions(
+                enabled = uiState.electronicallySign,
+                signerName = uiState.signerName,
+                isEditable = uiState.isConfigurationEditable,
+                onEnabledChanged = onElectronicSignatureChanged,
+                onSignerNameChanged = onSignerNameChanged,
+                signature = uiState.handwrittenSignature,
+                onSignatureChanged = onHandwrittenSignatureChanged
+            )
+            when (uiState.status) {
+                ConsultationExportStatus.Empty -> Text(
+                    "No approved consultation is available for export.",
+                    color = MaterialTheme.colorScheme.error
+                )
+                ConsultationExportStatus.Generating -> Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    CircularProgressIndicator()
+                    Text("Creating ${uiState.selectedFormat.displayName} privately on this device...")
+                }
+                ConsultationExportStatus.Error -> Text(
+                    uiState.errorMessage ?: "The export could not be created.",
+                    color = MaterialTheme.colorScheme.error
+                )
+                else -> Unit
+            }
             Button(
                 onClick = onGenerate,
                 enabled = uiState.canGenerate,
@@ -527,12 +529,33 @@ private fun GeneratedExportCard(
         )
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("$formatName ready", fontWeight = FontWeight.Bold)
-            Text(displayName, style = MaterialTheme.typography.bodySmall)
-            Text("${(sizeBytes / 1_024L).coerceAtLeast(1L)} KB")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(42.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("✓", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
+                    }
+                }
+                Column(modifier = Modifier.padding(start = 12.dp)) {
+                    Text("Clinical note generated", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "$formatName • ${(sizeBytes / 1_024L).coerceAtLeast(1L)} KB",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Surface(
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(displayName, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(10.dp))
+            }
             Text(
                 if (isSavedToHistory) {
                     "Encrypted copy saved with consultation history"

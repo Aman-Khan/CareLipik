@@ -142,7 +142,7 @@ private fun WelcomeHeader(uiState: HomeUiState) {
 
 @Composable
 private fun NewConsultationCard(onStartConsultation: () -> Unit) {
-    val containerShape = RoundedCornerShape(28.dp)
+    val containerShape = RoundedCornerShape(20.dp)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -198,7 +198,7 @@ private fun NewConsultationCard(onStartConsultation: () -> Unit) {
 private fun ProcessingStatusCard(uiState: HomeUiState) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f)
         )
@@ -273,9 +273,9 @@ private fun QuickActionCard(
     Card(
         onClick = onClick,
         modifier = modifier.height(164.dp),
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Column(
             modifier = Modifier
@@ -353,7 +353,7 @@ private fun RecentConsultations(
 private fun EmptyConsultationCard(onStartConsultation: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Column(

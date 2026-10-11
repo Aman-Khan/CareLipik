@@ -293,14 +293,20 @@ fun CareLipikApp(
                         if (!prescriptionUiState.loading) prescriptionViewModel.create(
                             clinicalDraftUiState.draft,
                             patientDetailsViewModel.currentDetails().patientName,
-                            doctorProfileUiState.fullName
+                            doctorProfileUiState.fullName,
+                            doctorProfileUiState.specialty,
+                            doctorProfileUiState.registrationNumber,
+                            doctorProfileUiState.clinicName
                         )
                     }
                     PrescriptionEditor(prescriptionUiState, prescriptionViewModel) {
                         prescriptionViewModel.create(
                             activeClinicalDraftViewModel.currentDraft(),
                             patientDetailsViewModel.currentDetails().patientName,
-                            doctorProfileUiState.fullName
+                            doctorProfileUiState.fullName,
+                            doctorProfileUiState.specialty,
+                            doctorProfileUiState.registrationNumber,
+                            doctorProfileUiState.clinicName
                         )
                     }
                 },

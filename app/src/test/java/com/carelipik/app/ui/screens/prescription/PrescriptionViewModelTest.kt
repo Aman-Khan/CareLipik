@@ -11,6 +11,40 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PrescriptionViewModelTest {
+    @Test fun savingLetterhead_updatesOpenPrescriptionAndPreservesDoctorContent() {
+        val vm = viewModel()
+        vm.create(draft, "Synthetic patient", "Example doctor", registrationNumber = "REG-123")
+        vm.addSuggestion(0)
+        vm.updateMedicine(0, vm.uiState.value.medicines.single().copy(dose = "1 tablet",
+            frequency = "morning", duration = "5 days"))
+        vm.setDetail(PrescriptionDetail.Precautions, "Synthetic precaution")
+        vm.setSource(vm.uiState.value.source.replace("Doctor signature:", "Custom note. Doctor signature:"))
+        val letterhead = PrescriptionTemplates.common.replace("\\Large Prescription", "\\Large Example clinic letterhead")
+        vm.setTemplate(letterhead)
+        vm.saveTemplate()
+        val source = vm.uiState.value.source
+        assertTrue(source.contains("Example clinic letterhead"))
+        assertTrue(source.contains("Synthetic patient"))
+        assertTrue(source.contains("REG-123"))
+        assertTrue(source.contains("ExampleMed"))
+        assertTrue(source.contains("Duration: 5 days"))
+        assertTrue(source.contains("Synthetic precaution"))
+        assertTrue(source.contains("Custom note."))
+        assertEquals(1, vm.uiState.value.medicines.size)
+    }
+
+    @Test fun missingContentMarkers_savesForFutureWithoutDiscardingCurrentSource() {
+        val vm = viewModel()
+        vm.create(draft, "Synthetic patient", "Example doctor")
+        val custom = vm.uiState.value.source.replace(PrescriptionTemplates.CONTENT_START, "")
+        vm.setSource(custom)
+        val letterhead = PrescriptionTemplates.common.replace("Prescription\\end", "New letterhead\\end")
+        vm.setTemplate(letterhead)
+        vm.saveTemplate()
+        assertEquals(letterhead, vm.uiState.value.savedTemplate)
+        assertEquals(custom, vm.uiState.value.source)
+        assertTrue(vm.uiState.value.message.orEmpty().contains("new prescriptions"))
+    }
     private fun viewModel() = PrescriptionViewModel(
         repository = object : LetterheadRepository {
             override suspend fun load(): String? = null
@@ -25,6 +59,29 @@ class PrescriptionViewModelTest {
         reviewedTranscript = "Doctor: tablet ExampleMed morning for 5 days",
         medications = listOf(MedicationDraft(name = "ExampleMed", isDoctorReviewed = true))
     )
+
+    @Test fun invalidTemplateSave_keepsSavedTemplateAndShowsSpecificError() {
+        val vm = PrescriptionViewModel(
+            repository = object : LetterheadRepository {
+                override suspend fun load(): String? = PrescriptionTemplates.common
+                override suspend fun save(template: String) { PrescriptionTemplates.validate(template) }
+            }, engine = { error("No model call") }, readPdf = { error("No attachment") },
+            writeDocument = { _, _ -> }, processAsynchronously = false)
+        vm.setTemplate("invalid template")
+        vm.saveTemplate()
+        assertEquals(PrescriptionTemplates.common, vm.uiState.value.savedTemplate)
+        assertTrue(vm.uiState.value.message.orEmpty().contains("complete LaTeX document"))
+        assertFalse(vm.uiState.value.busy)
+    }
+
+    @Test fun prescriptionIncludesDoctorProfileDetails_withoutSelectingSuggestedMedicines() {
+        val vm = viewModel()
+        vm.create(draft, "Synthetic patient", "Example doctor", "Example specialty", "REG-123", "Example clinic")
+        assertTrue(vm.uiState.value.source.contains("Example specialty"))
+        assertTrue(vm.uiState.value.source.contains("REG-123"))
+        assertTrue(vm.uiState.value.source.contains("Example clinic"))
+        assertTrue(vm.uiState.value.medicines.isEmpty())
+    }
 
     @Test fun planMedicine_populatesSuggestionsWithoutAutomaticallyPrescribing() {
         val vm = viewModel()

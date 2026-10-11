@@ -71,7 +71,7 @@ fun LetterheadSetup(state: PrescriptionUiState, viewModel: PrescriptionViewModel
                 label = { Text("Letterhead LaTeX template") }, minLines = 6, maxLines = 14,
                 enabled = !state.busy, textStyle = TextStyle(fontFamily = FontFamily.Monospace),
                 modifier = Modifier.fillMaxWidth())
-            Text("Include exactly one ${PrescriptionTemplates.BODY} marker inside the document. A blank template uses the common prescription layout.")
+            Text("Generated templates contain placeholders for doctor details, patient details and the prescription body. A blank template uses the common prescription layout.")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = viewModel::saveTemplate, enabled = !state.busy && state.template.isNotBlank()) { Text("Save letterhead") }
                 OutlinedButton(onClick = { viewModel.setTemplate(PrescriptionTemplates.common) }, enabled = !state.busy) { Text("Use common layout") }

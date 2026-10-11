@@ -12,12 +12,16 @@ interface LetterheadRepository {
 }
 
 object PrescriptionTemplates {
+    const val CONTENT_START = "% CARELIPIK PRESCRIPTION CONTENT BEGIN"
+    const val CONTENT_END = "% CARELIPIK PRESCRIPTION CONTENT END"
     const val MEDICINES_START = "% CARELIPIK MEDICINES BEGIN"
     const val MEDICINES_END = "% CARELIPIK MEDICINES END"
     const val ADVICE_START = "% CARELIPIK ADVICE BEGIN"
     const val ADVICE_END = "% CARELIPIK ADVICE END"
     const val DETAILS_START = "% CARELIPIK DETAILS BEGIN"
     const val DETAILS_END = "% CARELIPIK DETAILS END"
+    const val DOCTOR = "% CARELIPIK DOCTOR DETAILS %"
+    const val PATIENT = "% CARELIPIK PATIENT DETAILS %"
     const val BODY = "%%CARE LIPIK PRESCRIPTION%%"
     val common = """
         \documentclass[12pt]{article}
@@ -30,9 +34,31 @@ object PrescriptionTemplates {
     """.trimIndent()
 
     fun validate(template: String): String {
-        require(template.length <= 100_000 && template.contains("\\begin{document}") &&
-            template.contains("\\end{document}") && template.split(BODY).size == 2) {
-            "Use a complete LaTeX document with exactly one $BODY marker."
+        require(template.length <= 100_000) { "The LaTeX template is too large." }
+        val begin = "\\begin{document}"
+        val end = "\\end{document}"
+        val start = template.indexOf(begin)
+        val finish = template.indexOf(end)
+        require(template.contains("\\documentclass") && start >= 0 && finish > start &&
+            template.split(begin).size == 2 && template.split(end).size == 2) {
+            "Use one complete LaTeX document with a document class."
+        }
+        fun validMarker(marker: String): Boolean = template.split(marker).size == 2 &&
+            template.indexOf(marker) > start && template.indexOf(marker) < finish &&
+            template.lineSequence().count { it.trim() == marker } == 1
+        require(validMarker(BODY)) { "Put exactly one $BODY marker on its own line inside the document." }
+        listOf(DOCTOR, PATIENT).forEach { marker ->
+            require(!template.contains(marker) || validMarker(marker)) {
+                "Put each doctor/patient placeholder on its own line inside the document."
+            }
+        }
+        return template
+    }
+
+    fun validateReusableLetterhead(template: String): String {
+        validate(template)
+        require(template.contains(DOCTOR) && template.contains(PATIENT)) {
+            "The generated letterhead must contain doctor, patient and prescription placeholders."
         }
         return template
     }
@@ -49,17 +75,42 @@ object PrescriptionTemplates {
         }) }
     }
 
-    fun create(template: String?, draft: ClinicalDraft, patientName: String, doctor: String): String {
+    fun create(template: String?, draft: ClinicalDraft, patientName: String, doctor: String,
+        doctorSpecialty: String = "", registrationNumber: String = "", clinicName: String = ""): String {
         val selected = template?.takeIf { runCatching { validate(it) }.isSuccess } ?: common
-        val body = buildString {
+        val doctorDetails = buildString {
             append("\\noindent Doctor: ${escape(doctor)}\\par\n")
-            append("\\noindent Patient: ${escape(patientName)}\\quad Age: ${escape(draft.patientAge)}\\par\n")
+            if (doctorSpecialty.isNotBlank()) append("Specialty: ${escape(doctorSpecialty)}\\par\n")
+            if (registrationNumber.isNotBlank()) append("Registration: ${escape(registrationNumber)}\\par\n")
+            if (clinicName.isNotBlank()) append("Clinic: ${escape(clinicName)}\\par\n")
+        }
+        val patientDetails = "\\noindent Patient: ${escape(patientName)}\\quad Age: ${escape(draft.patientAge)}\\par\n"
+        val body = buildString {
+            if (!selected.contains(DOCTOR)) append(doctorDetails)
+            if (!selected.contains(PATIENT)) append(patientDetails)
+            append(CONTENT_START + "\n")
             append(DETAILS_START + "\n" + DETAILS_END + "\n")
             append(MEDICINES_START + "\n" + medicineSection(emptyList()) + MEDICINES_END + "\n")
             append(ADVICE_START + "\n" + ADVICE_END + "\n")
             append("\\vfill\\noindent Doctor signature: \\rule{6cm}{0.4pt}\\par\n")
+            append(CONTENT_END + "\n")
         }
-        return selected.replace(BODY, body)
+        return selected.replace(DOCTOR, doctorDetails).replace(PATIENT, patientDetails).replace(BODY, body)
+    }
+
+    /** Retains the doctor's prescription content while replacing the surrounding letterhead. */
+    fun applyLetterhead(source: String, replacement: String): String {
+        fun contentRange(value: String): IntRange {
+            val start = value.indexOf(CONTENT_START)
+            val end = value.indexOf(CONTENT_END)
+            require(start >= 0 && end > start && value.split(CONTENT_START).size == 2 &&
+                value.split(CONTENT_END).size == 2) {
+                "Letterhead saved for new prescriptions. Keep the prescription content markers to apply it to the current prescription."
+            }
+            return (start + CONTENT_START.length) until end
+        }
+        val original = contentRange(source)
+        return replacement.replaceRange(contentRange(replacement), source.substring(original))
     }
 
     /** Updates only the managed medicine section, retaining other doctor's source edits. */

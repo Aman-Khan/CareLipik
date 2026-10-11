@@ -6,6 +6,34 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PrescriptionTemplatesTest {
+    @Test fun reusableTemplate_fillsEscapedProfileAndPatientFieldsWithoutDuplicates() {
+        val template = PrescriptionTemplates.common.replace(PrescriptionTemplates.BODY,
+            "${PrescriptionTemplates.DOCTOR}\n${PrescriptionTemplates.PATIENT}\n${PrescriptionTemplates.BODY}")
+        val result = PrescriptionTemplates.create(template, ClinicalDraft(patientAge = "30"),
+            "Synthetic & patient", "Example_ doctor", "Example specialty", "REG#123", "Example clinic")
+        assertTrue(result.contains("Synthetic \\& patient"))
+        assertTrue(result.contains("Example\\_ doctor"))
+        assertTrue(result.contains("REG\\#123"))
+        assertTrue(result.contains("Example specialty"))
+        assertTrue(result.contains("Example clinic"))
+        assertEquals(2, result.split("Doctor:").size)
+        assertEquals(2, result.split("Patient:").size)
+        val updated = PrescriptionTemplates.updateMedicines(result, listOf(MedicationDraft(name = "ExampleMed")))
+        assertTrue(updated.contains("ExampleMed"))
+        assertTrue(updated.contains("REG\\#123"))
+    }
+
+    @Test fun validate_rejectsPlaceholderOutsideDocument() {
+        val invalid = PrescriptionTemplates.common.replace(PrescriptionTemplates.BODY, "") + "\n" + PrescriptionTemplates.BODY
+        assertThrows(IllegalArgumentException::class.java) { PrescriptionTemplates.validate(invalid) }
+    }
+
+    @Test fun validate_rejectsDuplicateDoctorPlaceholder() {
+        val invalid = PrescriptionTemplates.common.replace(PrescriptionTemplates.BODY,
+            "${PrescriptionTemplates.DOCTOR}\n${PrescriptionTemplates.DOCTOR}\n${PrescriptionTemplates.BODY}")
+        assertThrows(IllegalArgumentException::class.java) { PrescriptionTemplates.validate(invalid) }
+    }
+
     @Test fun create_usesCommonLayout_whenLetterheadIsMissingOrInvalid() {
         val fallback = PrescriptionTemplates.create(null, ClinicalDraft(), "Example", "Doctor")
         assertTrue(fallback.contains("\\documentclass"))

@@ -52,6 +52,7 @@ class PrescriptionViewModel(
     private val processAsynchronously: Boolean = true
 ) : ViewModel() {
     private val state = MutableStateFlow(PrescriptionUiState())
+    private var renderLetterhead: ((String) -> String)? = null
     val uiState = state.asStateFlow()
     init { runOperation {
         val template = repository.load().orEmpty()
@@ -61,8 +62,11 @@ class PrescriptionViewModel(
     fun setTemplate(value: String) { state.update { it.copy(template = value.take(100_000)) } }
     fun setSource(value: String) { state.update { it.copy(source = value.take(200_000)) } }
     fun reset() { state.update { it.copy(source = "", suggestions = emptyList(), medicines = emptyList(), adviceSuggestions = emptyList(), selectedAdvice = emptyList(), symptomReferences = emptyList(), details = emptyMap(), message = null) } }
-    fun create(draft: ClinicalDraft, patientName: String, doctor: String) {
+    fun create(draft: ClinicalDraft, patientName: String, doctor: String,
+        doctorSpecialty: String = "", registrationNumber: String = "", clinicName: String = "") {
         if (state.value.loading || state.value.busy) return
+        renderLetterhead = { template -> PrescriptionTemplates.create(template, draft, patientName, doctor,
+            doctorSpecialty, registrationNumber, clinicName) }
         state.update { it.copy(
             symptomReferences = ReportPrescriptionSuggestions.symptoms(draft),
             adviceSuggestions = ReportPrescriptionSuggestions.advice(draft),
@@ -73,7 +77,7 @@ class PrescriptionViewModel(
                 extractor.extract(draft.reviewedTranscript, draft.medications + draft.discussedMedications +
                     extractor.extractFromPlan(draft.reviewedTranscript, plan))
             },
-            source = it.source.ifBlank { PrescriptionTemplates.create(it.savedTemplate, draft, patientName, doctor) }
+            source = it.source.ifBlank { PrescriptionTemplates.create(it.savedTemplate, draft, patientName, doctor, doctorSpecialty, registrationNumber, clinicName) }
         ) }
     }
     fun setDetail(field: PrescriptionDetail, value: String) {
@@ -118,7 +122,13 @@ class PrescriptionViewModel(
     fun saveTemplate() = runOperation {
         val template = state.value.template
         repository.save(template)
-        state.update { it.copy(savedTemplate = template, message = "Letterhead template saved on this device.") }
+        val current = state.value.source
+        val applied = runCatching {
+            if (current.isBlank() || template == state.value.savedTemplate) current else PrescriptionTemplates.applyLetterhead(current,
+                requireNotNull(renderLetterhead)(template))
+        }
+        state.update { it.copy(savedTemplate = template, source = applied.getOrDefault(current),
+            message = applied.exceptionOrNull()?.message ?: "Letterhead template saved and applied to this prescription.") }
     }
     fun convert(uri: Uri) {
         if (!state.value.consent) return
@@ -148,6 +158,9 @@ class PrescriptionViewModel(
         suspend fun perform() {
             try { action() }
             catch (cancelled: CancellationException) { throw cancelled }
+            catch (invalid: IllegalArgumentException) {
+                state.update { it.copy(message = invalid.message ?: "The letterhead or prescription fields are invalid.") }
+            }
             catch (_: Exception) { state.update { it.copy(message = "Operation failed. Check the image/PDF (maximum 8 MB), saved Gemini key, connection or LaTeX template.") } }
             finally { state.update { it.copy(busy = false, loading = false) } }
         }

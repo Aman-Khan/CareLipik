@@ -6,4 +6,7 @@
     <cache-path
         name="approved_report_access"
         path="approved_report_access/" />
+    <cache-path
+        name="signature_capture"
+        path="signature_capture/" />
 </paths>

@@ -34,6 +34,10 @@ class DoctorReviewViewModel(
         _uiState.update { it.copy(hasConfirmedReview = isConfirmed) }
     }
 
+    fun setIncludeReviewedTranscriptInExport(include: Boolean) {
+        _uiState.update { it.copy(includeReviewedTranscriptInExport = include) }
+    }
+
     fun resetForNewConsultation() {
         _uiState.value = DoctorReviewUiState()
     }
@@ -57,7 +61,9 @@ class DoctorReviewViewModel(
             visitReason = patient.visitReason.trim().ifBlank {
                 _uiState.value.draft.presentingComplaint.trim()
             },
-            draft = _uiState.value.draft
+            draft = _uiState.value.draft,
+            includeReviewedTranscriptInExport =
+                _uiState.value.includeReviewedTranscriptInExport
         )
         if (processAsynchronously) {
             viewModelScope.launch {

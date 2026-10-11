@@ -1,6 +1,7 @@
 package com.carelipik.app.ui.screens.transcript
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,6 +15,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -26,9 +28,16 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
@@ -36,6 +45,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
 import com.carelipik.app.domain.transcription.TranscriptConcern
 import com.carelipik.app.domain.transcription.TranscriptConcernType
@@ -51,6 +61,8 @@ fun TranscriptScreen(
     onTranscriptChanged: (String) -> Unit,
     onConfirmConcern: (String) -> Unit,
     onApplySuggestion: (String) -> Unit,
+    onSelectConcern: (String) -> Unit,
+    onUpdateConcern: (String, String) -> Unit,
     onOnlineAnalysisConsentChanged: (Boolean) -> Unit,
     onAnalyzeTermsOnline: () -> Unit,
     onViewModeChanged: (TranscriptViewMode) -> Unit,
@@ -80,7 +92,8 @@ fun TranscriptScreen(
         TranscriptNotice(
             languageName = uiState.language.displayName,
             engineName = uiState.engine.displayName,
-            isOffline = uiState.engine.isOffline
+            isOffline = uiState.engine.isOffline,
+            isAdaptive = uiState.engine == TranscriptionEngineOption.AssemblyAiUniversal
         )
         when (uiState.status) {
             TranscriptStatus.Idle,
@@ -105,7 +118,9 @@ fun TranscriptScreen(
                     TranscriptTermReviewPanel(
                         uiState = uiState,
                         onConfirmConcern = onConfirmConcern,
-                        onApplySuggestion = onApplySuggestion
+                        onApplySuggestion = onApplySuggestion,
+                        onSelectConcern = onSelectConcern,
+                        onUpdateConcern = onUpdateConcern
                     )
                 }
                 if (uiState.canShowConversation) {
@@ -452,10 +467,13 @@ private fun speakerDisplayName(speakerId: String): String = speakerId
 private fun TranscriptTermReviewPanel(
     uiState: TranscriptUiState,
     onConfirmConcern: (String) -> Unit,
-    onApplySuggestion: (String) -> Unit
+    onApplySuggestion: (String) -> Unit,
+    onSelectConcern: (String) -> Unit,
+    onUpdateConcern: (String, String) -> Unit
 ) {
     val pendingColor = MaterialTheme.colorScheme.tertiaryContainer
     val confirmedColor = MaterialTheme.colorScheme.primaryContainer
+    var quickActionConcernId by remember { mutableStateOf<String?>(null) }
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -494,27 +512,50 @@ private fun TranscriptTermReviewPanel(
                 shape = RoundedCornerShape(14.dp),
                 color = MaterialTheme.colorScheme.surface
             ) {
+                val highlightedTranscript = buildHighlightedTranscript(
+                    transcript = uiState.transcript,
+                    concerns = uiState.concerns,
+                    confirmedConcernIds = uiState.confirmedConcernIds,
+                    pendingColor = pendingColor,
+                    confirmedColor = confirmedColor
+                )
+                var textLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
                 Text(
-                    text = buildHighlightedTranscript(
-                        transcript = uiState.transcript,
-                        concerns = uiState.concerns,
-                        confirmedConcernIds = uiState.confirmedConcernIds,
-                        pendingColor = pendingColor,
-                        confirmedColor = confirmedColor
-                    ),
+                    text = highlightedTranscript,
+                    onTextLayout = { textLayout = it },
                     modifier = Modifier
                         .fillMaxWidth()
+                        .pointerInput(highlightedTranscript) {
+                            detectTapGestures { position ->
+                                val offset = textLayout?.getOffsetForPosition(position)
+                                    ?: return@detectTapGestures
+                                highlightedTranscript.getStringAnnotations(
+                                    tag = CONCERN_ANNOTATION,
+                                    start = offset,
+                                    end = offset
+                                ).firstOrNull()?.item?.let { concernId ->
+                                    onSelectConcern(concernId)
+                                    if (concernId !in uiState.confirmedConcernIds) {
+                                        quickActionConcernId = concernId
+                                    }
+                                }
+                            }
+                        }
                         .padding(14.dp)
                         .testTag("highlighted_transcript_preview"),
                     style = MaterialTheme.typography.bodyLarge
                 )
             }
-            uiState.pendingConcerns.firstOrNull()?.let { concern ->
+            val activeConcern = uiState.pendingConcerns.firstOrNull {
+                it.id == uiState.selectedConcernId
+            } ?: uiState.pendingConcerns.firstOrNull()
+            activeConcern?.let { concern ->
                 ConcernReviewCard(
                     concern = concern,
                     isConfirmed = false,
                     onConfirm = { onConfirmConcern(concern.id) },
-                    onApplySuggestion = { onApplySuggestion(concern.id) }
+                    onApplySuggestion = { onApplySuggestion(concern.id) },
+                    onUpdate = { replacement -> onUpdateConcern(concern.id, replacement) }
                 )
             } ?: Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -543,6 +584,90 @@ private fun TranscriptTermReviewPanel(
             )
         }
     }
+    quickActionConcernId?.let { concernId ->
+        uiState.concerns.firstOrNull { it.id == concernId }?.let { concern ->
+            QuickTermActionDialog(
+                concern = concern,
+                onDismiss = { quickActionConcernId = null },
+                onConfirm = {
+                    onConfirmConcern(concern.id)
+                    quickActionConcernId = null
+                },
+                onApplySuggestion = {
+                    onApplySuggestion(concern.id)
+                    quickActionConcernId = null
+                },
+                onUpdate = { correction ->
+                    onUpdateConcern(concern.id, correction)
+                    quickActionConcernId = null
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuickTermActionDialog(
+    concern: TranscriptConcern,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+    onApplySuggestion: () -> Unit,
+    onUpdate: (String) -> Unit
+) {
+    var isEditing by remember(concern.id) { mutableStateOf(false) }
+    var correctedTerm by remember(concern.id) { mutableStateOf(concern.text) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Review highlighted term") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("“${concern.text}”", fontWeight = FontWeight.Bold)
+                if (isEditing) {
+                    OutlinedTextField(
+                        value = correctedTerm,
+                        onValueChange = { correctedTerm = it },
+                        label = { Text("Correct term") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    concern.suggestedReplacement?.let { suggestion ->
+                        TextButton(onClick = { correctedTerm = suggestion }) {
+                            Text("Use suggestion: $suggestion")
+                        }
+                    }
+                } else {
+                    Text(
+                        "Confirm this wording or edit it directly.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            if (isEditing) {
+                Button(
+                    onClick = { onUpdate(correctedTerm) },
+                    enabled = correctedTerm.isNotBlank() && correctedTerm != concern.text
+                ) {
+                    Text("✓ Update")
+                }
+            } else {
+                Button(onClick = onConfirm) { Text("✓ Confirm") }
+            }
+        },
+        dismissButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (!isEditing) {
+                    concern.suggestedReplacement?.let {
+                        TextButton(onClick = onApplySuggestion) { Text("Use suggestion") }
+                    }
+                    TextButton(onClick = { isEditing = true }) { Text("✎ Edit") }
+                } else {
+                    TextButton(onClick = { isEditing = false }) { Text("Back") }
+                }
+            }
+        }
+    )
 }
 
 @Composable
@@ -569,7 +694,8 @@ private fun ConcernReviewCard(
     concern: TranscriptConcern,
     isConfirmed: Boolean,
     onConfirm: () -> Unit,
-    onApplySuggestion: () -> Unit
+    onApplySuggestion: () -> Unit,
+    onUpdate: (String) -> Unit
 ) {
     val isPossibleError = concern.type == TranscriptConcernType.PossibleRecognitionError
     Surface(
@@ -622,6 +748,24 @@ private fun ConcernReviewCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             if (!isConfirmed) {
+                key(concern.id) {
+                    var correctedTerm by remember(concern.id) { mutableStateOf(concern.text) }
+                    OutlinedTextField(
+                        value = correctedTerm,
+                        onValueChange = { correctedTerm = it },
+                        label = { Text("Correct medical term") },
+                        supportingText = { Text("Edit the spelling, medicine name, or dosage") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Button(
+                        onClick = { onUpdate(correctedTerm) },
+                        enabled = correctedTerm.isNotBlank() && correctedTerm != concern.text,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Update and confirm")
+                    }
+                }
                 concern.suggestedReplacement?.let { replacement ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -659,6 +803,7 @@ private fun buildHighlightedTranscript(
             return@forEach
         }
         append(transcript.substring(cursor, concern.startIndex))
+        pushStringAnnotation(CONCERN_ANNOTATION, concern.id)
         withStyle(
             SpanStyle(
                 background = if (concern.id in confirmedConcernIds) {
@@ -671,10 +816,13 @@ private fun buildHighlightedTranscript(
         ) {
             append(transcript.substring(concern.startIndex, concern.endIndexExclusive))
         }
+        pop()
         cursor = concern.endIndexExclusive
     }
     append(transcript.substring(cursor))
 }
+
+private const val CONCERN_ANNOTATION = "medical_concern"
 
 private fun pluralize(count: Int, singular: String, plural: String): String =
     if (count == 1) singular else plural
@@ -683,7 +831,8 @@ private fun pluralize(count: Int, singular: String, plural: String): String =
 private fun TranscriptNotice(
     languageName: String,
     engineName: String,
-    isOffline: Boolean
+    isOffline: Boolean,
+    isAdaptive: Boolean
 ) {
     Card(
         colors = CardDefaults.cardColors(
@@ -696,7 +845,11 @@ private fun TranscriptNotice(
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
-                if (isOffline) "On-device transcription" else "Secure online transcription",
+                when {
+                    isAdaptive -> "Adaptive multilingual transcription"
+                    isOffline -> "On-device transcription"
+                    else -> "Secure online transcription"
+                },
                 style = MaterialTheme.typography.titleSmall
             )
             Text(
@@ -710,7 +863,11 @@ private fun TranscriptNotice(
                 color = MaterialTheme.colorScheme.onTertiaryContainer
             )
             Text(
-                if (isOffline) {
+                if (isAdaptive) {
+                    "When internet is available, the recording may be processed by CareLipik's " +
+                        "configured online service; otherwise the on-device model is used. " +
+                        "Verify every word and speaker label before continuing."
+                } else if (isOffline) {
                     "This text was generated on this device. Verify every word and add or " +
                         "correct speaker labels before continuing."
                 } else {

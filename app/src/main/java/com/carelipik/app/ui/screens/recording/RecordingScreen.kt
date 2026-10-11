@@ -344,8 +344,8 @@ private fun TranscriptionSetupPanel(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             SectionLabel(number = "2", title = "Transcription engine")
             Text(
-                text = "MedASR and Multilingual Whisper run fully on this device. " +
-                    "Multilingual V3 Turbo and Saaras securely send audio for online processing.",
+                text = "Multilingual V3 Turbo uses enhanced online processing when connected " +
+                    "and falls back to the on-device model when offline. Saaras requires internet.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -508,7 +508,12 @@ private fun EngineOptionCard(
                     fontWeight = FontWeight.SemiBold
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    MetaPill(if (engine.isOffline) "On device" else "Online")
+                    MetaPill(
+                        when (engine) {
+                            TranscriptionEngineOption.AssemblyAiUniversal -> "Auto"
+                            else -> if (engine.isOffline) "On device" else "Online"
+                        }
+                    )
                     if (isRecommended) MetaPill("Recommended", emphasized = true)
                     if (!isSupported) MetaPill("Unavailable")
                 }
@@ -613,7 +618,9 @@ private fun TranscriptContinueSection(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(
-                if (uiState.transcriptionEngine.isOffline) {
+                if (uiState.transcriptionEngine == TranscriptionEngineOption.AssemblyAiUniversal) {
+                    "Create multilingual transcript"
+                } else if (uiState.transcriptionEngine.isOffline) {
                     "Create transcript on device"
                 } else {
                     "Transcribe securely online"
@@ -622,6 +629,9 @@ private fun TranscriptContinueSection(
         }
         Text(
             text = when {
+                uiState.transcriptionEngine == TranscriptionEngineOption.AssemblyAiUniversal ->
+                    "Uses online processing when connected and automatically falls back to " +
+                        "on-device transcription when offline."
                 uiState.transcriptionEngine.isOffline ->
                     "The recording and transcription stay on this device."
                 else -> "The recording is sent to an online transcription service when you continue."
@@ -641,9 +651,9 @@ private fun languageSegmentLabel(language: TranscriptionLanguage): String = when
 
 private fun languageSupportingText(language: TranscriptionLanguage): String = when (language) {
     TranscriptionLanguage.Auto ->
-        "Multilingual V3 Turbo detects the language using online transcription."
+        "Multilingual V3 Turbo automatically detects the conversation language."
     TranscriptionLanguage.English ->
-        "MedASR is the default offline medical-English engine; Whisper is also available offline."
+        "Multilingual V3 Turbo supports English and falls back on device when offline."
     TranscriptionLanguage.Hindi -> "Best for conversations spoken mostly in Hindi."
     TranscriptionLanguage.Hinglish -> "Best when Hindi and English are naturally mixed."
 }

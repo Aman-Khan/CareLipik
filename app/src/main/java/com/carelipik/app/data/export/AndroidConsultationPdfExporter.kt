@@ -2,8 +2,11 @@ package com.carelipik.app.data.export
 
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import android.text.Layout
@@ -14,6 +17,7 @@ import com.carelipik.app.domain.export.ConsultationPdf
 import com.carelipik.app.domain.export.ConsultationPdfExportResult
 import com.carelipik.app.domain.export.ConsultationPdfExporter
 import com.carelipik.app.domain.model.ApprovedConsultation
+import com.carelipik.app.domain.model.HandwrittenSignature
 import java.io.File
 import java.text.DateFormat
 import java.util.Date
@@ -134,10 +138,22 @@ private class ConsultationPdfLayout(private val document: PdfDocument) {
                 consultation.draft.coverageWarnings.joinToString("\n") { "• $it" }
             )
         }
-        section(
-            "Complete reviewed conversation log",
-            consultation.draft.reviewedTranscript.ifBlank { "Not available for this older record" }
-        )
+        if (consultation.includeReviewedTranscriptInExport) {
+            section(
+                "Complete reviewed conversation log",
+                consultation.draft.reviewedTranscript.ifBlank { "Not available for this older record" }
+            )
+        }
+        if (consultation.electronicSignerName.isNotBlank()) {
+            section(
+                "Electronic signature",
+                buildString {
+                    append("Signed by ${consultation.electronicSignerName}")
+                    consultation.electronicallySignedAtMillis?.let { append(" • $it") }
+                }
+            )
+            drawHandwrittenSignature(consultation.handwrittenSignature)
+        }
         finishPage()
     }
 
@@ -278,6 +294,43 @@ private class ConsultationPdfLayout(private val document: PdfDocument) {
                 continued = true
             }
         }
+    }
+
+    private fun drawHandwrittenSignature(encoded: String) {
+        HandwrittenSignature.decodeRaster(encoded)?.let { bytes ->
+            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@let
+            ensureSpace(100f, consultation)
+            canvas.drawBitmap(
+                bitmap,
+                null,
+                RectF(LEFT_MARGIN, y, LEFT_MARGIN + 260f, y + 80f),
+                Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+            )
+            y += 80f + SECTION_GAP
+            return
+        }
+        val strokes = HandwrittenSignature.decode(encoded)
+        if (strokes.isEmpty()) return
+        ensureSpace(100f, consultation)
+        val width = 260f
+        val height = 80f
+        val paint = Paint().apply {
+            color = INK
+            style = Paint.Style.STROKE
+            strokeWidth = 2.5f
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+        strokes.forEach { stroke ->
+            val path = Path()
+            stroke.forEachIndexed { index, point ->
+                val x = LEFT_MARGIN + point.x * width
+                val py = y + point.y * height
+                if (index == 0) path.moveTo(x, py) else path.lineTo(x, py)
+            }
+            canvas.drawPath(path, paint)
+        }
+        y += height + SECTION_GAP
     }
 
     private fun fittingPrefix(text: String, maxHeight: Int): Int {

@@ -6,5 +6,9 @@ data class ApprovedConsultation(
     val patientName: String,
     val patientAge: String,
     val visitReason: String,
-    val draft: ClinicalDraft
+    val draft: ClinicalDraft,
+    val includeReviewedTranscriptInExport: Boolean = true,
+    val electronicSignerName: String = "",
+    val electronicallySignedAtMillis: Long? = null,
+    val handwrittenSignature: String = ""
 )

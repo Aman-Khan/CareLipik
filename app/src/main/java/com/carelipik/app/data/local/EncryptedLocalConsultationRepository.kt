@@ -163,6 +163,10 @@ class EncryptedLocalConsultationRepository(context: Context) : ConsultationRepos
                     output.writeString(warning)
                 }
                 output.writeString(item.draft.generationSource.name)
+                output.writeBoolean(item.includeReviewedTranscriptInExport)
+                output.writeString(item.electronicSignerName)
+                output.writeLong(item.electronicallySignedAtMillis ?: -1L)
+                output.writeString(item.handwrittenSignature)
             }
             bytes.toByteArray()
         }
@@ -172,7 +176,8 @@ class EncryptedLocalConsultationRepository(context: Context) : ConsultationRepos
             when (val version = input.readInt()) {
                 1 -> input.decodeVersionOne()
                 2 -> input.decodeVersionTwo()
-                FORMAT_VERSION -> input.decodeVersionThree()
+                3 -> input.decodeVersionThree()
+                FORMAT_VERSION -> input.decodeVersionFour()
                 else -> error("Unsupported consultation format $version.")
             }
         }
@@ -255,6 +260,20 @@ class EncryptedLocalConsultationRepository(context: Context) : ConsultationRepos
             )
         )
 
+    private fun DataInputStream.decodeVersionFour(): ApprovedConsultation {
+        val versionThree = decodeVersionThree()
+        val includeTranscript = readBoolean()
+        val signerName = readString()
+        val signedAt = readLong()
+        val signature = readString()
+        return versionThree.copy(
+            includeReviewedTranscriptInExport = includeTranscript,
+            electronicSignerName = signerName,
+            electronicallySignedAtMillis = signedAt.takeIf { it >= 0L },
+            handwrittenSignature = signature
+        )
+    }
+
     private fun DataOutputStream.writeString(value: String) {
         val encoded = value.toByteArray(Charsets.UTF_8)
         require(encoded.size <= MAX_STORED_STRING_BYTES) { "Consultation text is too large." }
@@ -275,7 +294,7 @@ class EncryptedLocalConsultationRepository(context: Context) : ConsultationRepos
     companion object {
         const val DIRECTORY_NAME = "consultation_history"
         private const val FILE_EXTENSION = "clh"
-        private const val FORMAT_VERSION = 3
+        private const val FORMAT_VERSION = 4
         private const val MAX_STORED_STRING_BYTES = 4 * 1024 * 1024
         private const val MAX_SECTIONS = 32
         private const val MAX_SOURCE_TURNS = 512

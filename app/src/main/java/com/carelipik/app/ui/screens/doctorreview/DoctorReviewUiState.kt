@@ -5,6 +5,7 @@ import com.carelipik.app.domain.model.ClinicalDraft
 data class DoctorReviewUiState(
     val draft: ClinicalDraft = ClinicalDraft(),
     val hasConfirmedReview: Boolean = false,
+    val includeReviewedTranscriptInExport: Boolean = true,
     val hasAttemptedApproval: Boolean = false
 ) {
     val missingSections: List<String>

@@ -51,6 +51,7 @@ class EncryptedDoctorProfileRepository internal constructor(
             output.writeInt(profile.preferredLanguages.size)
             profile.preferredLanguages.sortedBy { it.name }.forEach { output.writeUTF(it.name) }
             output.writeUTF(profile.processingPreference.name)
+            output.writeUTF(profile.handwrittenSignature)
         }
         bytes.toByteArray()
     }
@@ -58,7 +59,8 @@ class EncryptedDoctorProfileRepository internal constructor(
     internal fun decode(bytes: ByteArray): DoctorProfile = DataInputStream(
         ByteArrayInputStream(bytes)
     ).use { input ->
-        require(input.readInt() == FORMAT_VERSION) { "Unsupported doctor profile format." }
+        val version = input.readInt()
+        require(version in 1..FORMAT_VERSION) { "Unsupported doctor profile format." }
         val fullName = input.readUTF()
         val specialty = input.readUTF()
         val registrationNumber = input.readUTF()
@@ -72,13 +74,15 @@ class EncryptedDoctorProfileRepository internal constructor(
                 add(language)
             }
         }
+        val preference = ProcessingPreference.valueOf(input.readUTF())
         DoctorProfile(
             fullName = fullName,
             specialty = specialty,
             registrationNumber = registrationNumber,
             clinicName = clinicName,
             preferredLanguages = languages,
-            processingPreference = ProcessingPreference.valueOf(input.readUTF())
+            processingPreference = preference,
+            handwrittenSignature = if (version >= 2) input.readUTF() else ""
         )
     }
 
@@ -118,7 +122,7 @@ class EncryptedDoctorProfileRepository internal constructor(
 
     private companion object {
         const val FILE_NAME = "doctor_profile.clp"
-        const val FORMAT_VERSION = 1
+        const val FORMAT_VERSION = 2
         const val MAX_LANGUAGES = 3
         const val KEYSTORE = "AndroidKeyStore"
         const val KEY_ALIAS = "carelipik-doctor-profile-v1"

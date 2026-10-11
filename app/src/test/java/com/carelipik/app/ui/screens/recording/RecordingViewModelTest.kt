@@ -91,7 +91,7 @@ class RecordingViewModelTest {
             viewModel.transcriptionLanguage()
         )
         assertEquals(
-            TranscriptionEngineOption.SaarasHindiHinglish,
+            TranscriptionEngineOption.AssemblyAiUniversal,
             viewModel.transcriptionEngine()
         )
     }
@@ -133,14 +133,14 @@ class RecordingViewModelTest {
     }
 
     @Test
-    fun switchingFromHinglishToEnglish_keepsCompatibleOnlineEngine() {
+    fun switchingFromHinglishToEnglish_keepsCompatibleAdaptiveEngine() {
         val viewModel = RecordingViewModel(TrackingRecorder(), useAutomaticTimer = false)
 
         viewModel.setTranscriptionLanguage(TranscriptionLanguage.Hinglish)
         viewModel.setTranscriptionLanguage(TranscriptionLanguage.English)
 
         assertEquals(
-            TranscriptionEngineOption.SaarasHindiHinglish,
+            TranscriptionEngineOption.AssemblyAiUniversal,
             viewModel.transcriptionEngine()
         )
     }

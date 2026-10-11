@@ -23,7 +23,7 @@ data class RecordingUiState(
     val isImporting: Boolean = false,
     val importError: String? = null,
     val transcriptionLanguage: TranscriptionLanguage = TranscriptionLanguage.English,
-    val transcriptionEngine: TranscriptionEngineOption = TranscriptionEngineOption.MedAsrEnglish,
+    val transcriptionEngine: TranscriptionEngineOption = TranscriptionEngineOption.AssemblyAiUniversal,
     val hasOnlineProcessingConsent: Boolean = false
 ) {
     val formattedDuration: String

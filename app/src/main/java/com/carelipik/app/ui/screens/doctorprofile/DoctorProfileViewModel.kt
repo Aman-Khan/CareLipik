@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import android.content.Context
+import android.net.Uri
 import com.carelipik.app.data.local.EncryptedDoctorProfileRepository
+import com.carelipik.app.data.signature.SignatureImageProcessor
 import com.carelipik.app.domain.model.DoctorProfile
 import com.carelipik.app.domain.model.ProcessingPreference
 import com.carelipik.app.domain.repository.DoctorProfileRepository
@@ -19,6 +21,7 @@ import kotlinx.coroutines.runBlocking
 class DoctorProfileViewModel(
     initialState: DoctorProfileUiState = DoctorProfileUiState(),
     private val repository: DoctorProfileRepository? = null,
+    private val signatureImageProcessor: SignatureImageProcessor? = null,
     private val processAsynchronously: Boolean = true
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(initialState)
@@ -72,6 +75,38 @@ class DoctorProfileViewModel(
 
     fun setProcessingPreference(preference: ProcessingPreference) {
         updateEditable { it.copy(processingPreference = preference) }
+    }
+
+    fun setHandwrittenSignature(signature: String) {
+        updateEditable { it.copy(handwrittenSignature = signature) }
+    }
+
+    fun importSignatureImage(
+        uriString: String,
+        cropLeft: Float,
+        cropTop: Float,
+        cropRight: Float,
+        cropBottom: Float
+    ) {
+        val processor = signatureImageProcessor ?: return
+        _uiState.update { it.copy(isLoading = true, saveError = null, saveMessage = null) }
+        runOperation {
+            processor.process(Uri.parse(uriString), cropLeft, cropTop, cropRight, cropBottom)
+                .onSuccess { signature ->
+                    updateEditable { it.copy(handwrittenSignature = signature, isLoading = false) }
+                    _uiState.update {
+                        it.copy(saveMessage = "Signature extracted. Review it, then save profile.")
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            saveError = error.message ?: "The signature image could not be processed."
+                        )
+                    }
+                }
+        }
     }
 
     fun saveProfile(onSaved: (DoctorProfile) -> Unit = {}): DoctorProfile? {
@@ -137,6 +172,7 @@ class DoctorProfileViewModel(
             clinicName.trim() == profile.clinicName &&
             preferredLanguages == profile.preferredLanguages &&
             processingPreference == profile.processingPreference
+            && handwrittenSignature == profile.handwrittenSignature
     }
 
     private fun runOperation(operation: suspend () -> Unit) {
@@ -150,7 +186,8 @@ class DoctorProfileViewModel(
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             require(modelClass.isAssignableFrom(DoctorProfileViewModel::class.java))
             return DoctorProfileViewModel(
-                repository = EncryptedDoctorProfileRepository(applicationContext)
+                repository = EncryptedDoctorProfileRepository(applicationContext),
+                signatureImageProcessor = SignatureImageProcessor(applicationContext)
             ) as T
         }
     }

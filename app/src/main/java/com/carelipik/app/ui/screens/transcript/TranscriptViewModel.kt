@@ -48,7 +48,7 @@ class TranscriptViewModel(
     val uiState: StateFlow<TranscriptUiState> = _uiState.asStateFlow()
     private var sourceAudioPath: String? = null
     private var sourceLanguage: TranscriptionLanguage = TranscriptionLanguage.English
-    private var sourceEngine: TranscriptionEngineOption = TranscriptionEngineOption.MedAsrEnglish
+    private var sourceEngine: TranscriptionEngineOption = TranscriptionEngineOption.AssemblyAiUniversal
 
     fun transcribe(
         audioPath: String,
@@ -203,10 +203,27 @@ class TranscriptViewModel(
         }
     }
 
+    fun selectConcern(concernId: String) {
+        _uiState.update { state ->
+            if (state.concerns.none { it.id == concernId }) state else state.copy(
+                selectedConcernId = concernId
+            )
+        }
+    }
+
+    fun updateConcern(concernId: String, replacement: String) {
+        replaceConcern(concernId, replacement.trim())
+    }
+
     fun applySuggestedReplacement(concernId: String) {
+        val concern = _uiState.value.concerns.firstOrNull { it.id == concernId } ?: return
+        replaceConcern(concernId, concern.suggestedReplacement.orEmpty())
+    }
+
+    private fun replaceConcern(concernId: String, replacement: String) {
+        if (replacement.isBlank()) return
         _uiState.update { state ->
             val concern = state.concerns.firstOrNull { it.id == concernId } ?: return@update state
-            val replacement = concern.suggestedReplacement ?: return@update state
             if (
                 concern.startIndex !in 0..state.transcript.length ||
                 concern.endIndexExclusive !in 0..state.transcript.length ||
@@ -227,6 +244,12 @@ class TranscriptViewModel(
                     it.endIndexExclusive == replacementEnd &&
                     it.text.equals(replacement, ignoreCase = true)
             }
+            val replacementConcernIds = updatedConcerns
+                .filter {
+                    it.startIndex >= concern.startIndex &&
+                        it.endIndexExclusive <= replacementEnd
+                }
+                .mapTo(mutableSetOf()) { it.id }
             state.copy(
                 transcript = updatedTranscript,
                 concerns = updatedConcerns,
@@ -237,6 +260,7 @@ class TranscriptViewModel(
                         )
                     )
                     replacementConcern?.id?.let(::add)
+                    addAll(replacementConcernIds)
                 },
                 segments = updatedSegments,
                 speakerRoles = rolesFor(updatedSegments, state.speakerRoles),
@@ -247,6 +271,7 @@ class TranscriptViewModel(
                 },
                 hasAttemptedContinue = false,
                 clinicalAnalysisSource = null,
+                selectedConcernId = replacementConcern?.id,
                 clinicalAnalysisWarning = if (state.clinicalAnalysisSource != null) {
                     "Transcript changed. Run online medical term analysis again for updated suggestions."
                 } else {
@@ -277,7 +302,7 @@ class TranscriptViewModel(
     fun resetForNewConsultation() {
         sourceAudioPath = null
         sourceLanguage = TranscriptionLanguage.English
-        sourceEngine = TranscriptionEngineOption.MedAsrEnglish
+        sourceEngine = TranscriptionEngineOption.AssemblyAiUniversal
         _uiState.value = TranscriptUiState()
     }
 

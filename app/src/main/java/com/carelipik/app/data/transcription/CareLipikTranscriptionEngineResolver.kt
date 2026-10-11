@@ -1,6 +1,8 @@
 package com.carelipik.app.data.transcription
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import com.carelipik.app.BuildConfig
 import com.carelipik.app.domain.transcription.AudioTranscriptionEngine
 import com.carelipik.app.domain.transcription.TranscriptionEngineOption
@@ -22,6 +24,20 @@ class CareLipikTranscriptionEngineResolver(context: Context) : TranscriptionEngi
         context.applicationContext
     )
     private val doctorVoiceRoleMatcher = SherpaDoctorVoiceRoleMatcher(context.applicationContext)
+    private val connectivityManager = context.applicationContext.getSystemService(
+        ConnectivityManager::class.java
+    )
+    private val localTurboEngine = SherpaWhisperTranscriptionEngine(
+        context.applicationContext,
+        diarizationEngine,
+        doctorVoiceRoleMatcher,
+        WhisperModelVariant.Turbo
+    )
+    private val hostedMultilingualEngine = AssemblyAiTranscriptionEngine(
+        DirectAssemblyAiTranscriptionGateway(apiKey = {
+            deviceApiKeyProvider.get(ApiProvider.AssemblyAI)
+        })
+    )
     private val engines: Map<TranscriptionEngineOption, AudioTranscriptionEngine> = listOf(
         SherpaMedAsrTranscriptionEngine(
             context.applicationContext,
@@ -40,22 +56,24 @@ class CareLipikTranscriptionEngineResolver(context: Context) : TranscriptionEngi
                 )
             )
         ),
-        AssemblyAiTranscriptionEngine(
-            DirectAssemblyAiTranscriptionGateway(apiKey = {
-                deviceApiKeyProvider.get(ApiProvider.AssemblyAI)
-            })
+        AdaptiveMultilingualTranscriptionEngine(
+            isOnline = {
+                connectivityManager.activeNetwork?.let { network ->
+                    connectivityManager.getNetworkCapabilities(network)?.let { capabilities ->
+                        capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                    }
+                } ?: false
+            },
+            onlineEngine = hostedMultilingualEngine,
+            offlineEngine = localTurboEngine
         ),
         SherpaWhisperTranscriptionEngine(
             context.applicationContext,
             diarizationEngine,
             doctorVoiceRoleMatcher
         ),
-        SherpaWhisperTranscriptionEngine(
-            context.applicationContext,
-            diarizationEngine,
-            doctorVoiceRoleMatcher,
-            WhisperModelVariant.Turbo
-        ),
+        localTurboEngine,
         SherpaWhisperTranscriptionEngine(
             context = context.applicationContext,
             diarizationEngine = null,

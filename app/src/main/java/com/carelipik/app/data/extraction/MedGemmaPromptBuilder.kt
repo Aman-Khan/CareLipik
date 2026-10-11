@@ -1,6 +1,7 @@
 package com.carelipik.app.data.extraction
 
 import com.carelipik.app.domain.extraction.ClinicalNoteGenerationRequest
+import com.carelipik.app.domain.extraction.ClinicalNoteContentFormatter
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -12,8 +13,13 @@ internal object MedGemmaPromptBuilder {
             Create an UNVERIFIED clinical note using ONLY the transcript. No diagnosis,
             prescription, examination finding, or missing fact may be inferred. A question is not
             evidence. Preserve negation, uncertainty, time, speaker, and medication status.
+            Summarize clinical facts as concise professional note prose. NEVER copy dialogue,
+            include speaker labels (Doctor/Patient/Other/Speaker), greetings, names, handoffs,
+            reception/staff actions, or conversational filler in section content.
             In prescribed_medications include only medicines explicitly prescribed/recommended by
-            the doctor now; exclude existing medicines and pharmacy suggestions.
+            the doctor now; scan every doctor turn and include each explicit new prescription even
+            when some attributes are missing. Extract stated strength, dose, route, frequency, and
+            duration separately. Exclude existing medicines, examples, and pharmacy suggestions.
             Return one COMPACT JSON object only, without markdown or repeated facts:
             {"visit_reason":"","sections":[{"id":"","title":"","content":"","source_turn_ids":["T1"]}],
             "prescribed_medications":[{"name":"","generic_name":"","strength":"",
@@ -44,7 +50,7 @@ internal object MedGemmaPromptBuilder {
             val definition = definitions[id] ?: continue
             if (!seen.add(id)) continue
             val sourceTurnIds = item.optJSONArray("source_turn_ids").validTurnIds(validTurnIds)
-            val content = item.optString("content").trim()
+            val content = ClinicalNoteContentFormatter.clean(item.optString("content"))
             if (content.isNotBlank() && sourceTurnIds.length() == 0) {
                 warnings += "${definition.title} was omitted because the on-device model provided no valid transcript evidence."
             }

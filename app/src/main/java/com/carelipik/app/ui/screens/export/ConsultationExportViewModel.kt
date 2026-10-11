@@ -34,13 +34,16 @@ data class ConsultationExportUiState(
     val exportedFile: ExportedConsultationFile? = null,
     val savedArtifact: ConsultationReportArtifact? = null,
     val persistenceWarning: String? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val electronicallySign: Boolean = false,
+    val signerName: String = "",
+    val handwrittenSignature: String = ""
 ) {
     val canGenerate: Boolean
         get() = consultation != null && status !in setOf(
             ConsultationExportStatus.Generating,
             ConsultationExportStatus.Empty
-        )
+        ) && (!electronicallySign || (signerName.isNotBlank() && handwrittenSignature.isNotBlank()))
 }
 
 class ConsultationExportViewModel(
@@ -51,10 +54,17 @@ class ConsultationExportViewModel(
     private val _uiState = MutableStateFlow(ConsultationExportUiState())
     val uiState: StateFlow<ConsultationExportUiState> = _uiState.asStateFlow()
 
-    fun load(consultation: ApprovedConsultation) {
+    fun load(
+        consultation: ApprovedConsultation,
+        defaultSignerName: String = "",
+        savedSignature: String = ""
+    ) {
         _uiState.value = ConsultationExportUiState(
             status = ConsultationExportStatus.ReadyToGenerate,
-            consultation = consultation
+            consultation = consultation,
+            signerName = defaultSignerName,
+            handwrittenSignature = savedSignature,
+            electronicallySign = defaultSignerName.isNotBlank() && savedSignature.isNotBlank()
         )
     }
 
@@ -74,8 +84,33 @@ class ConsultationExportViewModel(
         )
     }
 
+    fun setElectronicallySign(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(electronicallySign = enabled)
+    }
+
+    fun setSignerName(name: String) {
+        _uiState.value = _uiState.value.copy(signerName = name.take(120))
+    }
+
+    fun setHandwrittenSignature(signature: String) {
+        _uiState.value = _uiState.value.copy(handwrittenSignature = signature)
+    }
+
     fun generate() {
         val consultation = _uiState.value.consultation ?: return
+        val exportConsultation = if (_uiState.value.electronicallySign) {
+            consultation.copy(
+                electronicSignerName = _uiState.value.signerName.trim(),
+                electronicallySignedAtMillis = System.currentTimeMillis(),
+                handwrittenSignature = _uiState.value.handwrittenSignature
+            )
+        } else {
+            consultation.copy(
+                electronicSignerName = "",
+                electronicallySignedAtMillis = null,
+                handwrittenSignature = ""
+            )
+        }
         if (_uiState.value.status == ConsultationExportStatus.Generating) return
         _uiState.value = _uiState.value.copy(
             status = ConsultationExportStatus.Generating,
@@ -86,7 +121,7 @@ class ConsultationExportViewModel(
         )
         val operation: suspend () -> Unit = {
             val format = _uiState.value.selectedFormat
-            _uiState.value = when (val result = exporter.export(consultation, format)) {
+            _uiState.value = when (val result = exporter.export(exportConsultation, format)) {
                 is ConsultationExportResult.Success -> {
                     val savedArtifact = runCatching {
                         reportRepository?.save(consultation.id, result.file)

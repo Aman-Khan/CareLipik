@@ -30,5 +30,6 @@ data class DoctorProfile(
     val registrationNumber: String,
     val clinicName: String,
     val preferredLanguages: Set<TranscriptionLanguage>,
-    val processingPreference: ProcessingPreference
+    val processingPreference: ProcessingPreference,
+    val handwrittenSignature: String = ""
 )

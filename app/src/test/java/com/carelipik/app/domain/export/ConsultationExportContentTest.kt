@@ -54,6 +54,25 @@ class ConsultationExportContentTest {
         assertTrue(text.contains("Consultation audio is not included."))
     }
 
+    @Test
+    fun transcriptCanBeExcludedAndElectronicSignatureIsIncluded() {
+        val consultation = consultation().copy(
+            includeReviewedTranscriptInExport = false,
+            electronicSignerName = "Dr Synthetic",
+            electronicallySignedAtMillis = 1_788_000_000_000L,
+            handwrittenSignature = "0.1,0.2;0.8,0.7"
+        )
+
+        val text = ConsultationExportContent.plainText(consultation)
+        val json = ConsultationExportContent.structuredJson(consultation)
+
+        assertFalse(text.contains("COMPLETE REVIEWED CONVERSATION LOG"))
+        assertFalse(text.contains("Patient: Synthetic answer"))
+        assertTrue(text.contains("ELECTRONICALLY SIGNED BY: Dr Synthetic"))
+        assertTrue(json.contains("\"reviewedTranscript\": null"))
+        assertTrue(json.contains("Dr Synthetic"))
+    }
+
     private fun consultation() = ApprovedConsultation(
         id = "00000000-0000-0000-0000-000000000001",
         approvedAtMillis = 1_788_000_000_000L,

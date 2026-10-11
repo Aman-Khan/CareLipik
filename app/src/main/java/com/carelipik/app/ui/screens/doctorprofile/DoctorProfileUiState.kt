@@ -11,6 +11,7 @@ data class DoctorProfileUiState(
     val clinicName: String = "",
     val preferredLanguages: Set<TranscriptionLanguage> = setOf(TranscriptionLanguage.English),
     val processingPreference: ProcessingPreference = ProcessingPreference.SmartHybrid,
+    val handwrittenSignature: String = "",
     val hasAttemptedSave: Boolean = false,
     val hasUnsavedChanges: Boolean = false,
     val isLoading: Boolean = false,
@@ -40,7 +41,8 @@ data class DoctorProfileUiState(
         registrationNumber = registrationNumber.trim(),
         clinicName = clinicName.trim(),
         preferredLanguages = preferredLanguages,
-        processingPreference = processingPreference
+        processingPreference = processingPreference,
+        handwrittenSignature = handwrittenSignature
     )
 
     companion object {
@@ -51,6 +53,7 @@ data class DoctorProfileUiState(
             clinicName = profile.clinicName,
             preferredLanguages = profile.preferredLanguages,
             processingPreference = profile.processingPreference,
+            handwrittenSignature = profile.handwrittenSignature,
             hasUnsavedChanges = false,
             isLoading = false
         )

@@ -6,11 +6,9 @@ import org.junit.Test
 
 class TranscriptionEngineOptionTest {
     @Test
-    fun picker_showsFourEnginesAndKeepsDefaultsVisible() {
+    fun picker_showsTwoDemoEnginesAndKeepsDefaultsVisible() {
         org.junit.Assert.assertEquals(
-            listOf(TranscriptionEngineOption.MedAsrEnglish,
-                TranscriptionEngineOption.WhisperTurboMultilingual,
-                TranscriptionEngineOption.AssemblyAiUniversal,
+            listOf(TranscriptionEngineOption.AssemblyAiUniversal,
                 TranscriptionEngineOption.SaarasHindiHinglish),
             TranscriptionEngineOption.visibleOptions
         )
@@ -19,8 +17,6 @@ class TranscriptionEngineOptionTest {
         }
         org.junit.Assert.assertEquals("Multilingual V3 Turbo",
             TranscriptionEngineOption.AssemblyAiUniversal.displayName)
-        org.junit.Assert.assertEquals("Multilingual Whisper (V3 Turbo)",
-            TranscriptionEngineOption.WhisperTurboMultilingual.displayName)
     }
 
     @Test

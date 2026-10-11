@@ -33,7 +33,7 @@ data class ClinicalDraftUiState(
             draft.medications.any { !it.isDoctorReviewed } ->
                 "Doctor review is required for every medicine and dosage"
             needsEnglishGeneration ->
-                "Generate the English note on device or with Gemini, or keep the consultation language"
+                "Generate the English note on device or online, or keep the consultation language"
             else -> null
         }
 

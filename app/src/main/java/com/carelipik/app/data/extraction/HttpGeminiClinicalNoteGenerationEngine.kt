@@ -4,6 +4,7 @@ import com.carelipik.app.domain.extraction.ClinicalNoteGenerationEngine
 import com.carelipik.app.domain.extraction.ClinicalNoteGenerationRequest
 import com.carelipik.app.domain.extraction.ClinicalNoteGenerationResult
 import com.carelipik.app.domain.extraction.ClinicalVisitReasonFormatter
+import com.carelipik.app.domain.extraction.ClinicalNoteContentFormatter
 import com.carelipik.app.domain.model.ClinicalDraft
 import com.carelipik.app.domain.model.ClinicalNoteGenerationSource
 import com.carelipik.app.domain.model.ClinicalNoteSection
@@ -104,7 +105,9 @@ class HttpGeminiClinicalNoteGenerationEngine(
                 id = definition.id,
                 title = item?.safeString("title")?.ifBlank { definition.title }
                     ?: definition.title,
-                content = item?.safeString("content").orEmpty(),
+                content = ClinicalNoteContentFormatter.clean(
+                    item?.safeString("content").orEmpty()
+                ),
                 sourceTurnIds = item?.optJSONArray("source_turn_ids").turnIds()
             )
         }

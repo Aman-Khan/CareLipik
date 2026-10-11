@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import com.carelipik.app.data.extraction.HttpGeminiClinicalNoteGenerationEngine
 import com.carelipik.app.data.extraction.LiteRtMedGemmaClinicalNoteGenerationEngine
 import com.carelipik.app.data.extraction.DirectGeminiClinicalNoteGenerationEngine
@@ -17,6 +19,7 @@ import com.carelipik.app.domain.extraction.ClinicalNoteGenerationEngine
 import com.carelipik.app.domain.extraction.ClinicalNoteGenerationRequest
 import com.carelipik.app.domain.extraction.ClinicalNoteGenerationResult
 import com.carelipik.app.domain.extraction.ClinicalNoteTemplates
+import com.carelipik.app.domain.extraction.ConservativePrescriptionExtractor
 import com.carelipik.app.domain.model.ClinicalNoteFormat
 import com.carelipik.app.domain.model.ClinicalNoteLanguage
 import com.carelipik.app.domain.model.MedicationDraft
@@ -33,6 +36,7 @@ class ClinicalDraftViewModel(
     private val engine: ClinicalExtractionEngine = TranscriptBackedClinicalExtractionEngine(),
     private val deviceGenerationEngine: ClinicalNoteGenerationEngine? = null,
     private val onlineEngine: ClinicalNoteGenerationEngine? = null,
+    private val isOnline: () -> Boolean = { false },
     private val processAsynchronously: Boolean = true
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(ClinicalDraftUiState())
@@ -62,7 +66,7 @@ class ClinicalDraftViewModel(
         if (processAsynchronously) {
             viewModelScope.launch {
                 val result = withContext(Dispatchers.Default) { engine.extract(transcript) }
-                applyResult(result)
+                applyResultAsync(result)
             }
         } else {
             applyResult(engine.extract(transcript))
@@ -90,16 +94,28 @@ class ClinicalDraftViewModel(
     fun setAssessmentNotes(value: String) = updateDraft { copy(assessmentNotes = value) }
     fun setPlanNotes(value: String) = updateDraft { copy(planNotes = value) }
 
-    fun selectNoteFormat(format: ClinicalNoteFormat) = updateDraft {
-        if (noteFormat == format) this else {
-            ClinicalNoteTemplates.apply(this, format, noteLanguage, sourceSpecialtyName)
-        }
+    fun selectNoteFormat(format: ClinicalNoteFormat) {
+        val currentDraft = _uiState.value.draft
+        if (currentDraft.noteFormat == format) return
+        val formattedDraft = ClinicalNoteTemplates.apply(
+            currentDraft,
+            format,
+            currentDraft.noteLanguage,
+            sourceSpecialtyName
+        )
+        regenerateSelectedTemplate(formattedDraft)
     }
 
-    fun selectNoteLanguage(language: ClinicalNoteLanguage) = updateDraft {
-        if (noteLanguage == language) this else {
-            ClinicalNoteTemplates.apply(this, noteFormat, language, sourceSpecialtyName)
-        }
+    fun selectNoteLanguage(language: ClinicalNoteLanguage) {
+        val currentDraft = _uiState.value.draft
+        if (currentDraft.noteLanguage == language) return
+        val formattedDraft = ClinicalNoteTemplates.apply(
+            currentDraft,
+            currentDraft.noteFormat,
+            language,
+            sourceSpecialtyName
+        )
+        regenerateSelectedTemplate(formattedDraft)
     }
 
     fun setSpecialtyName(value: String) {
@@ -113,6 +129,9 @@ class ClinicalDraftViewModel(
                 hasOnlineGenerationConsent = hasConsent,
                 onlineGenerationError = if (hasConsent) null else it.onlineGenerationError
             )
+        }
+        if (hasConsent && isOnline() && onlineEngine != null && sourceTranscript != null) {
+            regenerateSelectedTemplate(_uiState.value.draft)
         }
     }
 
@@ -129,15 +148,15 @@ class ClinicalDraftViewModel(
         val transcript = sourceTranscript
         if (generator == null || transcript.isNullOrBlank()) {
             _uiState.update {
-                it.copy(onlineGenerationError = "Online Gemini note generation is unavailable.")
+                it.copy(onlineGenerationError = "Online clinical note generation is unavailable.")
             }
             return
         }
-        if (!_uiState.value.hasOnlineGenerationConsent) {
+        if (!isOnline()) {
             _uiState.update {
                 it.copy(
                     onlineGenerationError =
-                        "Confirm consent before sending the reviewed transcript to Gemini."
+                        "No validated internet connection is available. MedGemma remains active."
                 )
             }
             return
@@ -177,6 +196,9 @@ class ClinicalDraftViewModel(
                             },
                             planNotes = result.draft.planNotes.ifBlank {
                                 currentDraft.planNotes
+                            },
+                            medications = result.draft.medications.ifEmpty {
+                                ConservativePrescriptionExtractor.extract(transcript)
                             },
                             reviewedTranscript = transcript
                         ),
@@ -245,6 +267,9 @@ class ClinicalDraftViewModel(
                             planNotes = result.draft.planNotes.ifBlank {
                                 currentDraft.planNotes
                             },
+                            medications = result.draft.medications.ifEmpty {
+                                ConservativePrescriptionExtractor.extract(transcript)
+                            },
                             reviewedTranscript = transcript
                         ),
                         isGeneratingOnDevice = false,
@@ -307,25 +332,142 @@ class ClinicalDraftViewModel(
 
     private fun applyResult(result: ClinicalExtractionResult) {
         _uiState.value = when (result) {
-            is ClinicalExtractionResult.Success -> ClinicalDraftUiState(
-                status = ClinicalDraftStatus.Ready,
-                draft = ClinicalNoteTemplates.apply(
-                    draft = result.draft.copy(
-                        patientAge = sourcePatientAge.ifBlank { result.draft.patientAge },
-                        reviewedTranscript = sourceTranscript.orEmpty()
-                    ),
-                    format = ClinicalNoteFormat.Soap,
-                    language = ClinicalNoteLanguage.Original,
-                    specialtyName = sourceSpecialtyName
-                ),
-                sourceLanguage = sourceLanguage
-            )
+            is ClinicalExtractionResult.Success -> {
+                val baseDraft = preparedDraft(result)
+                automaticallyGenerateStructuredDraft(
+                    baseDraft = baseDraft,
+                generationResult = generatePreferred(generationRequest(baseDraft))
+                )
+            }
             is ClinicalExtractionResult.Failure -> ClinicalDraftUiState(
                 status = ClinicalDraftStatus.Error,
                 errorMessage = result.message,
                 sourceLanguage = sourceLanguage
             )
         }
+    }
+
+    private suspend fun applyResultAsync(result: ClinicalExtractionResult) {
+        _uiState.value = when (result) {
+            is ClinicalExtractionResult.Success -> {
+                val baseDraft = preparedDraft(result)
+                val generationResult = withContext(Dispatchers.IO) {
+                    generatePreferred(generationRequest(baseDraft))
+                }
+                automaticallyGenerateStructuredDraft(baseDraft, generationResult)
+            }
+            is ClinicalExtractionResult.Failure -> ClinicalDraftUiState(
+                status = ClinicalDraftStatus.Error,
+                errorMessage = result.message,
+                sourceLanguage = sourceLanguage
+            )
+        }
+    }
+
+    private fun preparedDraft(result: ClinicalExtractionResult.Success) =
+        ClinicalNoteTemplates.apply(
+            draft = result.draft.copy(
+                patientAge = sourcePatientAge.ifBlank { result.draft.patientAge },
+                reviewedTranscript = sourceTranscript.orEmpty()
+            ),
+            format = ClinicalNoteFormat.Soap,
+            language = ClinicalNoteLanguage.Original,
+            specialtyName = sourceSpecialtyName
+        )
+
+    private fun automaticallyGenerateStructuredDraft(
+        baseDraft: com.carelipik.app.domain.model.ClinicalDraft,
+        generationResult: ClinicalNoteGenerationResult?
+    ): ClinicalDraftUiState {
+        val transcript = sourceTranscript.orEmpty()
+        return when (val result = generationResult) {
+            is ClinicalNoteGenerationResult.Success -> readyState(
+                result.draft.copy(
+                    patientAge = result.draft.patientAge.ifBlank { baseDraft.patientAge },
+                    presentingComplaint = result.draft.presentingComplaint.ifBlank {
+                        baseDraft.presentingComplaint
+                    },
+                    history = result.draft.history.ifBlank { baseDraft.history },
+                    keyFindings = result.draft.keyFindings.ifBlank { baseDraft.keyFindings },
+                    assessmentNotes = result.draft.assessmentNotes.ifBlank {
+                        baseDraft.assessmentNotes
+                    },
+                    planNotes = result.draft.planNotes.ifBlank { baseDraft.planNotes },
+                    medications = result.draft.medications.ifEmpty {
+                        ConservativePrescriptionExtractor.extract(transcript)
+                    },
+                    reviewedTranscript = transcript
+                )
+            )
+            is ClinicalNoteGenerationResult.Failure -> readyState(
+                baseDraft,
+                onDeviceError = "Automatic MedGemma structuring was unavailable. " +
+                    "You can review the transcript-backed draft or use online drafting."
+            )
+            null -> readyState(baseDraft)
+        }
+    }
+
+    private fun generationRequest(
+        baseDraft: com.carelipik.app.domain.model.ClinicalDraft
+    ) = ClinicalNoteGenerationRequest(
+        reviewedTranscript = sourceTranscript.orEmpty(),
+        sourceLanguage = sourceLanguage,
+        noteFormat = baseDraft.noteFormat,
+        outputLanguage = baseDraft.noteLanguage,
+        specialtyName = sourceSpecialtyName,
+        patientAge = sourcePatientAge.ifBlank { baseDraft.patientAge },
+        visitReason = sourceVisitReason.ifBlank { baseDraft.presentingComplaint }
+    )
+
+    private fun readyState(
+        draft: com.carelipik.app.domain.model.ClinicalDraft,
+        onDeviceError: String? = null
+    ) = _uiState.value.copy(
+        status = ClinicalDraftStatus.Ready,
+        draft = draft,
+        sourceLanguage = sourceLanguage,
+        errorMessage = null,
+        isGeneratingOnDevice = false,
+        isGeneratingOnline = false,
+        onDeviceGenerationError = onDeviceError
+    )
+
+    private fun regenerateSelectedTemplate(
+        formattedDraft: com.carelipik.app.domain.model.ClinicalDraft
+    ) {
+        _uiState.update {
+            it.copy(
+                status = ClinicalDraftStatus.Processing,
+                draft = formattedDraft,
+                onDeviceGenerationError = null,
+                onlineGenerationError = null,
+                hasAttemptedContinue = false
+            )
+        }
+        if (processAsynchronously) {
+            viewModelScope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    generatePreferred(generationRequest(formattedDraft))
+                }
+                _uiState.value = automaticallyGenerateStructuredDraft(formattedDraft, result)
+            }
+        } else {
+            _uiState.value = automaticallyGenerateStructuredDraft(
+                formattedDraft,
+                generatePreferred(generationRequest(formattedDraft))
+            )
+        }
+    }
+
+    private fun generatePreferred(
+        request: ClinicalNoteGenerationRequest
+    ): ClinicalNoteGenerationResult? {
+        if (isOnline()) {
+            val onlineResult = onlineEngine?.generate(request)
+            if (onlineResult is ClinicalNoteGenerationResult.Success) return onlineResult
+        }
+        return deviceGenerationEngine?.generate(request)
     }
 
     class Factory(context: Context) : ViewModelProvider.Factory {
@@ -335,6 +477,9 @@ class ClinicalDraftViewModel(
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             require(modelClass.isAssignableFrom(ClinicalDraftViewModel::class.java))
             val keyProvider = DeviceApiKeyProvider(applicationContext)
+            val connectivityManager = applicationContext.getSystemService(
+                ConnectivityManager::class.java
+            )
             return ClinicalDraftViewModel(
                 deviceGenerationEngine = LiteRtMedGemmaClinicalNoteGenerationEngine(
                     applicationContext
@@ -348,7 +493,18 @@ class ClinicalDraftViewModel(
                         backendBaseUrl = com.carelipik.app.BuildConfig.TRANSCRIPTION_BACKEND_URL,
                         allowInsecureLocalhost = com.carelipik.app.BuildConfig.DEBUG
                     )
-                )
+                ),
+                isOnline = {
+                    connectivityManager.activeNetwork?.let { network ->
+                        connectivityManager.getNetworkCapabilities(network)?.let { capabilities ->
+                            capabilities.hasCapability(
+                                NetworkCapabilities.NET_CAPABILITY_INTERNET
+                            ) && capabilities.hasCapability(
+                                NetworkCapabilities.NET_CAPABILITY_VALIDATED
+                            )
+                        }
+                    } ?: false
+                }
             ) as T
         }
     }

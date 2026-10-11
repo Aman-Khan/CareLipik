@@ -44,6 +44,7 @@ class ClinicalDraftReportScreenTest {
                     onSectionChanged = { _, _ -> },
                     onOnlineGenerationConsentChanged = {},
                     onGenerateWithGemini = {},
+                    onGenerateWithMedGemma = {},
                     onAddMedication = {},
                     onMedicationChanged = { _, _ -> },
                     onRemoveMedication = {},
@@ -56,7 +57,7 @@ class ClinicalDraftReportScreenTest {
 
         composeRule.onNodeWithText("H&P").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("English").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Generate selected note with Gemini")
+        composeRule.onNodeWithText("MedGemma structured clinical note")
             .performScrollTo()
             .assertIsDisplayed()
         composeRule.onNodeWithText("Synthetic medicine").performScrollTo().assertIsDisplayed()

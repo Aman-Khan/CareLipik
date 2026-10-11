@@ -203,23 +203,20 @@ class RecordingViewModelTest {
             viewModel.transcriptionLanguage()
         )
         assertEquals(
-            TranscriptionEngineOption.SaarasHindiHinglish,
+            TranscriptionEngineOption.AssemblyAiUniversal,
             viewModel.transcriptionEngine()
         )
     }
 
     @Test
-    fun onlineEngine_requiresPatientConsentBeforeContinue() {
+    fun onlineEngine_canContinueWithoutSeparateUploadCheckbox() {
         val viewModel = RecordingViewModel(TrackingRecorder(), useAutomaticTimer = false)
 
         viewModel.startRecording()
         viewModel.stopRecording()
         viewModel.setTranscriptionLanguage(TranscriptionLanguage.Hindi)
 
-        assertFalse(viewModel.uiState.value.canContinue)
-
-        viewModel.setOnlineProcessingConsent(true)
-
+        assertFalse(viewModel.uiState.value.hasOnlineProcessingConsent)
         assertTrue(viewModel.uiState.value.canContinue)
     }
 
@@ -248,14 +245,14 @@ class RecordingViewModelTest {
     }
 
     @Test
-    fun switchingFromHinglishToEnglish_keepsCompatibleOnlineEngine() {
+    fun switchingFromHinglishToEnglish_keepsCompatibleAdaptiveEngine() {
         val viewModel = RecordingViewModel(TrackingRecorder(), useAutomaticTimer = false)
 
         viewModel.setTranscriptionLanguage(TranscriptionLanguage.Hinglish)
         viewModel.setTranscriptionLanguage(TranscriptionLanguage.English)
 
         assertEquals(
-            TranscriptionEngineOption.SaarasHindiHinglish,
+            TranscriptionEngineOption.AssemblyAiUniversal,
             viewModel.transcriptionEngine()
         )
     }

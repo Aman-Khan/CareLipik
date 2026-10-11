@@ -182,6 +182,9 @@ fun CareLipikApp(
                 onClinicNameChanged = activeDoctorProfileViewModel::setClinicName,
                 onPreferredLanguageChanged = activeDoctorProfileViewModel::togglePreferredLanguage,
                 onProcessingPreferenceChanged = activeDoctorProfileViewModel::setProcessingPreference,
+                onHandwrittenSignatureChanged =
+                    activeDoctorProfileViewModel::setHandwrittenSignature,
+                onImportSignatureImage = activeDoctorProfileViewModel::importSignatureImage,
                 onStartVoiceSample = activeDoctorVoiceEnrollmentViewModel::startRecording,
                 onStopVoiceSample = activeDoctorVoiceEnrollmentViewModel::stopAndSave,
                 onImportVoiceSample = activeDoctorVoiceEnrollmentViewModel::importSample,
@@ -205,7 +208,11 @@ fun CareLipikApp(
                 uiState = consultationHistoryUiState,
                 onOpen = activeConsultationHistoryViewModel::select,
                 onExport = { consultation ->
-                    activeConsultationExportViewModel.load(consultation)
+                    activeConsultationExportViewModel.load(
+                        consultation,
+                        doctorProfileUiState.fullName,
+                        doctorProfileUiState.handwrittenSignature
+                    )
                     navigator.openExportFromHistory()
                 },
                 onOpenReport = { artifact ->
@@ -242,6 +249,8 @@ fun CareLipikApp(
                 onTranscriptChanged = activeTranscriptViewModel::setDisplayedTranscript,
                 onConfirmConcern = activeTranscriptViewModel::confirmConcern,
                 onApplySuggestion = activeTranscriptViewModel::applySuggestedReplacement,
+                onSelectConcern = activeTranscriptViewModel::selectConcern,
+                onUpdateConcern = activeTranscriptViewModel::updateConcern,
                 onOnlineAnalysisConsentChanged =
                     activeTranscriptViewModel::setOnlineAnalysisConsent,
                 onAnalyzeTermsOnline = activeTranscriptViewModel::analyzeTermsOnline,
@@ -275,6 +284,7 @@ fun CareLipikApp(
                 onNoteLanguageSelected = activeClinicalDraftViewModel::selectNoteLanguage,
                 onSpecialtyNameChanged = activeClinicalDraftViewModel::setSpecialtyName,
                 onSectionChanged = activeClinicalDraftViewModel::setSectionContent,
+                onGenerateWithMedGemma = activeClinicalDraftViewModel::generateWithMedGemma,
                 onOnlineGenerationConsentChanged =
                     activeClinicalDraftViewModel::setOnlineGenerationConsent,
                 onGenerateWithGemini = activeClinicalDraftViewModel::generateWithGemini,
@@ -296,6 +306,8 @@ fun CareLipikApp(
             ConsultationDestination.DoctorReview -> DoctorReviewScreen(
                 uiState = doctorReviewUiState,
                 onConfirmationChanged = activeDoctorReviewViewModel::setConfirmedReview,
+                onIncludeTranscriptChanged =
+                    activeDoctorReviewViewModel::setIncludeReviewedTranscriptInExport,
                 onBack = navigator::navigateBack,
                 onApprove = {
                     activeDoctorReviewViewModel.approve(
@@ -305,7 +317,11 @@ fun CareLipikApp(
                             activeRecordingViewModel.discardRecording()
                             activeConsultationHistoryViewModel.refresh()
                             activeHomeViewModel.refreshRecentConsultations()
-                            activeConsultationExportViewModel.load(consultation)
+                            activeConsultationExportViewModel.load(
+                                consultation,
+                                doctorProfileUiState.fullName,
+                                doctorProfileUiState.handwrittenSignature
+                            )
                             navigator.navigateToNext()
                         }
                     )
@@ -386,6 +402,11 @@ fun CareLipikApp(
             ConsultationDestination.Export -> ConsultationExportScreen(
                 uiState = consultationExportUiState,
                 onFormatSelected = activeConsultationExportViewModel::selectFormat,
+                onElectronicSignatureChanged =
+                    activeConsultationExportViewModel::setElectronicallySign,
+                onSignerNameChanged = activeConsultationExportViewModel::setSignerName,
+                onHandwrittenSignatureChanged =
+                    activeConsultationExportViewModel::setHandwrittenSignature,
                 onGenerate = activeConsultationExportViewModel::generate,
                 onShare = {
                     consultationExportUiState.exportedFile?.let { exportedFile ->

@@ -23,8 +23,8 @@ enum class TranscriptionEngineOption(
         )
     ),
     AssemblyAiUniversal(
-        displayName = "Online multilingual (AssemblyAI)",
-        description = "Experimental cloud ASR with automatic language detection and multi-speaker diarization",
+        displayName = "Multilingual V3 Turbo",
+        description = "Automatic multilingual transcription with on-device fallback when offline",
         isOffline = false,
         supportedLanguages = TranscriptionLanguage.entries.toSet()
     ),
@@ -35,8 +35,8 @@ enum class TranscriptionEngineOption(
         supportedLanguages = TranscriptionLanguage.entries.toSet()
     ),
     WhisperTurboMultilingual(
-        displayName = "Multilingual (Whisper Turbo)",
-        description = "Higher-capacity offline model; requires about 1.04 GB of local assets",
+        displayName = "Multilingual Whisper (V3 Turbo)",
+        description = "On-device multilingual Whisper V3 Turbo using local model assets",
         isOffline = true,
         supportedLanguages = TranscriptionLanguage.entries.toSet()
     ),
@@ -50,11 +50,17 @@ enum class TranscriptionEngineOption(
     fun supports(language: TranscriptionLanguage): Boolean = language in supportedLanguages
 
     companion object {
+        // Other engines remain available internally and to tests, but are hidden in the demo.
+        val visibleOptions = listOf(
+            AssemblyAiUniversal,
+            SaarasHindiHinglish
+        )
+
         fun defaultFor(language: TranscriptionLanguage): TranscriptionEngineOption = when (language) {
-            TranscriptionLanguage.English -> MedAsrEnglish
+            TranscriptionLanguage.English,
             TranscriptionLanguage.Hindi,
-            TranscriptionLanguage.Hinglish -> SaarasHindiHinglish
-            TranscriptionLanguage.Auto -> WhisperMultilingual
+            TranscriptionLanguage.Hinglish,
+            TranscriptionLanguage.Auto -> AssemblyAiUniversal
         }
     }
 }

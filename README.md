@@ -23,6 +23,8 @@ development recordings, screenshots, fixtures, or tests.
   complete reviewed transcript for doctor approval.
 - Optional Gemini drafts in SOAP, APSO, H&P, problem-oriented, progress, DAP, BIRP, GIRP,
   procedure, and doctor-specialty formats, with transcript-turn evidence and coverage warnings.
+- Optional fully on-device MedGemma 1.5 4B report drafting through LiteRT-LM, using an externally
+  installed, license-approved INT4 model bundle and transcript-turn evidence IDs.
 - Optional English clinical-note generation from a reviewed Hindi or Hinglish transcript; the
   original conversation log is always retained unchanged.
 - A separate prescribed-medicine and dosage section whose entries must each be verified by the
@@ -59,7 +61,7 @@ Whisper Turbo is optional because its INT8 encoder, decoder, and tokens require 
 ./tools/offline_whisper_turbo/setup.sh --check
 ```
 
-After rebuilding and reinstalling, choose **Multilingual (Whisper Turbo)** on the recording
+After rebuilding and reinstalling, choose **Multilingual Whisper (V3 Turbo)** on the recording
 screen. It uses 128-bin Whisper features and the same fully offline diarization and doctor-role
 matching path as Whisper Small.
 
@@ -119,6 +121,113 @@ that keeps provider credentials off the phone.
 | Saaras transcription + diarization | Sarvam, direct or proxy | Optional | Sarvam |
 | Gemini medical-term enhancement | Gemini, direct or proxy | Optional | Gemini |
 | Gemini structured/English note | Gemini, direct or proxy | Optional | Gemini |
+| MedGemma structured/English note | Android phone | No | None |
+
+### Optional on-device MedGemma report generation
+
+CareLipik uses LiteRT-LM 0.14.0 to run a compatible MedGemma 1.5 4B INT4 bundle entirely on the
+phone. The model is intentionally not bundled in the APK or Git repository. MedGemma access is
+gated by the Health AI Developer Foundations terms, and the upstream checkpoint must be converted
+and verified as a `.litertlm` bundle before installation. Do not relabel a GGUF, `.task`, or
+Safetensors file; those formats are not interchangeable.
+
+The official text-only LiteRT Community bundle is:
+
+```text
+medgemma-1.5-4b-it_q4_block32_ekv2048.litertlm
+```
+
+After accepting the Health AI Developer Foundations terms on the model page, download only the
+2.58 GB text-only bundle. The vision bundle is unnecessary for report generation. With `uv`
+installed, authenticate and download it into an ignored local directory:
+
+```sh
+uvx --from huggingface_hub hf auth login
+uvx --from huggingface_hub hf download \
+  litert-community/MedGemma-1.5-4B-IT \
+  medgemma-1.5-4b-it_q4_block32_ekv2048.litertlm \
+  --local-dir .local-models/medgemma
+```
+
+First verify the bundle in Google AI Edge Gallery on the target phone. Then install the debug APK
+without clearing its data and copy the verified bundle into app-private storage. The installer
+renames the official bundle to CareLipik's stable internal filename:
+
+```sh
+./tools/install_debug_preserve_data.sh 10BFCH1K9Y00237
+chmod +x ./tools/install_medgemma_model.sh
+./tools/install_medgemma_model.sh --serial 10BFCH1K9Y00237 \
+  .local-models/medgemma/medgemma-1.5-4b-it_q4_block32_ekv2048.litertlm
+```
+
+The Clinical draft screen then offers **Generate with MedGemma**. The reviewed transcript is
+indexed as `T1`, `T2`, and so on before inference. MedGemma must return strict JSON sections,
+medications, warnings, and supporting turn IDs. Unknown section IDs are discarded, missing
+required sections are added empty, medication entries remain unreviewed, and the entire result is
+still blocked behind final doctor review. If the model is absent or inference fails, the existing
+offline transcript-backed draft remains available and no consultation data is sent anywhere.
+
+CareLipik runs this published text-only Q4 bundle on the CPU. On the tested iQOO, its graph could
+delegate only a small subset of operations to the GPU; LiteRT-LM requires complete GPU delegation
+and rejected that configuration during engine creation. Do not switch this bundle to `Backend.GPU`
+without first verifying a fully GPU-compatible export on the target device.
+
+#### Faster long-context option: Gemma 4 E2B
+
+For 4–5 minute consultations, CareLipik prefers the Gemma 4 E2B IT GPU LiteRT bundle when both
+models are installed. It uses an 8,192-token working window and keeps MedGemma as a fallback.
+Download `gemma-4-E2B-it-gpu.litertlm` from
+`litert-community/gemma-4-E2B-it-litert-lm`, then install it without committing the model:
+
+```sh
+chmod +x ./tools/install_gemma4_model.sh
+./tools/install_gemma4_model.sh --serial DEVICE_SERIAL \
+  /absolute/path/to/gemma-4-E2B-it-gpu.litertlm
+```
+
+Gemma 4 is a general model rather than a medical specialist. Every generated claim therefore
+continues to require transcript evidence and doctor review. If the GPU bundle is incompatible
+with a specific phone, remove only that app-private model to return to the MedGemma CPU fallback.
+
+The 4-bit model weights alone require roughly 3.4 GB according to Google's published sizing; the
+runtime and KV cache require additional memory. Benchmark initialization time, generation latency,
+thermal throttling, and long Hindi/Hinglish transcripts on the iQOO before presenting this as a
+production-ready path. Google also requires validation for the intended clinical use case.
+
+### Optional on-device Apollo Medical-NER
+
+CareLipik can optionally run the published `blaze999/Medical-NER` checkpoint (the current home of
+Clinical-AI-Apollo/Medical-NER) on the phone as an INT8 ONNX token-classification bundle. It finds
+candidate medical concepts in an English transcript. Deterministic rules then separately identify
+strength, dose, frequency, duration, route, and common Hindi/Hinglish phrasing. The app only
+highlights candidates; it never edits a transcript, replaces a medicine name, diagnoses, or
+approves a prescription.
+
+The model is trained on PubMed and is therefore not a complete India-specific medicine
+terminology. Keep the existing rule layer and doctor confirmation for Hindi and Hinglish. Do not
+upload consultation text to a public Hugging Face Space.
+
+Export the public MIT-licensed model locally (this downloads model weights into the already ignored
+`.local-models/` directory), then install its three bundle files into CareLipik's app-private
+storage:
+
+```sh
+chmod +x ./tools/export_apollo_medical_ner.sh ./tools/install_apollo_medical_ner.sh
+./tools/export_apollo_medical_ner.sh .local-models/apollo-medical-ner
+./tools/install_apollo_medical_ner.sh --serial DEVICE_SERIAL \
+  "$(pwd)/.local-models/apollo-medical-ner"
+```
+
+The exporter uses per-channel, reduced-range INT8 for MatMul weights, keeping embeddings in
+floating point because quantizing those damaged entity predictions. The resulting bundle is
+approximately 514 MiB. Export includes a synthetic FP32/INT8 comparison; failed comparisons stop
+the setup. `tools/verify_apollo_medical_ner.py` can also be run with the export environment's Python.
+
+The bundle contains `model.int8.onnx`, `tokenizer.json`, and `config.json`. All three must be from
+the same export. After installation, create or reopen a transcript: model candidates and rule
+attributes appear as **Terms to verify**. If the bundle is absent or unavailable, CareLipik falls
+back safely to its existing offline review rules. The Apollo component uses `onnxruntime-android`
+and has no network calls at inference time.
 
 ### A. One-time Android and model setup
 

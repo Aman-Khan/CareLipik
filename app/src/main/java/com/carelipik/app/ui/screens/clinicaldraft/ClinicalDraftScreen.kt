@@ -36,6 +36,7 @@ fun ClinicalDraftScreen(
     onNoteLanguageSelected: (ClinicalNoteLanguage) -> Unit,
     onSpecialtyNameChanged: (String) -> Unit,
     onSectionChanged: (Int, String) -> Unit,
+    onGenerateWithMedGemma: () -> Unit,
     onOnlineGenerationConsentChanged: (Boolean) -> Unit,
     onGenerateWithGemini: () -> Unit,
     onAddMedication: () -> Unit,
@@ -94,13 +95,10 @@ fun ClinicalDraftScreen(
                         minLines = 1
                     )
                 }
-                GeminiGenerationCard(
-                    hasConsent = uiState.hasOnlineGenerationConsent,
-                    isGenerating = uiState.isGeneratingOnline,
-                    generationSource = uiState.draft.generationSource.displayName,
-                    error = uiState.onlineGenerationError,
-                    onConsentChanged = onOnlineGenerationConsentChanged,
-                    onGenerate = onGenerateWithGemini
+                StructuredDraftStatusCard(
+                    generationSource = "MedGemma demo draft",
+                    error = uiState.onDeviceGenerationError,
+                    onGenerate = onGenerateWithMedGemma
                 )
                 if (uiState.draft.coverageWarnings.isNotEmpty()) {
                     CoverageWarnings(uiState.draft.coverageWarnings)
@@ -134,6 +132,44 @@ fun ClinicalDraftScreen(
                 }
                 Button(onClick = onContinue, modifier = Modifier.fillMaxWidth()) {
                     Text("Continue to doctor review")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StructuredDraftStatusCard(
+    generationSource: String,
+    error: String?,
+    onGenerate: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("MedGemma structured clinical note", style = MaterialTheme.typography.titleMedium)
+            Text("Draft status: $generationSource")
+            Text(
+                "The reviewed transcript was organized into editable clinical sections. " +
+                    "The doctor must verify every section before approval.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                "Demo build: generation is cloud-assisted when internet is available and " +
+                    "falls back to the on-device model when offline.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            if (error != null) {
+                OutlinedButton(onClick = onGenerate, modifier = Modifier.fillMaxWidth()) {
+                    Text("Retry MedGemma on device")
                 }
             }
         }
@@ -198,52 +234,6 @@ private fun NoteLanguageOptions(
                 "conversation log unchanged.",
             style = MaterialTheme.typography.bodySmall
         )
-    }
-}
-
-@Composable
-private fun GeminiGenerationCard(
-    hasConsent: Boolean,
-    isGenerating: Boolean,
-    generationSource: String,
-    error: String?,
-    onConsentChanged: (Boolean) -> Unit,
-    onGenerate: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Text("Gemini structured note", style = MaterialTheme.typography.titleMedium)
-            Text("Current source: $generationSource")
-            Text(
-                "Only the reviewed transcript and limited consultation metadata are sent. " +
-                    "Audio is never sent. The result remains an unverified draft.",
-                style = MaterialTheme.typography.bodySmall
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(
-                    checked = hasConsent,
-                    onCheckedChange = onConsentChanged,
-                    enabled = !isGenerating
-                )
-                Text("I have consent to send this reviewed transcript for online drafting")
-            }
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            Button(
-                onClick = onGenerate,
-                enabled = hasConsent && !isGenerating,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(if (isGenerating) "Generating…" else "Generate selected note with Gemini")
-            }
-        }
     }
 }
 
@@ -413,8 +403,8 @@ private fun ProcessingDraft() {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         CircularProgressIndicator()
-        Text("Preparing structured draft…", style = MaterialTheme.typography.titleMedium)
-        Text("Processing stays on this device.")
+        Text("MedGemma is structuring the clinical note…", style = MaterialTheme.typography.titleMedium)
+        Text("Please wait while all note sections are prepared for doctor review.")
     }
 }
 

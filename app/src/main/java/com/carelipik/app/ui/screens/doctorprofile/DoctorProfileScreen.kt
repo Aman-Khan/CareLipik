@@ -2,6 +2,9 @@ package com.carelipik.app.ui.screens.doctorprofile
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -22,17 +25,21 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,6 +47,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
@@ -52,9 +61,14 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import com.carelipik.app.domain.model.ProcessingPreference
 import com.carelipik.app.domain.repository.ApiProvider
 import com.carelipik.app.domain.transcription.TranscriptionLanguage
+import com.carelipik.app.ui.screens.export.HandwrittenSignaturePad
+import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.sin
 
@@ -69,6 +83,8 @@ fun DoctorProfileScreen(
     onClinicNameChanged: (String) -> Unit,
     onPreferredLanguageChanged: (TranscriptionLanguage) -> Unit,
     onProcessingPreferenceChanged: (ProcessingPreference) -> Unit,
+    onHandwrittenSignatureChanged: (String) -> Unit,
+    onImportSignatureImage: (String, Float, Float, Float, Float) -> Unit,
     onStartVoiceSample: () -> Unit,
     onStopVoiceSample: () -> Unit,
     onImportVoiceSample: (String) -> Unit,
@@ -84,6 +100,11 @@ fun DoctorProfileScreen(
 ) {
     val context = LocalContext.current
     var permissionDenied by remember { mutableStateOf(false) }
+    var isEditingSignature by remember(uiState.handwrittenSignature) {
+        mutableStateOf(uiState.handwrittenSignature.isBlank())
+    }
+    var pendingSignatureCaptureUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingSignatureCropUri by remember { mutableStateOf<Uri?>(null) }
     val microphonePermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -94,6 +115,25 @@ fun DoctorProfileScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.toString()?.let(onImportVoiceSample)
+    }
+    val signatureImageLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        pendingSignatureCropUri = uri
+    }
+    val signatureCameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { captured ->
+        if (captured) pendingSignatureCropUri = pendingSignatureCaptureUri
+    }
+    val captureSignature = {
+        val directory = File(context.cacheDir, "signature_capture").apply { mkdirs() }
+        val file = File(directory, "doctor_signature_${System.currentTimeMillis()}.jpg")
+        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file).also {
+            pendingSignatureCaptureUri = it
+            signatureCameraLauncher.launch(it)
+        }
+        Unit
     }
     val chooseVoiceSampleFile = {
         voiceSampleFileLauncher.launch(arrayOf("audio/wav", "audio/x-wav", "audio/*"))
@@ -107,6 +147,16 @@ fun DoctorProfileScreen(
         } else {
             microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
+    }
+    pendingSignatureCropUri?.let { uri ->
+        SignatureCropDialog(
+            uri = uri,
+            onDismiss = { pendingSignatureCropUri = null },
+            onCrop = { left, top, right, bottom ->
+                onImportSignatureImage(uri.toString(), left, top, right, bottom)
+                pendingSignatureCropUri = null
+            }
+        )
     }
     Column(
         modifier = modifier
@@ -138,6 +188,51 @@ fun DoctorProfileScreen(
             selectedPreference = uiState.processingPreference,
             onPreferenceChanged = onProcessingPreferenceChanged
         )
+        ProfileSectionCard(
+            title = "Saved signature",
+            supportingText = "Draw it, photograph it, or upload an image. Photos are processed locally into black ink on a white background before the encrypted signature is saved."
+        ) {
+            HandwrittenSignaturePad(
+                encodedSignature = uiState.handwrittenSignature,
+                enabled = !uiState.isLoading && isEditingSignature,
+                onSignatureChanged = onHandwrittenSignatureChanged,
+                showClearAction = false
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (isEditingSignature) {
+                    OutlinedButton(
+                        onClick = { isEditingSignature = false },
+                        enabled = uiState.handwrittenSignature.isNotBlank(),
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Done drawing") }
+                } else {
+                    OutlinedButton(
+                        onClick = { isEditingSignature = true },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Update signature") }
+                }
+                TextButton(
+                    onClick = {
+                        onHandwrittenSignatureChanged("")
+                        isEditingSignature = true
+                    },
+                    enabled = uiState.handwrittenSignature.isNotBlank(),
+                    modifier = Modifier.weight(1f)
+                ) { Text("Clear signature") }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = captureSignature,
+                    enabled = !uiState.isLoading,
+                    modifier = Modifier.weight(1f)
+                ) { Text("Use camera") }
+                OutlinedButton(
+                    onClick = { signatureImageLauncher.launch(arrayOf("image/*")) },
+                    enabled = !uiState.isLoading,
+                    modifier = Modifier.weight(1f)
+                ) { Text("Upload image") }
+            }
+        }
         ApiCredentialsCard(
             uiState = apiCredentialsUiState,
             onSarvamKeyChanged = onSarvamKeyChanged,
@@ -188,6 +283,93 @@ fun DoctorProfileScreen(
 }
 
 @Composable
+private fun SignatureCropDialog(
+    uri: Uri,
+    onDismiss: () -> Unit,
+    onCrop: (Float, Float, Float, Float) -> Unit
+) {
+    val context = LocalContext.current
+    val bitmap by produceState<Bitmap?>(initialValue = null, uri) {
+        value = withContext(Dispatchers.IO) {
+            context.contentResolver.openInputStream(uri)?.use(BitmapFactory::decodeStream)
+        }
+    }
+    var horizontal by remember(uri) { mutableStateOf(0f..1f) }
+    var vertical by remember(uri) { mutableStateOf(0f..1f) }
+    val cropBorderColor = MaterialTheme.colorScheme.primary
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Crop signature") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Move the sliders until the highlighted box contains only the signature.")
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(260.dp)
+                        .background(Color.White)
+                ) {
+                    bitmap?.let {
+                        androidx.compose.foundation.Image(
+                            bitmap = it.asImageBitmap(),
+                            contentDescription = "Signature photo to crop",
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    Canvas(Modifier.fillMaxSize()) {
+                        val left = horizontal.start * size.width
+                        val right = horizontal.endInclusive * size.width
+                        val top = vertical.start * size.height
+                        val bottom = vertical.endInclusive * size.height
+                        val shade = Color.Black.copy(alpha = 0.48f)
+                        drawRect(shade, size = androidx.compose.ui.geometry.Size(size.width, top))
+                        drawRect(
+                            shade,
+                            topLeft = Offset(0f, bottom),
+                            size = androidx.compose.ui.geometry.Size(size.width, size.height - bottom)
+                        )
+                        drawRect(
+                            shade,
+                            topLeft = Offset(0f, top),
+                            size = androidx.compose.ui.geometry.Size(left, bottom - top)
+                        )
+                        drawRect(
+                            shade,
+                            topLeft = Offset(right, top),
+                            size = androidx.compose.ui.geometry.Size(size.width - right, bottom - top)
+                        )
+                        drawRect(
+                            color = cropBorderColor,
+                            topLeft = Offset(left, top),
+                            size = androidx.compose.ui.geometry.Size(right - left, bottom - top),
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 5f)
+                        )
+                    }
+                }
+                Text("Horizontal crop", style = MaterialTheme.typography.labelMedium)
+                RangeSlider(
+                    value = horizontal,
+                    onValueChange = { if (it.endInclusive - it.start >= 0.08f) horizontal = it },
+                    valueRange = 0f..1f
+                )
+                Text("Vertical crop", style = MaterialTheme.typography.labelMedium)
+                RangeSlider(
+                    value = vertical,
+                    onValueChange = { if (it.endInclusive - it.start >= 0.08f) vertical = it },
+                    valueRange = 0f..1f
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                onCrop(horizontal.start, vertical.start, horizontal.endInclusive, vertical.endInclusive)
+            }) { Text("Use cropped signature") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
 private fun ApiCredentialsCard(
     uiState: ApiCredentialsUiState,
     onSarvamKeyChanged: (String) -> Unit,
@@ -196,49 +378,124 @@ private fun ApiCredentialsCard(
     onSave: (ApiProvider) -> Unit,
     onDelete: (ApiProvider) -> Unit
 ) {
-    ProfileSectionCard(
-        title = "Online service keys",
-        supportingText = "Optional. Keys are encrypted with Android Keystore, excluded from backups, and never shown again after saving."
+    var isExpanded by remember { mutableStateOf(false) }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
-        ApiKeyEditor(
-            provider = ApiProvider.Sarvam,
-            value = uiState.sarvamInput,
-            isSaved = uiState.hasSarvamKey,
-            enabled = !uiState.isWorking,
-            onValueChanged = onSarvamKeyChanged,
-            onSave = onSave,
-            onDelete = onDelete
-        )
-        ApiKeyEditor(
-            provider = ApiProvider.Gemini,
-            value = uiState.geminiInput,
-            isSaved = uiState.hasGeminiKey,
-            enabled = !uiState.isWorking,
-            onValueChanged = onGeminiKeyChanged,
-            onSave = onSave,
-            onDelete = onDelete
-        )
-        ApiKeyEditor(
-            provider = ApiProvider.AssemblyAI,
-            value = uiState.assemblyAiInput,
-            isSaved = uiState.hasAssemblyAiKey,
-            enabled = !uiState.isWorking,
-            onValueChanged = onAssemblyAiKeyChanged,
-            onSave = onSave,
-            onDelete = onDelete
-        )
-        uiState.message?.let {
-            Text(
-                text = it,
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Online service keys",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (!isExpanded) {
+                        Text(
+                            text = "Credentials are hidden",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                IconButton(
+                    onClick = { isExpanded = !isExpanded },
+                    enabled = !uiState.isWorking,
+                    modifier = Modifier
+                        .semantics {
+                            contentDescription = if (isExpanded) {
+                                "Close online service key editor"
+                            } else {
+                                "Update online service keys"
+                            }
+                        }
+                        .testTag("toggle_api_key_editor")
+                ) {
+                    ApiKeyEditIcon(close = isExpanded)
+                }
+            }
+            if (isExpanded) {
+                Text(
+                    text = "Optional. Keys are encrypted with Android Keystore, excluded from backups, and never shown again after saving.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                ApiKeyEditor(
+                    provider = ApiProvider.Sarvam,
+                    value = uiState.sarvamInput,
+                    isSaved = uiState.hasSarvamKey,
+                    enabled = !uiState.isWorking,
+                    onValueChanged = onSarvamKeyChanged,
+                    onSave = onSave,
+                    onDelete = onDelete
+                )
+                ApiKeyEditor(
+                    provider = ApiProvider.Gemini,
+                    value = uiState.geminiInput,
+                    isSaved = uiState.hasGeminiKey,
+                    enabled = !uiState.isWorking,
+                    onValueChanged = onGeminiKeyChanged,
+                    onSave = onSave,
+                    onDelete = onDelete
+                )
+                ApiKeyEditor(
+                    provider = ApiProvider.AssemblyAI,
+                    value = uiState.assemblyAiInput,
+                    isSaved = uiState.hasAssemblyAiKey,
+                    enabled = !uiState.isWorking,
+                    onValueChanged = onAssemblyAiKeyChanged,
+                    onSave = onSave,
+                    onDelete = onDelete
+                )
+            }
+            uiState.message?.let {
+                if (isExpanded) Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (isExpanded) Text(
+                text = "Important: a key stored in a client app can still be extracted from a compromised device. Restrict provider quotas and rotate keys regularly. A server-held key remains safer for production.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.error
             )
         }
-        Text(
-            text = "Important: a key stored in a client app can still be extracted from a compromised device. Restrict provider quotas and rotate keys regularly. A server-held key remains safer for production.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error
-        )
+    }
+}
+
+@Composable
+private fun ApiKeyEditIcon(close: Boolean) {
+    val color = MaterialTheme.colorScheme.primary
+    Canvas(modifier = Modifier.size(24.dp)) {
+        if (close) {
+            drawLine(color, Offset(5f, 5f), Offset(size.width - 5f, size.height - 5f), 2.5f)
+            drawLine(color, Offset(size.width - 5f, 5f), Offset(5f, size.height - 5f), 2.5f)
+        } else {
+            drawLine(
+                color = color,
+                start = Offset(5f, size.height - 5f),
+                end = Offset(size.width - 6f, 6f),
+                strokeWidth = 4f,
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = color,
+                start = Offset(4f, size.height - 4f),
+                end = Offset(9f, size.height - 5f),
+                strokeWidth = 2f
+            )
+        }
     }
 }
 

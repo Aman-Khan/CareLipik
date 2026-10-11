@@ -68,6 +68,24 @@ class ConsultationExportViewModelTest {
     }
 
     @Test
+    fun electronicSignatureRequiresNameAndIsAttachedToExport() {
+        val exporter = CapturingExporter(successResult())
+        val viewModel = ConsultationExportViewModel(exporter, processAsynchronously = false)
+        viewModel.load(approvedConsultation())
+        viewModel.setElectronicallySign(true)
+
+        assertTrue(!viewModel.uiState.value.canGenerate)
+
+        viewModel.setSignerName("Dr Synthetic")
+        viewModel.setHandwrittenSignature("0.1,0.2;0.8,0.7")
+        viewModel.generate()
+
+        assertEquals("Dr Synthetic", exporter.received?.electronicSignerName)
+        assertTrue(exporter.received?.electronicallySignedAtMillis != null)
+        assertTrue(exporter.received?.handwrittenSignature?.isNotBlank() == true)
+    }
+
+    @Test
     fun generatedReport_isPersistedAndLinkedToApprovedConsultation() {
         val reportRepository = CapturingReportRepository()
         val viewModel = ConsultationExportViewModel(

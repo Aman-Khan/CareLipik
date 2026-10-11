@@ -35,6 +35,102 @@ class ClinicalDraftViewModelTest {
     }
 
     @Test
+    fun successfulExtraction_automaticallyRunsOnDeviceStructuredGeneration() {
+        val generatedDraft = ClinicalDraft(
+            structuredSections = listOf(
+                ClinicalNoteSection("subjective", "Subjective", "Structured complaint")
+            ),
+            generationSource = ClinicalNoteGenerationSource.MedGemma
+        )
+        val generator = StubOnlineEngine(ClinicalNoteGenerationResult.Success(generatedDraft))
+        val viewModel = ClinicalDraftViewModel(
+            engine = StubEngine(
+                ClinicalExtractionResult.Success(
+                    ClinicalDraft(presentingComplaint = "Transcript-backed complaint")
+                )
+            ),
+            deviceGenerationEngine = generator,
+            processAsynchronously = false
+        )
+
+        viewModel.generate("Patient: Synthetic transcript")
+
+        assertEquals(ClinicalDraftStatus.Ready, viewModel.uiState.value.status)
+        assertEquals(ClinicalNoteGenerationSource.MedGemma, viewModel.uiState.value.draft.generationSource)
+        assertEquals("Structured complaint", viewModel.uiState.value.draft.structuredSections.single().content)
+        assertEquals("Patient: Synthetic transcript", generator.request?.reviewedTranscript)
+    }
+
+    @Test
+    fun validatedInternet_usesOnlineGeneratorByDefault() {
+        val deviceGenerator = StubOnlineEngine(
+            ClinicalNoteGenerationResult.Success(
+                ClinicalDraft(
+                    structuredSections = listOf(
+                        ClinicalNoteSection("subjective", "Subjective", "On-device content")
+                    ),
+                    generationSource = ClinicalNoteGenerationSource.MedGemma
+                )
+            )
+        )
+        val onlineGenerator = StubOnlineEngine(
+            ClinicalNoteGenerationResult.Success(
+                ClinicalDraft(
+                    structuredSections = listOf(
+                        ClinicalNoteSection("subjective", "Subjective", "Online content")
+                    ),
+                    generationSource = ClinicalNoteGenerationSource.Gemini
+                )
+            )
+        )
+        val viewModel = ClinicalDraftViewModel(
+            engine = StubEngine(
+                ClinicalExtractionResult.Success(ClinicalDraft(history = "Synthetic history"))
+            ),
+            deviceGenerationEngine = deviceGenerator,
+            onlineEngine = onlineGenerator,
+            isOnline = { true },
+            processAsynchronously = false
+        )
+
+        viewModel.generate("Patient: Synthetic transcript")
+        assertEquals("Online content", viewModel.uiState.value.draft.structuredSections.single().content)
+        assertEquals(ClinicalNoteGenerationSource.Gemini, viewModel.uiState.value.draft.generationSource)
+        assertEquals(null, deviceGenerator.request)
+    }
+
+    @Test
+    fun noValidatedInternet_usesMedGemma() {
+        val deviceGenerator = StubOnlineEngine(
+            ClinicalNoteGenerationResult.Success(
+                ClinicalDraft(
+                    structuredSections = listOf(
+                        ClinicalNoteSection("subjective", "Subjective", "On-device content")
+                    ),
+                    generationSource = ClinicalNoteGenerationSource.MedGemma
+                )
+            )
+        )
+        val onlineGenerator = StubOnlineEngine(
+            ClinicalNoteGenerationResult.Success(ClinicalDraft())
+        )
+        val viewModel = ClinicalDraftViewModel(
+            engine = StubEngine(
+                ClinicalExtractionResult.Success(ClinicalDraft(history = "Synthetic history"))
+            ),
+            deviceGenerationEngine = deviceGenerator,
+            onlineEngine = onlineGenerator,
+            isOnline = { false },
+            processAsynchronously = false
+        )
+
+        viewModel.generate("Patient: Synthetic transcript")
+
+        assertEquals("On-device content", viewModel.uiState.value.draft.structuredSections.single().content)
+        assertEquals(null, onlineGenerator.request)
+    }
+
+    @Test
     fun failedExtraction_displaysErrorAndPreventsContinue() {
         val viewModel = ClinicalDraftViewModel(
             engine = StubEngine(ClinicalExtractionResult.Failure("Engine unavailable")),
@@ -115,10 +211,38 @@ class ClinicalDraftViewModelTest {
     }
 
     @Test
-    fun hindiTranscript_requiresSuccessfulGeminiGenerationForEnglishNote() {
+    fun noteFormatSelection_regeneratesContentUsingTheSelectedSchema() {
+        val generator = FormatAwareGenerationEngine()
+        val viewModel = ClinicalDraftViewModel(
+            engine = StubEngine(
+                ClinicalExtractionResult.Success(
+                    ClinicalDraft(presentingComplaint = "Synthetic concern")
+                )
+            ),
+            deviceGenerationEngine = generator,
+            processAsynchronously = false
+        )
+        viewModel.generate("Patient: Synthetic transcript")
+
+        viewModel.selectNoteFormat(ClinicalNoteFormat.HistoryAndPhysical)
+
+        assertEquals(ClinicalNoteFormat.HistoryAndPhysical, generator.request?.noteFormat)
+        assertEquals(
+            ClinicalNoteFormat.HistoryAndPhysical.sectionDefinitions.map { it.id },
+            viewModel.uiState.value.draft.structuredSections.map { it.id }
+        )
+        assertTrue(
+            viewModel.uiState.value.draft.structuredSections.all {
+                it.content.startsWith("Generated ")
+            }
+        )
+    }
+
+    @Test
+    fun hindiTranscript_usesAutomaticOnlineGenerationForEnglishNote() {
         val generatedDraft = ClinicalDraft(
             noteFormat = ClinicalNoteFormat.Soap,
-            noteLanguage = ClinicalNoteLanguage.English,
+            noteLanguage = ClinicalNoteLanguage.Original,
             structuredSections = listOf(
                 ClinicalNoteSection("subjective", "Subjective", "Synthetic English summary")
             ),
@@ -132,6 +256,7 @@ class ClinicalDraftViewModelTest {
                 ClinicalExtractionResult.Success(ClinicalDraft(history = "कृत्रिम इतिहास"))
             ),
             onlineEngine = onlineEngine,
+            isOnline = { true },
             processAsynchronously = false
         )
         viewModel.generate(
@@ -140,15 +265,82 @@ class ClinicalDraftViewModelTest {
         )
         viewModel.selectNoteLanguage(ClinicalNoteLanguage.English)
 
-        assertFalse(viewModel.validateForContinue())
-        assertTrue(viewModel.uiState.value.needsEnglishGeneration)
-
-        viewModel.setOnlineGenerationConsent(true)
-        viewModel.generateWithGemini()
-
         assertEquals(ClinicalNoteGenerationSource.Gemini, viewModel.uiState.value.draft.generationSource)
         assertEquals(ClinicalNoteLanguage.English, onlineEngine.request?.outputLanguage)
         assertFalse(viewModel.uiState.value.needsEnglishGeneration)
+    }
+
+    @Test
+    fun medGemmaGeneration_needsNoOnlineConsentAndSatisfiesEnglishGeneration() {
+        val generatedDraft = ClinicalDraft(
+            noteFormat = ClinicalNoteFormat.Soap,
+            noteLanguage = ClinicalNoteLanguage.English,
+            structuredSections = listOf(
+                ClinicalNoteSection(
+                    "subjective",
+                    "Subjective",
+                    "Synthetic English summary",
+                    listOf("T2")
+                )
+            ),
+            generationSource = ClinicalNoteGenerationSource.MedGemma
+        )
+        val deviceEngine = StubOnlineEngine(ClinicalNoteGenerationResult.Success(generatedDraft))
+        val viewModel = ClinicalDraftViewModel(
+            engine = StubEngine(
+                ClinicalExtractionResult.Success(ClinicalDraft(history = "कृत्रिम इतिहास"))
+            ),
+            deviceGenerationEngine = deviceEngine,
+            processAsynchronously = false
+        )
+        viewModel.generate(
+            transcript = "Patient: कृत्रिम इतिहास",
+            language = TranscriptionLanguage.Hindi
+        )
+        viewModel.selectNoteLanguage(ClinicalNoteLanguage.English)
+
+        viewModel.generateWithMedGemma()
+
+        assertEquals(
+            ClinicalNoteGenerationSource.MedGemma,
+            viewModel.uiState.value.draft.generationSource
+        )
+        assertEquals(listOf("T2"), viewModel.uiState.value.draft.structuredSections.single().sourceTurnIds)
+        assertFalse(viewModel.uiState.value.needsEnglishGeneration)
+    }
+
+    @Test
+    fun generatedNote_replacesCrudeOfflineComplaintAndKeepsFallbackForBlankFields() {
+        val generatedDraft = ClinicalDraft(
+            presentingComplaint = "Clear generated visit reason",
+            history = "",
+            keyFindings = "Generated finding",
+            generationSource = ClinicalNoteGenerationSource.MedGemma
+        )
+        val viewModel = ClinicalDraftViewModel(
+            engine = StubEngine(
+                ClinicalExtractionResult.Success(
+                    ClinicalDraft(
+                        presentingComplaint = "Fragmented transcript opening",
+                        history = "Reviewed offline history"
+                    )
+                )
+            ),
+            deviceGenerationEngine = StubOnlineEngine(
+                ClinicalNoteGenerationResult.Success(generatedDraft)
+            ),
+            processAsynchronously = false
+        )
+        viewModel.generate("Patient: Synthetic transcript")
+
+        viewModel.generateWithMedGemma()
+
+        assertEquals(
+            "Clear generated visit reason",
+            viewModel.uiState.value.draft.presentingComplaint
+        )
+        assertEquals("Reviewed offline history", viewModel.uiState.value.draft.history)
+        assertEquals("Generated finding", viewModel.uiState.value.draft.keyFindings)
     }
 
     private class StubEngine(
@@ -165,6 +357,28 @@ class ClinicalDraftViewModelTest {
         override fun generate(request: ClinicalNoteGenerationRequest): ClinicalNoteGenerationResult {
             this.request = request
             return result
+        }
+    }
+
+    private class FormatAwareGenerationEngine : ClinicalNoteGenerationEngine {
+        var request: ClinicalNoteGenerationRequest? = null
+
+        override fun generate(request: ClinicalNoteGenerationRequest): ClinicalNoteGenerationResult {
+            this.request = request
+            return ClinicalNoteGenerationResult.Success(
+                ClinicalDraft(
+                    noteFormat = request.noteFormat,
+                    noteLanguage = request.outputLanguage,
+                    structuredSections = request.noteFormat.sectionDefinitions.map { definition ->
+                        ClinicalNoteSection(
+                            definition.id,
+                            definition.title,
+                            "Generated ${definition.title}"
+                        )
+                    },
+                    generationSource = ClinicalNoteGenerationSource.MedGemma
+                )
+            )
         }
     }
 }

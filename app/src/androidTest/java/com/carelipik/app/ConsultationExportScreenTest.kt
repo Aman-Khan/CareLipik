@@ -48,6 +48,9 @@ class ConsultationExportScreenTest {
                         )
                     ),
                     onFormatSelected = {},
+                    onElectronicSignatureChanged = {},
+                    onSignerNameChanged = {},
+                    onHandwrittenSignatureChanged = {},
                     onGenerate = {},
                     onShare = { shareRequested = true },
                     onBack = {},

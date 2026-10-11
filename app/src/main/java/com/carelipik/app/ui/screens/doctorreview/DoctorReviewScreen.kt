@@ -29,6 +29,7 @@ import com.carelipik.app.ui.components.ConsultationScreenHeader
 fun DoctorReviewScreen(
     uiState: DoctorReviewUiState,
     onConfirmationChanged: (Boolean) -> Unit,
+    onIncludeTranscriptChanged: (Boolean) -> Unit,
     onBack: () -> Unit,
     onApprove: () -> Unit,
     modifier: Modifier = Modifier
@@ -69,6 +70,27 @@ fun DoctorReviewScreen(
         }
         MedicationReview(uiState.draft.medications)
         ReviewSection("Complete reviewed transcript", uiState.draft.reviewedTranscript)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .toggleable(
+                    value = uiState.includeReviewedTranscriptInExport,
+                    role = Role.Checkbox,
+                    onValueChange = onIncludeTranscriptChanged
+                )
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(
+                checked = uiState.includeReviewedTranscriptInExport,
+                onCheckedChange = null
+            )
+            Text(
+                "Include complete reviewed transcript in final report",
+                modifier = Modifier.padding(start = 8.dp),
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
         uiState.medicationError?.let { error ->
             Text(error, color = MaterialTheme.colorScheme.error)
         }

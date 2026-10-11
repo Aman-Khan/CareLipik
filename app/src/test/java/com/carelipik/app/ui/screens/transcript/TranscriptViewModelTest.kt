@@ -165,6 +165,25 @@ class TranscriptViewModelTest {
     }
 
     @Test
+    fun concern_canBeSelectedAndUpdatedWithCustomMedicalTerm() {
+        val viewModel = TranscriptViewModel(
+            engineResolver = resolver(
+                StubEngine(TranscriptionResult.Success("I have had cup for three days."))
+            ),
+            processAsynchronously = false
+        )
+        viewModel.transcribe("/private/recording.wav")
+        val concern = viewModel.uiState.value.pendingConcerns.single()
+
+        viewModel.selectConcern(concern.id)
+        assertEquals(concern.id, viewModel.uiState.value.selectedConcernId)
+        viewModel.updateConcern(concern.id, "persistent cough")
+
+        assertEquals("I have had persistent cough for three days.", viewModel.transcriptText())
+        assertTrue(viewModel.uiState.value.pendingConcerns.isEmpty())
+    }
+
+    @Test
     fun recognizedMedicalTerm_requiresExplicitDoctorConfirmation() {
         val viewModel = TranscriptViewModel(
             engineResolver = resolver(StubEngine(TranscriptionResult.Success("Mild fever."))),

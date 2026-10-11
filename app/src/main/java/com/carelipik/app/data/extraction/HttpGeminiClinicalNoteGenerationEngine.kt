@@ -3,6 +3,8 @@ package com.carelipik.app.data.extraction
 import com.carelipik.app.domain.extraction.ClinicalNoteGenerationEngine
 import com.carelipik.app.domain.extraction.ClinicalNoteGenerationRequest
 import com.carelipik.app.domain.extraction.ClinicalNoteGenerationResult
+import com.carelipik.app.domain.extraction.ClinicalVisitReasonFormatter
+import com.carelipik.app.domain.extraction.ClinicalNoteContentFormatter
 import com.carelipik.app.domain.model.ClinicalDraft
 import com.carelipik.app.domain.model.ClinicalNoteGenerationSource
 import com.carelipik.app.domain.model.ClinicalNoteSection
@@ -80,10 +82,14 @@ class HttpGeminiClinicalNoteGenerationEngine(
 
     internal fun parseDraftResponse(
         body: String,
-        request: ClinicalNoteGenerationRequest
-    ): ClinicalDraft = JSONObject(body).toDraft(request)
+        request: ClinicalNoteGenerationRequest,
+        generationSource: ClinicalNoteGenerationSource = ClinicalNoteGenerationSource.Gemini
+    ): ClinicalDraft = JSONObject(body).toDraft(request, generationSource)
 
-    private fun JSONObject.toDraft(request: ClinicalNoteGenerationRequest): ClinicalDraft {
+    private fun JSONObject.toDraft(
+        request: ClinicalNoteGenerationRequest,
+        generationSource: ClinicalNoteGenerationSource
+    ): ClinicalDraft {
         val rawSections = optJSONArray("sections") ?: JSONArray()
         val sectionsById = buildMap {
             for (index in 0 until rawSections.length()) {
@@ -99,7 +105,9 @@ class HttpGeminiClinicalNoteGenerationEngine(
                 id = definition.id,
                 title = item?.safeString("title")?.ifBlank { definition.title }
                     ?: definition.title,
-                content = item?.safeString("content").orEmpty(),
+                content = ClinicalNoteContentFormatter.clean(
+                    item?.safeString("content").orEmpty()
+                ),
                 sourceTurnIds = item?.optJSONArray("source_turn_ids").turnIds()
             )
         }
@@ -127,7 +135,9 @@ class HttpGeminiClinicalNoteGenerationEngine(
         }
         return ClinicalDraft(
             patientAge = request.patientAge,
-            presentingComplaint = request.visitReason,
+            presentingComplaint = ClinicalVisitReasonFormatter.concise(
+                safeString("visit_reason").ifBlank { request.visitReason }
+            ),
             reviewedTranscript = request.reviewedTranscript,
             noteFormat = request.noteFormat,
             noteLanguage = request.outputLanguage,
@@ -135,7 +145,7 @@ class HttpGeminiClinicalNoteGenerationEngine(
             structuredSections = sections,
             medications = medications,
             coverageWarnings = optJSONArray("coverage_warnings").strings(MAX_WARNINGS),
-            generationSource = ClinicalNoteGenerationSource.Gemini
+            generationSource = generationSource
         )
     }
 

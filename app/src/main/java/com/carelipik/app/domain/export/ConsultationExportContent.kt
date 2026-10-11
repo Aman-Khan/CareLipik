@@ -59,9 +59,12 @@ object ConsultationExportContent {
         $medications
             ],
             "coverageWarningsAtApproval": [$warnings],
-            "reviewedTranscript": ${consultation.draft.reviewedTranscript.json()}
+            "reviewedTranscript": ${if (consultation.includeReviewedTranscriptInExport) consultation.draft.reviewedTranscript.json() else "null"}
           },
           "doctorApproved": true,
+          "electronicSignature": ${consultation.electronicSignerName.takeIf(String::isNotBlank)?.json() ?: "null"},
+          "handwrittenSignature": ${consultation.handwrittenSignature.takeIf(String::isNotBlank)?.json() ?: "null"},
+          "electronicallySignedAt": ${consultation.electronicallySignedAtMillis?.let { Instant.ofEpochMilli(it).toString().json() } ?: "null"},
           "includesConsultationAudio": false
         }
         """.trimIndent() + "\n"
@@ -96,8 +99,9 @@ object ConsultationExportContent {
         TRANSCRIPT COVERAGE WARNINGS AT APPROVAL
         $warnings
 
-        COMPLETE REVIEWED CONVERSATION LOG
-        ${consultation.draft.reviewedTranscript.ifBlank { "Not available for this older record" }}
+        ${if (consultation.includeReviewedTranscriptInExport) "COMPLETE REVIEWED CONVERSATION LOG\n${consultation.draft.reviewedTranscript.ifBlank { "Not available for this older record" }}" else ""}
+
+        ${consultation.signatureText()}
 
         CareLipik assists with documentation. Clinical accuracy remains the doctor's responsibility.
         Consultation audio is not included.
@@ -166,9 +170,10 @@ object ConsultationExportContent {
             "Clinical note format" to consultation.draft.noteFormat.displayName
         ) + noteSections + listOf(
             "Prescribed medicines and dosages" to medicationText,
-            "Transcript coverage warnings at approval" to coverageText,
-            "Complete reviewed conversation log" to consultation.draft.reviewedTranscript
-        )).joinToString(",\n") { (title, text) ->
+            "Transcript coverage warnings at approval" to coverageText
+        ) + if (consultation.includeReviewedTranscriptInExport) {
+            listOf("Complete reviewed conversation log" to consultation.draft.reviewedTranscript)
+        } else emptyList()).joinToString(",\n") { (title, text) ->
             """
                 {
                   "title": ${title.json()},
@@ -278,6 +283,14 @@ object ConsultationExportContent {
 
     private fun approvedAt(consultation: ApprovedConsultation): String =
         Instant.ofEpochMilli(consultation.approvedAtMillis).toString()
+
+    private fun ApprovedConsultation.signatureText(): String =
+        if (electronicSignerName.isBlank()) "" else buildString {
+            append("ELECTRONICALLY SIGNED BY: $electronicSignerName")
+            electronicallySignedAtMillis?.let {
+                append("\nSIGNED AT: ${Instant.ofEpochMilli(it)}")
+            }
+        }
 
     private fun resourceFullUrl(resourceType: String, resourceId: String): String =
         "urn:uuid:${UUID.nameUUIDFromBytes("$resourceType/$resourceId".toByteArray()).toString()}"

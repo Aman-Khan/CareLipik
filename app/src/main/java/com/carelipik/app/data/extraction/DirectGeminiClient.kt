@@ -8,7 +8,7 @@ internal class DirectGeminiClient(
     private val apiKey: () -> String?,
     private val model: String = "gemini-2.5-flash"
 ) {
-    fun generateJson(prompt: String, responseSchema: JSONObject): JSONObject {
+    fun generateJson(prompt: String, responseSchema: JSONObject, pdf: ByteArray? = null, mediaMimeType: String = "application/pdf"): JSONObject {
         val key = apiKey()?.trim().orEmpty()
         require(key.isNotBlank()) {
             "Add a Gemini API key in Doctor profile, or configure the CareLipik backend."
@@ -17,7 +17,11 @@ internal class DirectGeminiClient(
             .put("contents", org.json.JSONArray().put(
                 JSONObject().put("role", "user").put(
                     "parts",
-                    org.json.JSONArray().put(JSONObject().put("text", prompt))
+                    org.json.JSONArray().put(JSONObject().put("text", prompt)).apply {
+                        pdf?.let { put(JSONObject().put("inline_data", JSONObject()
+                            .put("mime_type", mediaMimeType)
+                            .put("data", android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP)))) }
+                    }
                 )
             ))
             .put(

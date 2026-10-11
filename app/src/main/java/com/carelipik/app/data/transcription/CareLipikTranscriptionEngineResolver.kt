@@ -12,6 +12,7 @@ import com.carelipik.app.data.local.DeviceApiKeyProvider
 import com.carelipik.app.domain.repository.ApiProvider
 
 class CareLipikTranscriptionEngineResolver(context: Context) : TranscriptionEngineResolver {
+    private val applicationContext = context.applicationContext
     private val deviceApiKeyProvider = DeviceApiKeyProvider(context.applicationContext)
 
     // Sherpa's JNI library resolves OrtGetApiBase from libonnxruntime.so at load time.
@@ -37,6 +38,19 @@ class CareLipikTranscriptionEngineResolver(context: Context) : TranscriptionEngi
         DirectAssemblyAiTranscriptionGateway(apiKey = {
             deviceApiKeyProvider.get(ApiProvider.AssemblyAI)
         })
+    )
+    private val maskedSaarasEngine = SaarasTranscriptionEngine(
+        PreferDeviceKeyTranscriptionGateway(
+            hasDeviceKey = { deviceApiKeyProvider.get(ApiProvider.Sarvam) != null },
+            direct = DirectSarvamTranscriptionGateway(
+                apiKey = { deviceApiKeyProvider.get(ApiProvider.Sarvam) },
+                preserveDetectedSpeakers = true
+            ),
+            fallback = HttpRemoteTranscriptionGateway(
+                backendBaseUrl = BuildConfig.TRANSCRIPTION_BACKEND_URL,
+                allowInsecureLocalhost = BuildConfig.DEBUG
+            )
+        )
     )
     private val engines: Map<TranscriptionEngineOption, AudioTranscriptionEngine> = listOf(
         SherpaMedAsrTranscriptionEngine(
@@ -85,8 +99,17 @@ class CareLipikTranscriptionEngineResolver(context: Context) : TranscriptionEngi
     ).associateBy(AudioTranscriptionEngine::option)
 
     override fun resolve(option: TranscriptionEngineOption): AudioTranscriptionEngine {
+        if (option == TranscriptionEngineOption.NameMaskedSaaras) return resolve(option, "")
         return checkNotNull(engines[option]) {
             "Transcription engine ${option.displayName} is unavailable."
         }
     }
+
+    override fun resolve(option: TranscriptionEngineOption, patientName: String): AudioTranscriptionEngine =
+        if (option == TranscriptionEngineOption.NameMaskedSaaras) {
+            NameMaskedSaarasTranscriptionEngine(
+                maskedSaarasEngine,
+                LocalPatientNameAudioMasker(applicationContext), patientName
+            )
+        } else resolve(option)
 }

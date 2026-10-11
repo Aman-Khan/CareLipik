@@ -14,6 +14,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.carelipik.app.ui.screens.prescription.PrescriptionViewModel
+import com.carelipik.app.ui.screens.prescription.PrescriptionEditor
+import com.carelipik.app.ui.screens.prescription.LetterheadSetup
 import com.carelipik.app.domain.model.ConsultationDestination
 import com.carelipik.app.ui.screens.clinicaldraft.ClinicalDraftScreen
 import com.carelipik.app.ui.screens.clinicaldraft.ClinicalDraftViewModel
@@ -58,6 +61,8 @@ fun CareLipikApp(
     savedRecordingsViewModel: SavedRecordingsViewModel? = null
 ) {
     val context = LocalContext.current
+    val prescriptionViewModel: PrescriptionViewModel = viewModel(factory = PrescriptionViewModel.Factory(context))
+    val prescriptionUiState by prescriptionViewModel.uiState.collectAsState()
     val activeHomeViewModel = homeViewModel ?: viewModel(
         factory = HomeViewModel.Factory(context)
     )
@@ -124,6 +129,7 @@ fun CareLipikApp(
                     activeRecordingViewModel.resetForNewConsultation()
                     activeTranscriptViewModel.resetForNewConsultation()
                     activeClinicalDraftViewModel.resetForNewConsultation()
+                    prescriptionViewModel.reset()
                     activeDoctorReviewViewModel.resetForNewConsultation()
                     activeConsultationExportViewModel.resetForNewConsultation()
                     navigator.startConsultation()
@@ -158,6 +164,7 @@ fun CareLipikApp(
                             welcomeViewModel.setRecordingConsent(restored.recording.hasRecordingConsent)
                             activeTranscriptViewModel.resetForNewConsultation()
                             activeClinicalDraftViewModel.resetForNewConsultation()
+                            prescriptionViewModel.reset()
                             activeDoctorReviewViewModel.resetForNewConsultation()
                             activeConsultationExportViewModel.resetForNewConsultation()
                             navigator.resumeRecording()
@@ -174,6 +181,7 @@ fun CareLipikApp(
             )
             ConsultationDestination.DoctorProfile -> DoctorProfileScreen(
                 uiState = doctorProfileUiState,
+                letterheadContent = { LetterheadSetup(prescriptionUiState, prescriptionViewModel) },
                 voiceUiState = doctorVoiceEnrollmentUiState,
                 apiCredentialsUiState = apiCredentialsUiState,
                 onFullNameChanged = activeDoctorProfileViewModel::setFullName,
@@ -246,7 +254,7 @@ fun CareLipikApp(
             )
             ConsultationDestination.Transcript -> TranscriptScreen(
                 uiState = transcriptUiState,
-                onTranscriptChanged = activeTranscriptViewModel::setDisplayedTranscript,
+                onTranscriptChanged = activeTranscriptViewModel::setTranscript,
                 onConfirmConcern = activeTranscriptViewModel::confirmConcern,
                 onApplySuggestion = activeTranscriptViewModel::applySuggestedReplacement,
                 onSelectConcern = activeTranscriptViewModel::selectConcern,
@@ -258,10 +266,6 @@ fun CareLipikApp(
                 onAnalyzeTermsOnline = activeTranscriptViewModel::analyzeTermsOnline,
                 onViewModeChanged = activeTranscriptViewModel::setViewMode,
                 onSpeakerRoleAssigned = activeTranscriptViewModel::assignSpeakerRole,
-                onSpeakerNameChanged = activeTranscriptViewModel::setSpeakerName,
-                onAcceptHybridCorrection = activeTranscriptViewModel::acceptHybridCorrection,
-                onRejectHybridCorrection = activeTranscriptViewModel::rejectHybridCorrection,
-                onCancelTranscription = activeTranscriptViewModel::cancelTranscription,
                 onRetry = activeTranscriptViewModel::retry,
                 onBack = navigator::navigateBack,
                 onContinue = {
@@ -281,14 +285,33 @@ fun CareLipikApp(
             )
             ConsultationDestination.ClinicalDraft -> ClinicalDraftScreen(
                 uiState = clinicalDraftUiState,
+                prescriptionContent = {
+                    if (clinicalDraftUiState.isGeneratingOnDevice || clinicalDraftUiState.isGeneratingOnline) {
+                        androidx.compose.material3.Text("Extracting discussed medicines and symptom references...")
+                    }
+                    LaunchedEffect(clinicalDraftUiState.draft, prescriptionUiState.loading, prescriptionUiState.busy) {
+                        if (!prescriptionUiState.loading) prescriptionViewModel.create(
+                            clinicalDraftUiState.draft,
+                            patientDetailsViewModel.currentDetails().patientName,
+                            doctorProfileUiState.fullName
+                        )
+                    }
+                    PrescriptionEditor(prescriptionUiState, prescriptionViewModel) {
+                        prescriptionViewModel.create(
+                            activeClinicalDraftViewModel.currentDraft(),
+                            patientDetailsViewModel.currentDetails().patientName,
+                            doctorProfileUiState.fullName
+                        )
+                    }
+                },
                 onPatientAgeChanged = activeClinicalDraftViewModel::setPatientAge,
                 onNoteFormatSelected = activeClinicalDraftViewModel::selectNoteFormat,
                 onNoteLanguageSelected = activeClinicalDraftViewModel::selectNoteLanguage,
                 onSpecialtyNameChanged = activeClinicalDraftViewModel::setSpecialtyName,
                 onSectionChanged = activeClinicalDraftViewModel::setSectionContent,
-                onGenerateWithMedGemma = activeClinicalDraftViewModel::generateWithMedGemma,
                 onOnlineGenerationConsentChanged =
                     activeClinicalDraftViewModel::setOnlineGenerationConsent,
+                onGenerateWithMedGemma = activeClinicalDraftViewModel::generateWithMedGemma,
                 onGenerateWithGemini = activeClinicalDraftViewModel::generateWithGemini,
                 onAddMedication = activeClinicalDraftViewModel::addMedication,
                 onMedicationChanged = activeClinicalDraftViewModel::updateMedication,
@@ -345,33 +368,6 @@ fun CareLipikApp(
             )
             ConsultationDestination.ConsultationRecording -> RecordingScreen(
                 uiState = recordingUiState,
-                onDownloadAudio = activeRecordingViewModel::downloadAudio,
-                onSpeakerCountChanged = activeRecordingViewModel::setSpeakerCount,
-                isSavingForLater = savedRecordingsUiState.isBusy,
-                saveError = savedRecordingsUiState.error,
-                onSaveForLater = {
-                    if (recordingUiState.status == RecordingStatus.Completed &&
-                        !recordingUiState.isImporting && !recordingUiState.isDownloading
-                    ) {
-                        activeRecordingViewModel.stopPlayback()
-                        val patient = patientDetailsViewModel.currentDetails()
-                        activeSavedRecordingsViewModel.save(
-                            audio = activeRecordingViewModel.recordedAudio(),
-                            patientName = patient.patientName,
-                            patientAge = patient.age,
-                            visitReason = patient.visitReason,
-                            language = activeRecordingViewModel.transcriptionLanguage(),
-                            engine = activeRecordingViewModel.transcriptionEngine(),
-                            hasRecordingConsent = welcomeUiState.hasRecordingConsent,
-                            speakerCount = activeRecordingViewModel.speakerCount(),
-                            onSaved = {
-                                activeRecordingViewModel.resetForNewConsultation()
-                                Toast.makeText(context, "Recording saved for later", Toast.LENGTH_SHORT).show()
-                                navigator.returnHome()
-                            }
-                        )
-                    }
-                },
                 onStart = activeRecordingViewModel::startRecording,
                 onPause = activeRecordingViewModel::pauseRecording,
                 onResume = activeRecordingViewModel::resumeRecording,
@@ -394,7 +390,7 @@ fun CareLipikApp(
                             audioPath,
                             activeRecordingViewModel.transcriptionLanguage(),
                             activeRecordingViewModel.transcriptionEngine(),
-                            activeRecordingViewModel.speakerCount()
+                            patientName = patientDetailsViewModel.currentDetails().patientName
                         )
                         navigator.navigateToNext()
                     }

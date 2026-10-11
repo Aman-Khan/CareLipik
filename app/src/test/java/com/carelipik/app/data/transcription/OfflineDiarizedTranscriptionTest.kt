@@ -12,7 +12,7 @@ class OfflineDiarizedTranscriptionTest {
     @Test
     fun automaticDiarization_preservesFourDistinctSpeakers() {
         val diarizer = SpeakerDiarizationEngine { _, _, count ->
-            assertEquals(-1, count)
+            assertEquals(0, count)
             SpeakerDiarizationResult.Success((1..4).map { number ->
                 DiarizedAudioTurn("speaker-$number", (number - 1).toFloat(), number.toFloat())
             })

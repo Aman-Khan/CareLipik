@@ -10,7 +10,8 @@ import java.net.URL
 class DirectSarvamTranscriptionGateway(
     private val apiKey: () -> String?,
     private val pollIntervalMillis: Long = 2_000L,
-    private val maxPollAttempts: Int = 150
+    private val maxPollAttempts: Int = 150,
+    private val preserveDetectedSpeakers: Boolean = false
 ) : RemoteTranscriptionGateway {
     override fun transcribe(request: RemoteTranscriptionRequest): RemoteTranscriptionResult {
         val key = apiKey()?.trim().orEmpty()
@@ -89,7 +90,7 @@ class DirectSarvamTranscriptionGateway(
         )
     }
 
-    private fun parseProviderResult(json: JSONObject): RemoteTranscriptionResult.Success {
+    internal fun parseProviderResult(json: JSONObject): RemoteTranscriptionResult.Success {
         val entries = json.optJSONObject("diarized_transcript")?.optJSONArray("entries")
         val segments = buildList {
             if (entries != null) for (index in 0 until entries.length()) {
@@ -108,12 +109,14 @@ class DirectSarvamTranscriptionGateway(
                 }
             }
         }.sortedBy { it.startTimeSeconds ?: Double.MAX_VALUE }
-        val reliable = segments.map(RemoteSpeakerSegment::speakerId).toSet().size == 2
+        val reliable = if (preserveDetectedSpeakers) segments.isNotEmpty()
+            else segments.map(RemoteSpeakerSegment::speakerId).toSet().size == 2
         return RemoteTranscriptionResult.Success(
             transcript = json.optString("transcript").trim(),
             segments = if (reliable) segments else emptyList(),
             speakerSeparationWarning = if (reliable) null else {
-                "Saaras could not reliably separate exactly two voices. Review speaker roles."
+                if (preserveDetectedSpeakers) "Saaras did not return speaker separation. Review the transcript."
+                else "Saaras could not reliably separate exactly two voices. Review speaker roles."
             }
         )
     }

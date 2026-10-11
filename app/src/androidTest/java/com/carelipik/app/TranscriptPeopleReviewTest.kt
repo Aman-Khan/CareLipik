@@ -24,27 +24,29 @@ class TranscriptPeopleReviewTest {
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     @Test
-    fun fourthPerson_canBeRenamedAndAppearsInConversation() {
+    fun additionalParticipant_appearsInConversation() {
         val model = TranscriptViewModel(processAsynchronously = false).apply {
             setTranscript((1..4).joinToString("\n") { "Speaker $it: Synthetic greeting $it" })
             assignSpeakerRole("speaker-1", SpeakerRole.Doctor)
             assignSpeakerRole("speaker-2", SpeakerRole.Patient)
-            assignSpeakerRole("speaker-3", SpeakerRole.Other)
-            assignSpeakerRole("speaker-4", SpeakerRole.Other)
+            assignSpeakerRole("speaker-3", SpeakerRole.OtherParticipant)
+            assignSpeakerRole("speaker-4", SpeakerRole.OtherParticipant)
         }
         composeRule.setContent {
             val state by model.uiState.collectAsState()
             CareLipikTheme {
                 TranscriptScreen(
                     uiState = state,
-                    onTranscriptChanged = model::setDisplayedTranscript,
+                    onSelectConcern = {},
+                    onUpdateConcern = { _, _ -> },
+                    onTrainingDataConsentChanged = {},
+                    onTranscriptChanged = model::setTranscript,
                     onConfirmConcern = model::confirmConcern,
                     onApplySuggestion = model::applySuggestedReplacement,
                     onOnlineAnalysisConsentChanged = model::setOnlineAnalysisConsent,
                     onAnalyzeTermsOnline = model::analyzeTermsOnline,
                     onViewModeChanged = model::setViewMode,
                     onSpeakerRoleAssigned = model::assignSpeakerRole,
-                    onSpeakerNameChanged = model::setSpeakerName,
                     onRetry = {},
                     onBack = {},
                     onContinue = {}
@@ -52,18 +54,7 @@ class TranscriptPeopleReviewTest {
             }
         }
 
-        composeRule.onNodeWithTag("speaker_name_speaker-4")
-            .performScrollTo().performTextInput("Synthetic interpreter")
-        composeRule.onNodeWithTag("full_transcript_editor").performScrollTo()
-            .assertTextContains("Doctor: Synthetic greeting 1", substring = true)
-            .assertTextContains("Patient: Synthetic greeting 2", substring = true)
-            .assertTextContains("Synthetic interpreter (Other): Synthetic greeting 4", substring = true)
-        composeRule.runOnIdle {
-            assertEquals("Synthetic interpreter", model.uiState.value.speakerNames["speaker-4"])
-            model.setViewMode(TranscriptViewMode.Conversation)
-        }
-        composeRule.onNodeWithTag("conversation_label_speaker-4")
-            .performScrollTo().assertTextEquals("Synthetic interpreter (Other)")
+        composeRule.runOnIdle { model.setViewMode(TranscriptViewMode.Conversation) }
         composeRule.onNodeWithText("Synthetic greeting 4").performScrollTo().assertExists()
     }
 }

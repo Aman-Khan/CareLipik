@@ -660,6 +660,7 @@ private fun languageSupportingText(language: TranscriptionLanguage): String = wh
 
 private fun engineUnavailableMessage(engine: TranscriptionEngineOption): String = when (engine) {
     TranscriptionEngineOption.MedAsrEnglish -> "Choose English to use MedASR."
+    TranscriptionEngineOption.NameMaskedSaaras -> "Choose English to use patient-name masking."
     TranscriptionEngineOption.SaarasHindiHinglish ->
         "Choose English, Hindi, or Hinglish to use Saaras."
     TranscriptionEngineOption.AssemblyAiUniversal -> "Unavailable for this language."

@@ -1,5 +1,6 @@
 *.iml
 .gradle
+.kotlin/
 /local.properties
 /.idea/caches
 /.idea/libraries
@@ -18,5 +19,8 @@ local.properties
 
 # Downloaded offline speech models are local build inputs, never source-controlled.
 /app/src/main/assets/models/
+/app/src/androidTest/assets/models/
+/app/src/androidTest/assets/name-masking-synthetic.wav
 /tools/offline_speaker_diarization/model_candidates/
 /.local-models/
+__pycache__/

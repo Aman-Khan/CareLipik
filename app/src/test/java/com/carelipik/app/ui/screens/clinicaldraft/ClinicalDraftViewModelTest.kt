@@ -62,7 +62,7 @@ class ClinicalDraftViewModelTest {
     }
 
     @Test
-    fun validatedInternet_usesOnlineGeneratorByDefault() {
+    fun validatedInternet_usesDeviceUntilConsent_thenUsesOnlineGenerator() {
         val deviceGenerator = StubOnlineEngine(
             ClinicalNoteGenerationResult.Success(
                 ClinicalDraft(
@@ -94,9 +94,12 @@ class ClinicalDraftViewModelTest {
         )
 
         viewModel.generate("Patient: Synthetic transcript")
+        assertEquals("On-device content", viewModel.uiState.value.draft.structuredSections.single().content)
+        assertEquals(null, onlineGenerator.request)
+        viewModel.setOnlineGenerationConsent(true)
         assertEquals("Online content", viewModel.uiState.value.draft.structuredSections.single().content)
         assertEquals(ClinicalNoteGenerationSource.Gemini, viewModel.uiState.value.draft.generationSource)
-        assertEquals(null, deviceGenerator.request)
+        assertEquals("Patient: Synthetic transcript", deviceGenerator.request?.reviewedTranscript)
     }
 
     @Test
@@ -263,6 +266,7 @@ class ClinicalDraftViewModelTest {
             transcript = "Patient: कृत्रिम इतिहास",
             language = TranscriptionLanguage.Hindi
         )
+        viewModel.setOnlineGenerationConsent(true)
         viewModel.selectNoteLanguage(ClinicalNoteLanguage.English)
 
         assertEquals(ClinicalNoteGenerationSource.Gemini, viewModel.uiState.value.draft.generationSource)
@@ -347,6 +351,34 @@ class ClinicalDraftViewModelTest {
         private val result: ClinicalExtractionResult
     ) : ClinicalExtractionEngine {
         override fun extract(transcript: String): ClinicalExtractionResult = result
+    }
+
+    @Test
+    fun automaticGeneration_preservesDiscussedMedicinesForPrescriptionSuggestions() {
+        val generatedDraft = ClinicalDraft(
+            discussedMedications = listOf(MedicationDraft(name = "Synthetic medicine", dose = "Stated dose")),
+            generationSource = ClinicalNoteGenerationSource.MedGemma
+        )
+        val viewModel = ClinicalDraftViewModel(
+            deviceGenerationEngine = StubOnlineEngine(ClinicalNoteGenerationResult.Success(generatedDraft)),
+            processAsynchronously = false
+        )
+        viewModel.generate("Patient: Synthetic medicine was discussed")
+        assertEquals(generatedDraft.discussedMedications, viewModel.uiState.value.draft.discussedMedications)
+    }
+
+    @Test
+    fun manualGeminiGeneration_requiresConsentEvenWhenOnline() {
+        val onlineGenerator = StubOnlineEngine(ClinicalNoteGenerationResult.Success(ClinicalDraft()))
+        val viewModel = ClinicalDraftViewModel(
+            onlineEngine = onlineGenerator,
+            isOnline = { true },
+            processAsynchronously = false
+        )
+        viewModel.generate("Patient: Synthetic transcript")
+        viewModel.generateWithGemini()
+        assertEquals(null, onlineGenerator.request)
+        assertTrue(viewModel.uiState.value.onlineGenerationError.orEmpty().contains("Consent"))
     }
 
     private class StubOnlineEngine(

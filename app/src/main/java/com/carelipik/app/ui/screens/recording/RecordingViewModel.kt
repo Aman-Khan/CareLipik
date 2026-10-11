@@ -11,11 +11,6 @@ import com.carelipik.app.domain.recording.AudioImportResult
 import com.carelipik.app.domain.transcription.TranscriptionLanguage
 import com.carelipik.app.domain.transcription.TranscriptionEngineOption
 import com.carelipik.app.domain.model.RestoredSavedRecording
-import com.carelipik.app.domain.export.RecordingAudioExporter
-import com.carelipik.app.domain.export.RecordingAudioExportResult
-import com.carelipik.app.data.export.AndroidRecordingAudioExporter
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,9 +22,7 @@ import kotlinx.coroutines.launch
 
 class RecordingViewModel(
     private val recorder: ConsultationRecorder = FakeConsultationRecorder(),
-    private val useAutomaticTimer: Boolean = true,
-    private val audioExporter: RecordingAudioExporter? = null,
-    private val exportAsynchronously: Boolean = true
+    private val useAutomaticTimer: Boolean = true
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(RecordingUiState())
     val uiState: StateFlow<RecordingUiState> = _uiState.asStateFlow()
@@ -108,7 +101,6 @@ class RecordingViewModel(
     }
 
     fun discardRecording() {
-        if (_uiState.value.isDownloading) return
         if (_uiState.value.status == RecordingStatus.Ready) return
         recorder.discard()
         timerJob?.cancel()
@@ -135,41 +127,6 @@ class RecordingViewModel(
 
     fun recordedAudio() = recorder.recordedAudio.value
 
-    fun downloadAudio(destinationUri: String) {
-        val state = _uiState.value
-        if (destinationUri.isBlank() || state.isDownloading || state.isImporting) return
-        val audio = recorder.recordedAudio.value
-        if (state.status != RecordingStatus.Completed || audio == null) {
-            _uiState.update { it.copy(downloadError = "Finish recording before downloading.") }
-            return
-        }
-        val exporter = audioExporter ?: run {
-            _uiState.update { it.copy(downloadError = "Recording download is unavailable.") }
-            return
-        }
-        stopPlayback()
-        _uiState.update { it.copy(isDownloading = true, downloadMessage = null, downloadError = null) }
-        val operation: suspend () -> Unit = {
-            try {
-                when (val result = exporter.export(audio, destinationUri)) {
-                    is RecordingAudioExportResult.Success -> _uiState.update {
-                        it.copy(downloadMessage = "Recording downloaded as a WAV file.")
-                    }
-                    is RecordingAudioExportResult.Failure -> _uiState.update {
-                        it.copy(downloadError = result.message)
-                    }
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                _uiState.update { it.copy(downloadError = error.message ?: "Recording download failed. Please try again.") }
-            } finally {
-                _uiState.update { it.copy(isDownloading = false) }
-            }
-        }
-        if (exportAsynchronously) viewModelScope.launch { operation() } else runBlocking { operation() }
-    }
-
     suspend fun restoreSavedRecording(saved: RestoredSavedRecording): Boolean {
         when (val result = recorder.restoreAudio(saved.audio)) {
             is AudioImportResult.Success -> {
@@ -183,7 +140,6 @@ class RecordingViewModel(
                     audioSizeBytes = result.audio.sizeBytes,
                     transcriptionLanguage = saved.recording.language,
                     transcriptionEngine = saved.recording.engine,
-                    speakerCount = saved.recording.speakerCount,
                     hasOnlineProcessingConsent = false
                 )
                 return true
@@ -196,7 +152,6 @@ class RecordingViewModel(
     }
 
     fun importAudio(sourceUri: String) {
-        if (_uiState.value.isDownloading) return
         if (_uiState.value.status in setOf(RecordingStatus.Recording, RecordingStatus.Paused)) return
         if (sourceUri.isBlank()) return
         stopPlayback()
@@ -218,8 +173,7 @@ class RecordingViewModel(
                             isPlaying = false,
                             isImporting = false,
                             importError = null,
-                            downloadMessage = null,
-                            downloadError = null
+
                         )
                     }
                 }
@@ -269,13 +223,6 @@ class RecordingViewModel(
 
     fun transcriptionEngine(): TranscriptionEngineOption = _uiState.value.transcriptionEngine
 
-    fun setSpeakerCount(count: Int) {
-        com.carelipik.app.domain.transcription.SpeakerCount.validate(count)
-        _uiState.update { it.copy(speakerCount = count) }
-    }
-
-    fun speakerCount(): Int = _uiState.value.speakerCount
-
     fun setOnlineProcessingConsent(hasConsent: Boolean) {
         _uiState.update { it.copy(hasOnlineProcessingConsent = hasConsent) }
     }
@@ -303,8 +250,7 @@ class RecordingViewModel(
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             require(modelClass.isAssignableFrom(RecordingViewModel::class.java))
             return RecordingViewModel(
-                AndroidMicrophoneRecorder(applicationContext),
-                audioExporter = AndroidRecordingAudioExporter(applicationContext)
+                AndroidMicrophoneRecorder(applicationContext)
             ) as T
         }
     }

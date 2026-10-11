@@ -884,6 +884,27 @@ terminology requirements before production import. No export contains consultati
 
 ## Development rules
 
+### Local note model before debug launch
+
+Android Studio Run and `./gradlew assembleDebug` prepare Gemma 4, install the debug
+APK with `adb install -r`, then place its model in app-private storage before the
+build returns. Keep one authorized phone/emulator connected. Existing app data is
+preserved. Cached complete bundles are reused; initial setup downloads about 2 GB.
+Failures stop setup rather than allowing a successful launch with missing models.
+Speech and speaker model preparation remains part of APK packaging.
+
+Use `-Pcarelipik.noteModel=medgemma` or `all` to choose additional bundles. MedGemma
+requires Hugging Face access and `HF_TOKEN` for the first download. Never commit
+tokens or `.local-models`. ADB is resolved from the configured Android SDK.
+Use `-Pcarelipik.deviceSerial=SERIAL` when multiple devices are connected, and
+`-Pcarelipik.pythonCommand=PATH` to select Python.
+
+For an APK-only build without a connected device, explicitly exclude provisioning:
+`./gradlew assembleDebug -x :app:installModelsToDevice`. That APK alone does not
+contain the note model; provision it with `./gradlew :app:installModelsToDevice`
+before launch. This provisioning uses debug-only `run-as`; release distribution
+needs a separate model delivery mechanism.
+
 - Keep the main consultation flow functional offline.
 - Use MVVM with `ViewModel` and `StateFlow`.
 - Keep UI, domain logic, and infrastructure separated.
@@ -895,3 +916,34 @@ terminology requirements before production import. No export contains consultati
 See [`AGENTS.md`](AGENTS.md) for the complete repository guidelines.
 
 [`Presentation`](https://drive.google.com/file/d/1pT_5gudn0GTlpnxekA1Mbfcwol3dJ193/view?usp=sharing)
+
+Report and Prescription share one clinical draft and automatic structuring pass after
+transcript review. Switching tabs reuses that result. Local generation runs without
+uploading the transcript; automatic Gemini generation requires the consultation's
+explicit online-drafting consent. Discussed medicines, symptoms, and advice remain
+unaccepted references until the doctor adds them to the prescription.
+
+The recording engine picker also offers **Sarvam (English, patient name masked)**.
+It uses the name entered in Patient Details and a bundled English Zipformer
+keyword-spotting model (GigaSpeech 3.3M, INT8) to scan overlapping five-second
+windows locally, replace detected windows with low-amplitude white noise, and
+scan the scrubbed waveform again before uploading a separate WAV. One model
+session handles both scans. It runs on the phone CPU with two threads. English
+audio and names spelled with English letters are required; initials and
+unsupported names/languages block upload. Unavailable models, missing names,
+failed detection, and residual name matches block upload. Retries repeat masking; the
+temporary copy is deleted after transcription and the local original is retained.
+Sarvam credentials and the subsequent review/report/prescription flow are shared
+with the regular Sarvam option.
+
+This is approximate keyword detection of first names/surnames, not phoneme-level
+forced alignment. Conservative windows avoid relying on reset-relative token
+timestamps. It can remove nearby speech and miss differently pronounced names.
+A passing scan is not a guarantee that every
+identifier has been removed. The model is downloaded and integrity-checked by
+`preparePatientNameMaskingModel` before `preBuild` and bundled into the APK; the
+roughly 5.5 MB assets remain ignored by Git. First build needs internet. The old
+Whisper Tiny masking model is excluded from the APK. Positive device tests can
+use a locally generated synthetic WAV at
+`app/src/androidTest/assets/name-masking-synthetic.wav`; never use consultation
+audio. This optional fixture is ignored by Git.

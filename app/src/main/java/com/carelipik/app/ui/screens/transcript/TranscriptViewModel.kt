@@ -30,6 +30,10 @@ import com.carelipik.app.domain.transcription.TranscriptionEngineResolver
 import com.carelipik.app.domain.transcription.TranscriptionResult
 import com.carelipik.app.domain.transcription.TranscriptionLanguage
 import com.carelipik.app.domain.voice.DoctorVoiceRoleMatchResult
+import com.carelipik.app.domain.transcription.ProgressAwareTranscriptionEngine
+import com.carelipik.app.domain.transcription.TranscriptionStage
+import kotlinx.coroutines.ensureActive
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -55,11 +59,13 @@ class TranscriptViewModel(
     private var sourceAudioReferenceId: String? = null
     private var sourceLanguage: TranscriptionLanguage = TranscriptionLanguage.English
     private var sourceEngine: TranscriptionEngineOption = TranscriptionEngineOption.AssemblyAiUniversal
+    private var sourcePatientName = ""
 
     fun transcribe(
         audioPath: String,
         language: TranscriptionLanguage = TranscriptionLanguage.English,
-        engineOption: TranscriptionEngineOption = TranscriptionEngineOption.defaultFor(language)
+        engineOption: TranscriptionEngineOption = TranscriptionEngineOption.defaultFor(language),
+        patientName: String = ""
     ) {
         require(engineOption.supports(language)) {
             "${engineOption.displayName} does not support ${language.displayName}."
@@ -70,28 +76,41 @@ class TranscriptViewModel(
         sourceAudioPath = audioPath
         sourceLanguage = language
         sourceEngine = engineOption
+        sourcePatientName = patientName.trim()
         _uiState.value = TranscriptUiState(
             status = TranscriptStatus.Processing,
             language = language,
-            engine = engineOption
+            engine = engineOption,
+            transcriptionStage = if (engineOption == TranscriptionEngineOption.NameMaskedSaaras)
+                TranscriptionStage.PreprocessingAudio else null
         )
-        val engine = engineResolver.resolve(engineOption)
+        val engine = engineResolver.resolve(engineOption, sourcePatientName)
+        fun process(checkCancelled: () -> Unit): TranscriptionResult =
+            if (engineOption == TranscriptionEngineOption.NameMaskedSaaras && engine is ProgressAwareTranscriptionEngine) {
+                engine.transcribe(audioPath, language, { stage ->
+                    _uiState.update { state ->
+                        if (state.status == TranscriptStatus.Processing && state.engine == engineOption)
+                            state.copy(transcriptionStage = stage) else state
+                    }
+                }, checkCancelled)
+            } else engine.transcribe(audioPath, language)
         if (processAsynchronously) {
             viewModelScope.launch {
                 val dispatcher = if (engine.option.isOffline) Dispatchers.Default else Dispatchers.IO
                 val result = withContext(dispatcher) {
-                    engine.transcribe(audioPath, language)
+                    val requestContext = coroutineContext
+                    process { requestContext.ensureActive() }
                 }
                 applyResult(result)
             }
         } else {
-            val result = engine.transcribe(audioPath, language)
+            val result = process {}
             applyResult(result)
         }
     }
 
     fun retry() {
-        sourceAudioPath?.let { transcribe(it, sourceLanguage, sourceEngine) }
+        sourceAudioPath?.let { transcribe(it, sourceLanguage, sourceEngine, sourcePatientName) }
     }
 
     fun setTranscript(transcript: String) {
@@ -139,16 +158,23 @@ class TranscriptViewModel(
         _uiState.update {
             it.copy(isAnalyzingTerms = true, clinicalAnalysisWarning = null)
         }
+        fun analyzeSafely(): OnlineTranscriptReviewResult = try {
+            analyzer.analyze(state.transcript, state.language)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            OnlineTranscriptReviewResult.Failure(error.message ?: "Medical-term enhancement failed.")
+        }
         if (processAsynchronously) {
             viewModelScope.launch {
                 val result = withContext(Dispatchers.IO) {
-                    analyzer.analyze(state.transcript, state.language)
+                    analyzeSafely()
                 }
                 applyOnlineReview(result, state.transcript)
             }
         } else {
             applyOnlineReview(
-                result = analyzer.analyze(state.transcript, state.language),
+                result = analyzeSafely(),
                 analyzedTranscript = state.transcript
             )
         }
@@ -205,12 +231,14 @@ class TranscriptViewModel(
             updatedRoles[speakerId] = role
             if (state.speakerIds.size == 2) {
                 val otherSpeaker = state.speakerIds.first { it != speakerId }
-                updatedRoles[otherSpeaker] = when (role) {
-                    SpeakerRole.Doctor -> SpeakerRole.Patient
-                    SpeakerRole.Patient -> SpeakerRole.Doctor
-                    SpeakerRole.Unassigned,
-                    SpeakerRole.OtherParticipant,
-                    SpeakerRole.Noise -> updatedRoles[otherSpeaker] ?: SpeakerRole.Unassigned
+                if (updatedRoles[otherSpeaker] !in setOf(SpeakerRole.OtherParticipant, SpeakerRole.Noise)) {
+                    updatedRoles[otherSpeaker] = when (role) {
+                        SpeakerRole.Doctor -> SpeakerRole.Patient
+                        SpeakerRole.Patient -> SpeakerRole.Doctor
+                        SpeakerRole.Unassigned,
+                        SpeakerRole.OtherParticipant,
+                        SpeakerRole.Noise -> updatedRoles[otherSpeaker] ?: SpeakerRole.Unassigned
+                    }
                 }
             }
             state.copy(speakerRoles = updatedRoles, hasAttemptedContinue = false)
@@ -391,6 +419,7 @@ class TranscriptViewModel(
         sourceAudioReferenceId = null
         sourceLanguage = TranscriptionLanguage.English
         sourceEngine = TranscriptionEngineOption.AssemblyAiUniversal
+        sourcePatientName = ""
         _uiState.value = TranscriptUiState()
     }
 

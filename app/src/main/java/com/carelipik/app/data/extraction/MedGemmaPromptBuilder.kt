@@ -20,11 +20,13 @@ internal object MedGemmaPromptBuilder {
             the doctor now; scan every doctor turn and include each explicit new prescription even
             when some attributes are missing. Extract stated strength, dose, route, frequency, and
             duration separately. Exclude existing medicines, examples, and pharmacy suggestions.
+            Include all explicitly discussed medicines (current/past included) in discussed_medications as references, not prescriptions. Put discussed symptoms in the appropriate subjective/history sections.
+            ${PrescriptionContextJson.instruction}
             Return one COMPACT JSON object only, without markdown or repeated facts:
-            {"visit_reason":"","sections":[{"id":"","title":"","content":"","source_turn_ids":["T1"]}],
+            {"prescription_context":{"medicine_suggestions":[{"name":"","strength":"","dose":"","frequency":"","duration":"","instructions":"","source_turn_ids":["T1"]}],"symptoms":[{"content":"","source_turn_ids":["T1"]}],"advice":[],"precautions":[],"investigations":[],"follow_up":[]},"visit_reason":"","sections":[{"id":"","title":"","content":"","source_turn_ids":["T1"]}],
             "prescribed_medications":[{"name":"","generic_name":"","strength":"",
             "dose":"","route":"","frequency":"","duration":"","instructions":"",
-            "source_turn_ids":["T1"],"source_evidence":""}],"coverage_warnings":[]}
+            "source_turn_ids":["T1"],"source_evidence":""}],"discussed_medications":[{"name":"","strength":"","dose":"","frequency":"","duration":"","source_turn_ids":["T1"]}],"coverage_warnings":[]}
             Valid section IDs: $requiredSections. Evidence IDs must directly support each claim.
             visit_reason must be a concise presenting symptom, injury, or concern with stated
             onset/duration only. Exclude greetings, names, staff actions, handoffs, and small talk.
@@ -92,8 +94,10 @@ internal object MedGemmaPromptBuilder {
             providerWarnings.optString(index).trim().takeIf(String::isNotBlank)?.let(warnings::add)
         }
         return JSONObject()
+            .put("prescription_context", PrescriptionContextJson.normalize(raw.optJSONObject("prescription_context"), request.reviewedTranscript))
             .put("visit_reason", raw.optString("visit_reason").trim())
             .put("sections", sections)
+            .put("discussed_medications", raw.optJSONArray("discussed_medications") ?: JSONArray())
             .put("prescribed_medications", medications)
             .put("coverage_warnings", JSONArray(warnings.distinct()))
             .toString()
@@ -108,17 +112,7 @@ internal object MedGemmaPromptBuilder {
     private fun indexedTurnIds(transcript: String): Set<String> =
         transcriptTurns(transcript).indices.mapTo(mutableSetOf()) { "T${it + 1}" }
 
-    private fun transcriptTurns(transcript: String): List<String> {
-        val explicitTurns = Regex("(?m)(?=^(?:Doctor|Patient|Speaker\\s+[^:]+):)")
-            .split(transcript.trim())
-            .map(String::trim)
-            .filter(String::isNotBlank)
-        val turns = if (explicitTurns.size > 1) explicitTurns else transcript.lineSequence()
-            .map(String::trim)
-            .filter(String::isNotBlank)
-            .toList()
-        return turns
-    }
+    private fun transcriptTurns(transcript: String): List<String> = PrescriptionContextJson.turns(transcript)
 
     private fun JSONArray?.validTurnIds(validIds: Set<String>): JSONArray = JSONArray(
         toStringList().filter { it in validIds }.distinct()
@@ -151,16 +145,24 @@ internal object MedGemmaPromptBuilder {
         // never guess missing syntax or clinical content.
         val knownSectionIds = request.noteFormat.sectionDefinitions.mapTo(mutableSetOf()) { it.id }
         val recoveredSections = JSONArray()
+        var recoveredContext: JSONObject? = null
+        val recoveredMedicines = JSONArray()
         balancedJsonObjects(rawResponse).forEach { candidate ->
             val item = runCatching { JSONObject(candidate) }.getOrNull() ?: return@forEach
+            if (item.has("medicine_suggestions")) recoveredContext = item
+            if (item.has("name") && item.has("source_turn_ids")) recoveredMedicines.put(item)
             if (item.optString("id") in knownSectionIds && item.has("content")) {
                 recoveredSections.put(item)
             }
         }
-        require(recoveredSections.length() > 0) {
+        if (recoveredContext == null && recoveredMedicines.length() > 0) {
+            recoveredContext = JSONObject().put("medicine_suggestions", recoveredMedicines)
+        }
+        require(recoveredSections.length() > 0 || recoveredContext != null) {
             "The on-device model did not return recoverable structured sections."
         }
         return JSONObject()
+            .put("prescription_context", recoveredContext ?: JSONObject())
             .put("sections", recoveredSections)
             .put("prescribed_medications", JSONArray())
             .put(

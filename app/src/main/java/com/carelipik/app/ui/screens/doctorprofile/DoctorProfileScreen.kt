@@ -96,7 +96,8 @@ fun DoctorProfileScreen(
     onDeleteApiKey: (ApiProvider) -> Unit = {},
     onBack: () -> Unit,
     onSave: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    letterheadContent: @Composable () -> Unit = {}
 ) {
     val context = LocalContext.current
     var permissionDenied by remember { mutableStateOf(false) }
@@ -241,6 +242,7 @@ fun DoctorProfileScreen(
             onSave = onSaveApiKey,
             onDelete = onDeleteApiKey
         )
+        letterheadContent()
         VoiceRecognitionCard(
             uiState = voiceUiState,
             permissionDenied = permissionDenied,

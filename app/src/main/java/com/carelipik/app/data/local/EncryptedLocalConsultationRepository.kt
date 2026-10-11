@@ -167,6 +167,30 @@ class EncryptedLocalConsultationRepository(context: Context) : ConsultationRepos
                 output.writeString(item.electronicSignerName)
                 output.writeLong(item.electronicallySignedAtMillis ?: -1L)
                 output.writeString(item.handwrittenSignature)
+                require(item.draft.prescriptionContext.size <= MAX_SECTIONS)
+                output.writeInt(item.draft.prescriptionContext.size)
+                item.draft.prescriptionContext.forEach { section ->
+                    output.writeString(section.id)
+                    output.writeString(section.title)
+                    output.writeString(section.content)
+                    require(section.sourceTurnIds.size <= MAX_SOURCE_TURNS)
+                    output.writeInt(section.sourceTurnIds.size)
+                    section.sourceTurnIds.forEach { output.writeString(it) }
+                }
+                require(item.draft.discussedMedications.size <= MAX_MEDICATIONS)
+                output.writeInt(item.draft.discussedMedications.size)
+                item.draft.discussedMedications.forEach { medicine ->
+                    output.writeString(medicine.name)
+                    output.writeString(medicine.genericName)
+                    output.writeString(medicine.strength)
+                    output.writeString(medicine.dose)
+                    output.writeString(medicine.route)
+                    output.writeString(medicine.frequency)
+                    output.writeString(medicine.duration)
+                    output.writeString(medicine.instructions)
+                    output.writeString(medicine.sourceEvidence)
+                    output.writeBoolean(medicine.isDoctorReviewed)
+                }
             }
             bytes.toByteArray()
         }
@@ -177,7 +201,8 @@ class EncryptedLocalConsultationRepository(context: Context) : ConsultationRepos
                 1 -> input.decodeVersionOne()
                 2 -> input.decodeVersionTwo()
                 3 -> input.decodeVersionThree()
-                FORMAT_VERSION -> input.decodeVersionFour()
+                4 -> input.decodeVersionFour()
+                FORMAT_VERSION -> input.decodeVersionFive()
                 else -> error("Unsupported consultation format $version.")
             }
         }
@@ -274,6 +299,20 @@ class EncryptedLocalConsultationRepository(context: Context) : ConsultationRepos
         )
     }
 
+    private fun DataInputStream.decodeVersionFive(): ApprovedConsultation {
+        val previous = decodeVersionFour()
+        val context = List(readBoundedCount(MAX_SECTIONS)) {
+            ClinicalNoteSection(readString(), readString(), readString(),
+                List(readBoundedCount(MAX_SOURCE_TURNS)) { readString() })
+        }
+        val discussed = List(readBoundedCount(MAX_MEDICATIONS)) {
+            MedicationDraft(name = readString(), genericName = readString(), strength = readString(),
+                dose = readString(), route = readString(), frequency = readString(), duration = readString(),
+                instructions = readString(), sourceEvidence = readString(), isDoctorReviewed = readBoolean())
+        }
+        return previous.copy(draft = previous.draft.copy(prescriptionContext = context, discussedMedications = discussed))
+    }
+
     private fun DataOutputStream.writeString(value: String) {
         val encoded = value.toByteArray(Charsets.UTF_8)
         require(encoded.size <= MAX_STORED_STRING_BYTES) { "Consultation text is too large." }
@@ -294,7 +333,7 @@ class EncryptedLocalConsultationRepository(context: Context) : ConsultationRepos
     companion object {
         const val DIRECTORY_NAME = "consultation_history"
         private const val FILE_EXTENSION = "clh"
-        private const val FORMAT_VERSION = 4
+        private const val FORMAT_VERSION = 5
         private const val MAX_STORED_STRING_BYTES = 4 * 1024 * 1024
         private const val MAX_SECTIONS = 32
         private const val MAX_SOURCE_TURNS = 512

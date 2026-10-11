@@ -55,6 +55,7 @@ class ClinicalDraftViewModel(
         patientAge: String = "",
         visitReason: String = ""
     ) {
+        viewModelScope.coroutineContext.cancelChildren()
         sourceTranscript = transcript
         sourceLanguage = language
         sourceSpecialtyName = specialtyName.trim()
@@ -153,6 +154,10 @@ class ClinicalDraftViewModel(
             }
             return
         }
+        if (!_uiState.value.hasOnlineGenerationConsent) {
+            _uiState.update { it.copy(onlineGenerationError = "Consent is required before sending the reviewed transcript to Gemini.") }
+            return
+        }
         if (!isOnline()) {
             _uiState.update {
                 it.copy(
@@ -162,7 +167,7 @@ class ClinicalDraftViewModel(
             }
             return
         }
-        if (_uiState.value.isGeneratingOnline) return
+        if (_uiState.value.isGeneratingOnline || _uiState.value.isGeneratingOnDevice) return
         val currentDraft = _uiState.value.draft
         val request = ClinicalNoteGenerationRequest(
             reviewedTranscript = transcript,
@@ -232,7 +237,7 @@ class ClinicalDraftViewModel(
             }
             return
         }
-        if (_uiState.value.isGeneratingOnDevice) return
+        if (_uiState.value.isGeneratingOnDevice || _uiState.value.isGeneratingOnline) return
         val currentDraft = _uiState.value.draft
         val request = ClinicalNoteGenerationRequest(
             reviewedTranscript = transcript,
@@ -465,7 +470,7 @@ class ClinicalDraftViewModel(
     private fun generatePreferred(
         request: ClinicalNoteGenerationRequest
     ): ClinicalNoteGenerationResult? {
-        if (isOnline()) {
+        if (isOnline() && _uiState.value.hasOnlineGenerationConsent) {
             val onlineResult = onlineEngine?.generate(request)
             if (onlineResult is ClinicalNoteGenerationResult.Success) return onlineResult
         }

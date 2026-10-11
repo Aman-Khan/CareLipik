@@ -13,6 +13,8 @@ data class ClinicalDraft(
     val specialtyName: String = "",
     val structuredSections: List<ClinicalNoteSection> = emptyList(),
     val medications: List<MedicationDraft> = emptyList(),
+    val discussedMedications: List<MedicationDraft> = emptyList(),
+    val prescriptionContext: List<ClinicalNoteSection> = emptyList(),
     val coverageWarnings: List<String> = emptyList(),
     val generationSource: ClinicalNoteGenerationSource =
         ClinicalNoteGenerationSource.OfflineTranscript
@@ -26,7 +28,9 @@ data class ClinicalDraft(
             planNotes
         ).any(String::isNotBlank) ||
             structuredSections.any { it.content.isNotBlank() } ||
-            medications.any { it.hasContent }
+            medications.any { it.hasContent } ||
+            discussedMedications.any { it.hasContent } ||
+            prescriptionContext.any { it.content.isNotBlank() }
 
     val effectiveSections: List<ClinicalNoteSection>
         get() = structuredSections.ifEmpty {

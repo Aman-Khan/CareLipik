@@ -1,5 +1,6 @@
 import java.util.Properties
 import java.util.zip.ZipFile
+import com.android.build.api.artifact.SingleArtifact
 
 plugins {
     alias(libs.plugins.android.application)
@@ -21,13 +22,16 @@ val extractSherpaOnnxRuntime by tasks.registering(Copy::class) {
 val extractApolloOnnxRuntime by tasks.registering {
     inputs.files(apolloOnnxRuntime)
     outputs.dir(generatedApolloOnnxRuntime)
+    val outputRoot = generatedApolloOnnxRuntime.get().asFile.canonicalFile
+    val expectedBuildRoot = layout.buildDirectory.get().asFile.canonicalFile
+    val archiveFile = apolloOnnxRuntime.singleFile
     doLast {
-        val outputRoot = generatedApolloOnnxRuntime.get().asFile
+        check(outputRoot.toPath().startsWith(expectedBuildRoot.toPath()) && outputRoot != expectedBuildRoot)
         outputRoot.deleteRecursively()
         val dependencyName = "libonnxruntime.so".encodeToByteArray()
         val isolatedName = "libapollo_ortx.so".encodeToByteArray()
         check(dependencyName.size == isolatedName.size)
-        ZipFile(apolloOnnxRuntime.singleFile).use { archive ->
+        ZipFile(archiveFile).use { archive ->
             archive.entries().asSequence()
                 .filter { entry ->
                     entry.name.matches(
@@ -176,4 +180,58 @@ dependencies {
 
 tasks.named("preBuild") {
     dependsOn(extractSherpaOnnxRuntime, extractApolloOnnxRuntime)
+}
+
+// Android Studio builds assembleDebug before deploying and launching. Stage the model
+// in app-private storage first; the subsequent replace-install preserves that storage.
+val modelPythonCommand = providers.gradleProperty("carelipik.pythonCommand")
+    .orElse(if (rootProject.file("C:/Python312/python.exe").isFile) "C:/Python312/python.exe" else "python")
+val preparePatientNameMaskingModel by tasks.registering(Exec::class) {
+    group = "build setup"
+    description = "Download and verify the bundled on-device patient-name scanner"
+    workingDir(rootProject.projectDir)
+    commandLine(modelPythonCommand.get(), rootProject.file("tools/prepare_name_masking_model.py").absolutePath)
+}
+tasks.named("preBuild") { dependsOn(preparePatientNameMaskingModel) }
+val selectedNoteModel = providers.gradleProperty("carelipik.noteModel").orElse("gemma4")
+val modelInstallerScript = rootProject.file("tools/download_and_install_models.py")
+val modelSdkPath = careLipikLocalProperties.getProperty("sdk.dir")
+    ?: providers.environmentVariable("ANDROID_SDK_ROOT")
+        .orElse(providers.environmentVariable("ANDROID_HOME")).getOrElse("")
+val modelDeviceSerial = providers.gradleProperty("carelipik.deviceSerial").orNull
+
+val prepareNoteModel by tasks.registering(Exec::class) {
+    group = "build setup"
+    description = "Download and validate the selected local report/prescription model"
+    workingDir(rootProject.projectDir)
+    commandLine(modelPythonCommand.get(), modelInstallerScript.absolutePath,
+        "--model", selectedNoteModel.get(), "--download-only")
+    // Always validate cached bundles; the helper skips completed downloads.
+}
+
+val installModelsToDevice by tasks.registering(Exec::class) {
+    group = "install"
+    description = "Install the debug APK and required note model before app launch"
+    dependsOn("assembleDebug", prepareNoteModel)
+    workingDir(rootProject.projectDir)
+    environment("ANDROID_SDK_ROOT", modelSdkPath)
+    val arguments = mutableListOf(modelPythonCommand.get(), modelInstallerScript.absolutePath,
+        "--model", selectedNoteModel.get(), "--install-only")
+    modelDeviceSerial?.let { arguments.addAll(listOf("--serial", it)) }
+    commandLine(arguments)
+}
+
+androidComponents.onVariants(androidComponents.selector().withBuildType("debug")) { variant ->
+    val apkArtifact = variant.artifacts.get(SingleArtifact.APK)
+    installModelsToDevice.configure {
+        dependsOn(apkArtifact)
+        args("--apk-metadata", apkArtifact.get().asFile.resolve("output-metadata.json").absolutePath)
+    }
+}
+
+tasks.matching { it.name == "packageDebug" }.configureEach {
+    dependsOn(prepareNoteModel)
+}
+tasks.matching { it.name == "assembleDebug" || it.name == "installDebug" }.configureEach {
+    finalizedBy(installModelsToDevice)
 }

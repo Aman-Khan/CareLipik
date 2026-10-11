@@ -101,6 +101,9 @@ data class HybridTranscriptionReview(
 data class VerifiedAudioInterval(val startMs: Long, val endMs: Long, val calls: Int)
 
 enum class TranscriptionStage(val displayName: String) {
+    PreprocessingAudio("Preprocessing audio before sending it to Sarvam…"),
+    SarvamTranscription("Sending masked audio to Sarvam for transcription…"),
+    RedactingPatientName("Finalizing the transcript…"),
     Whisper("Transcribing with Whisper on this device…"),
     MedAsrVerification("Checking selected English audio with MedASR…"),
     Comparing("Comparing Whisper and MedASR suggestions…")

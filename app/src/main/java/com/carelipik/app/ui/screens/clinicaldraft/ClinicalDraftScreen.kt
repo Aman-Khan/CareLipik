@@ -20,6 +20,11 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material3.FilterChip
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -45,8 +50,10 @@ fun ClinicalDraftScreen(
     onRetry: () -> Unit,
     onBack: () -> Unit,
     onContinue: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    prescriptionContent: @Composable () -> Unit = {}
 ) {
+    var showPrescription by rememberSaveable { mutableStateOf(false) }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -57,7 +64,7 @@ fun ClinicalDraftScreen(
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
         ConsultationScreenHeader(
-            title = "Clinical draft",
+            title = "Report and prescription",
             subtitle = "Turn the reviewed transcript into structured notes, then verify every section.",
             currentStep = 5,
             totalSteps = 7,
@@ -73,60 +80,77 @@ fun ClinicalDraftScreen(
                 onRetry = onRetry
             )
             ClinicalDraftStatus.Ready -> {
-                DraftField(
-                    label = "Patient age from reviewed transcript",
-                    value = uiState.draft.patientAge,
-                    onValueChanged = onPatientAgeChanged,
-                    minLines = 1
-                )
-                NoteFormatOptions(
-                    selected = uiState.draft.noteFormat,
-                    onSelected = onNoteFormatSelected
-                )
-                NoteLanguageOptions(
-                    selected = uiState.draft.noteLanguage,
-                    onSelected = onNoteLanguageSelected
-                )
-                if (uiState.draft.noteFormat == ClinicalNoteFormat.CustomSpecialty) {
-                    DraftField(
-                        label = "Clinical specialty",
-                        value = uiState.draft.specialtyName,
-                        onValueChanged = onSpecialtyNameChanged,
-                        minLines = 1
-                    )
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    FilterChip(selected = !showPrescription, onClick = { showPrescription = false }, label = { Text("Report") })
+                    FilterChip(selected = showPrescription, onClick = { showPrescription = true }, label = { Text("Prescription") })
                 }
-                StructuredDraftStatusCard(
-                    generationSource = "MedGemma demo draft",
+                MedGemmaGenerationCard(
+                    isGenerating = uiState.isGeneratingOnDevice || uiState.isGeneratingOnline,
+                    generationSource = uiState.draft.generationSource.displayName,
                     error = uiState.onDeviceGenerationError,
                     onGenerate = onGenerateWithMedGemma
                 )
-                if (uiState.draft.coverageWarnings.isNotEmpty()) {
-                    CoverageWarnings(uiState.draft.coverageWarnings)
-                }
-                Text(
-                    "${uiState.draft.noteFormat.displayName} sections",
-                    style = MaterialTheme.typography.titleMedium
+                GeminiGenerationCard(
+                    hasConsent = uiState.hasOnlineGenerationConsent,
+                    isGenerating = uiState.isGeneratingOnline || uiState.isGeneratingOnDevice,
+                    generationSource = uiState.draft.generationSource.displayName,
+                    error = uiState.onlineGenerationError,
+                    onConsentChanged = onOnlineGenerationConsentChanged,
+                    onGenerate = onGenerateWithGemini
                 )
-                uiState.draft.structuredSections.forEachIndexed { index, section ->
+                if (showPrescription) {
+                    prescriptionContent()
+                } else {
                     DraftField(
-                        label = section.title,
-                        value = section.content,
-                        onValueChanged = { onSectionChanged(index, it) }
+                        label = "Patient age from reviewed transcript",
+                        value = uiState.draft.patientAge,
+                        onValueChanged = onPatientAgeChanged,
+                        minLines = 1
                     )
-                    if (section.sourceTurnIds.isNotEmpty()) {
-                        Text(
-                            "Transcript evidence: ${section.sourceTurnIds.joinToString()}",
-                            style = MaterialTheme.typography.bodySmall
+                    NoteFormatOptions(
+                        selected = uiState.draft.noteFormat,
+                        onSelected = onNoteFormatSelected
+                    )
+                    NoteLanguageOptions(
+                        selected = uiState.draft.noteLanguage,
+                        onSelected = onNoteLanguageSelected
+                    )
+                    if (uiState.draft.noteFormat == ClinicalNoteFormat.CustomSpecialty) {
+                        DraftField(
+                            label = "Clinical specialty",
+                            value = uiState.draft.specialtyName,
+                            onValueChanged = onSpecialtyNameChanged,
+                            minLines = 1
                         )
                     }
+                    if (uiState.draft.coverageWarnings.isNotEmpty()) {
+                        CoverageWarnings(uiState.draft.coverageWarnings)
+                    }
+                    Text(
+                        "${uiState.draft.noteFormat.displayName} sections",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    uiState.draft.structuredSections.forEachIndexed { index, section ->
+                        DraftField(
+                            label = section.title,
+                            value = section.content,
+                            onValueChanged = { onSectionChanged(index, it) }
+                        )
+                        if (section.sourceTurnIds.isNotEmpty()) {
+                            Text(
+                                "Transcript evidence: ${section.sourceTurnIds.joinToString()}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                    MedicationEditor(
+                        medications = uiState.draft.medications,
+                        onAdd = onAddMedication,
+                        onChanged = onMedicationChanged,
+                        onRemove = onRemoveMedication
+                    )
+                    ReadOnlySourceTranscript(uiState.draft.reviewedTranscript)
                 }
-                MedicationEditor(
-                    medications = uiState.draft.medications,
-                    onAdd = onAddMedication,
-                    onChanged = onMedicationChanged,
-                    onRemove = onRemoveMedication
-                )
-                ReadOnlySourceTranscript(uiState.draft.reviewedTranscript)
                 uiState.draftError?.let { error ->
                     Text(error, color = MaterialTheme.colorScheme.error)
                 }
@@ -139,7 +163,8 @@ fun ClinicalDraftScreen(
 }
 
 @Composable
-private fun StructuredDraftStatusCard(
+private fun MedGemmaGenerationCard(
+    isGenerating: Boolean,
     generationSource: String,
     error: String?,
     onGenerate: () -> Unit
@@ -154,23 +179,20 @@ private fun StructuredDraftStatusCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text("MedGemma structured clinical note", style = MaterialTheme.typography.titleMedium)
-            Text("Draft status: $generationSource")
+            Text("On-device clinical note", style = MaterialTheme.typography.titleMedium)
+            Text("Current source: $generationSource")
             Text(
-                "The reviewed transcript was organized into editable clinical sections. " +
-                    "The doctor must verify every section before approval.",
-                style = MaterialTheme.typography.bodySmall
-            )
-            Text(
-                "Demo build: generation is cloud-assisted when internet is available and " +
-                    "falls back to the on-device model when offline.",
+                "The reviewed transcript stays on this phone. The installed model creates an unverified " +
+                    "draft with transcript evidence IDs; the doctor must review every section.",
                 style = MaterialTheme.typography.bodySmall
             )
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            if (error != null) {
-                OutlinedButton(onClick = onGenerate, modifier = Modifier.fillMaxWidth()) {
-                    Text("Retry MedGemma on device")
-                }
+            Button(
+                onClick = onGenerate,
+                enabled = !isGenerating,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (isGenerating) "Generating on device…" else "Generate on device")
             }
         }
     }
@@ -423,6 +445,52 @@ private fun DraftError(message: String, onRetry: () -> Unit) {
             Text("Draft unavailable", style = MaterialTheme.typography.titleMedium)
             Text(message)
             OutlinedButton(onClick = onRetry) { Text("Try again") }
+        }
+    }
+}
+
+@Composable
+private fun GeminiGenerationCard(
+    hasConsent: Boolean,
+    isGenerating: Boolean,
+    generationSource: String,
+    error: String?,
+    onConsentChanged: (Boolean) -> Unit,
+    onGenerate: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("Gemini structured note", style = MaterialTheme.typography.titleMedium)
+            Text("Current source: $generationSource")
+            Text(
+                "Only the reviewed transcript and limited consultation metadata are sent. " +
+                    "Audio is never sent. The result remains an unverified draft.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = hasConsent,
+                    onCheckedChange = onConsentChanged,
+                    enabled = !isGenerating
+                )
+                Text("I have consent to send this reviewed transcript for online drafting")
+            }
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            Button(
+                onClick = onGenerate,
+                enabled = hasConsent && !isGenerating,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (isGenerating) "Generating…" else "Generate selected note with Gemini")
+            }
         }
     }
 }

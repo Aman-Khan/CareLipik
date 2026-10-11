@@ -22,21 +22,50 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TranscriptViewModelTest {
-    @Test
-    fun assignedRoles_updateDisplayedTranscriptAndPreserveRolesWhenEdited() {
-        val model = TranscriptViewModel(processAsynchronously = false)
-        model.setTranscript("Speaker 1: Synthetic hello\nSpeaker 2: Synthetic reply\nSpeaker 3: Synthetic comment")
-        model.assignSpeakerRole("speaker-1", SpeakerRole.Doctor)
-        model.assignSpeakerRole("speaker-2", SpeakerRole.Patient)
-        model.assignSpeakerRole("speaker-3", SpeakerRole.Other)
-        assertEquals("Doctor: Synthetic hello\nPatient: Synthetic reply\nOther (Person 3): Synthetic comment",
-            model.uiState.value.labelProjection.text)
-        model.setDisplayedTranscript(model.uiState.value.labelProjection.text.replace("reply", "edited reply"))
-        assertEquals(listOf("speaker-1", "speaker-2", "speaker-3"), model.uiState.value.speakerIds)
-        assertEquals(SpeakerRole.Patient, model.uiState.value.speakerRoles["speaker-2"])
-        assertTrue(model.transcriptText().contains("Patient: Synthetic edited reply"))
+    @Test fun maskedEngineProgress_updatesLoadingStateAndClearsAfterCompletion() {
+        lateinit var model: TranscriptViewModel
+        val engine = object : com.carelipik.app.domain.transcription.ProgressAwareTranscriptionEngine {
+            override val option = TranscriptionEngineOption.NameMaskedSaaras
+            override fun transcribe(audioPath: String, language: TranscriptionLanguage): TranscriptionResult =
+                error("Progress overload must be used")
+            override fun transcribe(audioPath: String, language: TranscriptionLanguage,
+                onProgress: (com.carelipik.app.domain.transcription.TranscriptionStage) -> Unit,
+                checkCancelled: () -> Unit): TranscriptionResult {
+                assertEquals(com.carelipik.app.domain.transcription.TranscriptionStage.PreprocessingAudio,
+                    model.uiState.value.transcriptionStage)
+                onProgress(com.carelipik.app.domain.transcription.TranscriptionStage.SarvamTranscription)
+                assertEquals(com.carelipik.app.domain.transcription.TranscriptionStage.SarvamTranscription,
+                    model.uiState.value.transcriptionStage)
+                return TranscriptionResult.Success("Synthetic speech")
+            }
+        }
+        model = TranscriptViewModel(engineResolver = TranscriptionEngineResolver { engine }, processAsynchronously = false)
+        model.transcribe("synthetic.wav", TranscriptionLanguage.English, TranscriptionEngineOption.NameMaskedSaaras, "Test Person")
+        assertEquals(TranscriptStatus.Ready, model.uiState.value.status)
+        assertEquals(null, model.uiState.value.transcriptionStage)
     }
 
+    @Test
+    fun maskedRetry_keepsPatientNameAndResetDoesNotReuseIt() {
+        val names = mutableListOf<String>()
+        val engine = StubEngine(TranscriptionResult.Failure("Synthetic failure"))
+        val resolver = object : TranscriptionEngineResolver {
+            override fun resolve(option: TranscriptionEngineOption): AudioTranscriptionEngine = engine
+            override fun resolve(option: TranscriptionEngineOption, patientName: String): AudioTranscriptionEngine {
+                names += patientName
+                return engine
+            }
+        }
+        val model = TranscriptViewModel(engineResolver = resolver, processAsynchronously = false)
+        model.transcribe("synthetic.wav", TranscriptionLanguage.English, TranscriptionEngineOption.NameMaskedSaaras, " Test Person ")
+        model.retry()
+        assertEquals(listOf("Test Person", "Test Person"), names)
+        model.resetForNewConsultation()
+        model.retry()
+        assertEquals(2, names.size)
+        model.transcribe("another.wav", TranscriptionLanguage.English, TranscriptionEngineOption.NameMaskedSaaras)
+        assertEquals("", names.last())
+    }
     @Test
     fun enhancementException_clearsLoaderAndKeepsTranscript() {
         lateinit var model: TranscriptViewModel
@@ -53,36 +82,6 @@ class TranscriptViewModelTest {
         assertEquals("Synthetic consultation", model.uiState.value.transcript)
         assertTrue(model.uiState.value.clinicalAnalysisWarning!!.contains("Synthetic connection failure"))
     }
-    @Test
-    fun missingThirdSpeaker_exposesIncompleteSeparationWarning() {
-        val viewModel = TranscriptViewModel(engineResolver = resolver(StubEngine(
-            TranscriptionResult.Success("Synthetic conversation", segments = listOf(
-                TranscriptSegment("speaker-1", "Synthetic first turn"),
-                TranscriptSegment("speaker-2", "Synthetic second turn")
-            ))
-        )), processAsynchronously = false)
-        viewModel.transcribe("/private/test.wav", speakerCount = 3)
-        assertTrue(viewModel.uiState.value.speakerSeparationWarning!!.contains("selected 3"))
-        assertTrue(viewModel.uiState.value.speakerSeparationWarning!!.contains("2 speaker groups"))
-    }
-
-    @Test
-    fun selectedSpeakerCount_isRetainedWhenRetrying() {
-        val counts = mutableListOf<Int>()
-        val engine = StubEngine(TranscriptionResult.Success("Synthetic transcript"))
-        val configuredResolver = object : TranscriptionEngineResolver {
-            override fun resolve(option: TranscriptionEngineOption): AudioTranscriptionEngine = engine
-            override fun resolve(option: TranscriptionEngineOption, speakerCount: Int): AudioTranscriptionEngine {
-                counts += speakerCount
-                return engine
-            }
-        }
-        val viewModel = TranscriptViewModel(engineResolver = configuredResolver, processAsynchronously = false)
-        viewModel.transcribe("/private/test.wav", speakerCount = 4)
-        viewModel.retry()
-        assertEquals(listOf(4, 4), counts)
-    }
-
     @Test
     fun successfulTranscription_isReadyForReview() {
         val viewModel = TranscriptViewModel(
@@ -433,56 +432,13 @@ class TranscriptViewModelTest {
     }
 
     @Test
-    fun fourPeople_canAssignAdditionalRolesAndRenameWithoutLosingTurns() {
-        val viewModel = TranscriptViewModel(processAsynchronously = false)
-        val transcript = (1..4).joinToString("\n\n") { "Speaker $it: Synthetic greeting $it" }
-        viewModel.setTranscript(transcript)
-        assertFalse(viewModel.validateForContinue())
-
-        viewModel.assignSpeakerRole("speaker-1", SpeakerRole.Doctor)
-        viewModel.assignSpeakerRole("speaker-2", SpeakerRole.Patient)
-        viewModel.assignSpeakerRole("speaker-3", SpeakerRole.Other)
-        viewModel.assignSpeakerRole("speaker-4", SpeakerRole.Other)
-        viewModel.setSpeakerName("speaker-3", "Synthetic attendant")
-
-        assertTrue(viewModel.validateForContinue())
-        assertEquals(SpeakerRole.Other, viewModel.uiState.value.speakerRoles["speaker-3"])
-        assertEquals(SpeakerRole.Other, viewModel.uiState.value.speakerRoles["speaker-4"])
-        assertEquals("Other (Person 4)", viewModel.uiState.value.speakerLabel("speaker-4"))
-        assertTrue(viewModel.transcriptText().contains("Synthetic attendant (Other): Synthetic greeting 3"))
-        assertTrue(viewModel.transcriptText().contains("Other (Person 4): Synthetic greeting 4"))
-        assertEquals(transcript, viewModel.uiState.value.transcript)
-
-        viewModel.setTranscript(transcript.replace("greeting 3", "reply 3"))
-        assertEquals("Synthetic attendant", viewModel.uiState.value.speakerNames["speaker-3"])
-        viewModel.setSpeakerName("speaker-3", "")
-        assertEquals("Other (Person 3)", viewModel.uiState.value.speakerLabel("speaker-3"))
-        viewModel.resetForNewConsultation()
-        assertTrue(viewModel.uiState.value.speakerNames.isEmpty())
-    }
-
-    @Test
-    fun renamingDoctor_preservesRoleAndIgnoresUnknownSpeaker() {
-        val viewModel = TranscriptViewModel(processAsynchronously = false)
-        viewModel.setTranscript("Speaker 1: Hello\nSpeaker 2: Welcome")
-        viewModel.assignSpeakerRole("speaker-1", SpeakerRole.Doctor)
-        viewModel.setSpeakerName("speaker-1", "Synthetic doctor")
-        viewModel.setSpeakerName("missing", "Ignored")
-
-        assertTrue(viewModel.transcriptText().startsWith("Synthetic doctor (Doctor):"))
-        assertFalse(viewModel.uiState.value.speakerNames.containsKey("missing"))
-        viewModel.setTranscript("Speaker 2: Welcome")
-        assertFalse(viewModel.uiState.value.speakerNames.containsKey("speaker-1"))
-    }
-
-    @Test
     fun assigningDoctor_keepsExplicitOtherRoleForSecondPerson() {
         val viewModel = TranscriptViewModel(processAsynchronously = false)
         viewModel.setTranscript("Speaker 1: Hello\nSpeaker 2: Welcome")
-        viewModel.assignSpeakerRole("speaker-2", SpeakerRole.Other)
+        viewModel.assignSpeakerRole("speaker-2", SpeakerRole.OtherParticipant)
         viewModel.assignSpeakerRole("speaker-1", SpeakerRole.Doctor)
 
-        assertEquals(SpeakerRole.Other, viewModel.uiState.value.speakerRoles["speaker-2"])
+        assertEquals(SpeakerRole.OtherParticipant, viewModel.uiState.value.speakerRoles["speaker-2"])
     }
 
     @Test

@@ -9,4 +9,5 @@
     <cache-path
         name="signature_capture"
         path="signature_capture/" />
+    <cache-path name="letterhead_capture" path="letterhead_capture/" />
 </paths>

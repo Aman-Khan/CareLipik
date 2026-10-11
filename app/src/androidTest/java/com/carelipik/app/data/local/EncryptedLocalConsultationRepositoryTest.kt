@@ -20,6 +20,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EncryptedLocalConsultationRepositoryTest {
+    @Test fun versionFourRecord_remainsReadableAfterPrescriptionContextUpgrade() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val repository = EncryptedLocalConsultationRepository(context)
+        val item = ApprovedConsultation(id = "00000000-0000-0000-0000-000000000004",
+            approvedAtMillis = 1L, patientName = "Synthetic reference", patientAge = "", visitReason = "",
+            draft = ClinicalDraft())
+        val legacy = repository.encodeForStorage(item).dropLast(8).toByteArray()
+        java.nio.ByteBuffer.wrap(legacy).putInt(4)
+        assertEquals(item, repository.decodeFromStorage(legacy))
+    }
+
     @Test
     fun approvedConsultation_roundTripsEncryptedAndCanBeDeleted() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
@@ -54,6 +65,8 @@ class EncryptedLocalConsultationRepositoryTest {
                         isDoctorReviewed = true
                     )
                 ),
+                prescriptionContext = listOf(ClinicalNoteSection("advice", "Advice", "Synthetic advice", listOf("T1"))),
+                discussedMedications = listOf(MedicationDraft(name = "Synthetic reference medicine")),
                 coverageWarnings = listOf("Synthetic coverage warning"),
                 generationSource = ClinicalNoteGenerationSource.Gemini
             )

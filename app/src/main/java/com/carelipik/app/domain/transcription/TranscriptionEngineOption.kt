@@ -22,6 +22,12 @@ enum class TranscriptionEngineOption(
             TranscriptionLanguage.Hinglish
         )
     ),
+    NameMaskedSaaras(
+        displayName = "Sarvam English",
+        description = "English transcription",
+        isOffline = false,
+        supportedLanguages = setOf(TranscriptionLanguage.English)
+    ),
     AssemblyAiUniversal(
         displayName = "Multilingual V3 Turbo",
         description = "Automatic multilingual transcription with on-device fallback when offline",
@@ -53,7 +59,8 @@ enum class TranscriptionEngineOption(
         // Other engines remain available internally and to tests, but are hidden in the demo.
         val visibleOptions = listOf(
             AssemblyAiUniversal,
-            SaarasHindiHinglish
+            SaarasHindiHinglish,
+            NameMaskedSaaras
         )
 
         fun defaultFor(language: TranscriptionLanguage): TranscriptionEngineOption = when (language) {

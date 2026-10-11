@@ -98,7 +98,7 @@ fun TranscriptScreen(
         )
         when (uiState.status) {
             TranscriptStatus.Idle,
-            TranscriptStatus.Processing -> ProcessingTranscript(uiState.engine.isOffline)
+            TranscriptStatus.Processing -> ProcessingTranscript(uiState.engine, uiState.transcriptionStage)
             TranscriptStatus.Error -> ErrorTranscript(
                 message = uiState.errorMessage ?: "Transcription could not be completed.",
                 onRetry = onRetry
@@ -127,6 +127,12 @@ fun TranscriptScreen(
                         hasConsent = uiState.hasTrainingDataConsent,
                         message = uiState.trainingDataMessage,
                         onConsentChanged = onTrainingDataConsentChanged
+                    )
+                }
+                if (uiState.engine == TranscriptionEngineOption.NameMaskedSaaras && uiState.speakerIds.isNotEmpty()) {
+                    Text(
+                        text = "Detected speakers: ${uiState.speakerIds.size}",
+                        style = MaterialTheme.typography.titleSmall
                     )
                 }
                 if (uiState.canShowConversation) {
@@ -931,7 +937,10 @@ private fun TranscriptNotice(
 }
 
 @Composable
-private fun ProcessingTranscript(isOffline: Boolean) {
+private fun ProcessingTranscript(
+    engine: TranscriptionEngineOption,
+    stage: com.carelipik.app.domain.transcription.TranscriptionStage?
+) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -940,7 +949,15 @@ private fun ProcessingTranscript(isOffline: Boolean) {
         CircularProgressIndicator()
         Text("Preparing transcript…", style = MaterialTheme.typography.titleMedium)
         Text(
-            if (isOffline) {
+            if (engine == com.carelipik.app.domain.transcription.TranscriptionEngineOption.NameMaskedSaaras) {
+                val stages = listOf(
+                    com.carelipik.app.domain.transcription.TranscriptionStage.PreprocessingAudio,
+                    com.carelipik.app.domain.transcription.TranscriptionStage.SarvamTranscription,
+                    com.carelipik.app.domain.transcription.TranscriptionStage.RedactingPatientName
+                )
+                val current = stage?.takeIf { it in stages } ?: stages.first()
+                "Step ${stages.indexOf(current) + 1} of ${stages.size}: ${current.displayName}"
+            } else if (engine.isOffline) {
                 "Processing stays on this device."
             } else {
                 "Securely uploading and separating speakers. This can take a few minutes."

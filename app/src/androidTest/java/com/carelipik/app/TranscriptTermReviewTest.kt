@@ -44,7 +44,9 @@ class TranscriptTermReviewTest {
             val state by model.uiState.collectAsState()
             CareLipikTheme {
                 TranscriptScreen(
-                    uiState = state, onTranscriptChanged = model::setDisplayedTranscript,
+                    uiState = state, onTranscriptChanged = model::setTranscript,
+                    onSelectConcern = model::selectConcern, onUpdateConcern = model::updateConcern,
+                    onTrainingDataConsentChanged = model::setTrainingDataConsent,
                     onConfirmConcern = model::confirmConcern, onApplySuggestion = model::applySuggestedReplacement,
                     onOnlineAnalysisConsentChanged = model::setOnlineAnalysisConsent,
                     onAnalyzeTermsOnline = model::analyzeTermsOnline, onViewModeChanged = model::setViewMode,

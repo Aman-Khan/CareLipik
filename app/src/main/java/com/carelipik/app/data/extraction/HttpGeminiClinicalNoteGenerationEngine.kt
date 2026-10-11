@@ -133,6 +133,31 @@ class HttpGeminiClinicalNoteGenerationEngine(
                 )
             }
         }
+        val prescriptionContext = PrescriptionContextJson.normalize(optJSONObject("prescription_context"), request.reviewedTranscript)
+        val discussedMedications = buildList {
+            val rawMedications = JSONArray((prescriptionContext.optJSONArray("medicine_suggestions") ?: JSONArray()).toString())
+            val discussed = optJSONArray("discussed_medications") ?: JSONArray()
+            for (index in 0 until discussed.length()) rawMedications.put(discussed.get(index))
+            for (index in 0 until minOf(rawMedications.length(), MAX_MEDICATIONS)) {
+                val item = rawMedications.optJSONObject(index) ?: continue
+                val name = item.safeString("name")
+                if (name.isBlank()) continue
+                add(
+                    MedicationDraft(
+                        name = name,
+                        genericName = item.safeString("generic_name"),
+                        strength = item.safeString("strength"),
+                        dose = item.safeString("dose"),
+                        route = item.safeString("route"),
+                        frequency = item.safeString("frequency"),
+                        duration = item.safeString("duration"),
+                        instructions = item.safeString("instructions"),
+                        sourceEvidence = item.safeString("source_evidence"),
+                        isDoctorReviewed = false
+                    )
+                )
+            }
+        }
         return ClinicalDraft(
             patientAge = request.patientAge,
             presentingComplaint = ClinicalVisitReasonFormatter.concise(
@@ -144,6 +169,8 @@ class HttpGeminiClinicalNoteGenerationEngine(
             specialtyName = request.specialtyName,
             structuredSections = sections,
             medications = medications,
+            discussedMedications = discussedMedications,
+            prescriptionContext = PrescriptionContextJson.sections(prescriptionContext),
             coverageWarnings = optJSONArray("coverage_warnings").strings(MAX_WARNINGS),
             generationSource = generationSource
         )

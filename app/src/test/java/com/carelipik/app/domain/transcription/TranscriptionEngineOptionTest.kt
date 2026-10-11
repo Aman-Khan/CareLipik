@@ -5,11 +5,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TranscriptionEngineOptionTest {
+    @Test fun maskedSarvam_supportsOnlyEnglish() {
+        assertTrue(TranscriptionEngineOption.NameMaskedSaaras.supports(TranscriptionLanguage.English))
+        assertFalse(TranscriptionEngineOption.NameMaskedSaaras.supports(TranscriptionLanguage.Hindi))
+        assertFalse(TranscriptionEngineOption.NameMaskedSaaras.supports(TranscriptionLanguage.Hinglish))
+        assertFalse(TranscriptionEngineOption.NameMaskedSaaras.supports(TranscriptionLanguage.Auto))
+    }
     @Test
-    fun picker_showsTwoDemoEnginesAndKeepsDefaultsVisible() {
+    fun picker_includesMaskedSarvamAndKeepsDefaultsVisible() {
         org.junit.Assert.assertEquals(
             listOf(TranscriptionEngineOption.AssemblyAiUniversal,
-                TranscriptionEngineOption.SaarasHindiHinglish),
+                TranscriptionEngineOption.SaarasHindiHinglish,
+                TranscriptionEngineOption.NameMaskedSaaras),
             TranscriptionEngineOption.visibleOptions
         )
         TranscriptionLanguage.entries.forEach {

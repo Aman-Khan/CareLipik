@@ -10,5 +10,6 @@ data class ApprovedConsultation(
     val includeReviewedTranscriptInExport: Boolean = true,
     val electronicSignerName: String = "",
     val electronicallySignedAtMillis: Long? = null,
-    val handwrittenSignature: String = ""
+    val handwrittenSignature: String = "",
+    val prescriptionImagePaths: List<String> = emptyList()
 )

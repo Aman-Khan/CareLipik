@@ -1,15 +1,24 @@
 package com.carelipik.app.ui.navigation
 
+import android.app.Activity
 import android.content.Intent
 import android.widget.Toast
 import java.io.File
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.FileProvider
@@ -100,6 +109,36 @@ fun CareLipikApp(
     val consultationExportUiState by activeConsultationExportViewModel.uiState.collectAsState()
     val navigator: CareLipikNavigator = viewModel()
     val currentDestination by navigator.destination.collectAsState()
+    var showExitConfirmation by remember { mutableStateOf(false) }
+
+    BackHandler {
+        if (currentDestination == ConsultationDestination.Home) {
+            showExitConfirmation = true
+        } else {
+            navigator.navigateBack()
+        }
+    }
+
+    if (showExitConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showExitConfirmation = false },
+            title = { Text("Exit CareLipik?") },
+            text = { Text("Are you sure you want to exit the application?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showExitConfirmation = false
+                        (context as? Activity)?.finish()
+                    }
+                ) { Text("Exit") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitConfirmation = false }) {
+                    Text("Stay")
+                }
+            }
+        )
+    }
 
     LaunchedEffect(savedDoctorProfile) {
         savedDoctorProfile?.let(activeHomeViewModel::applyDoctorProfile)
@@ -338,6 +377,10 @@ fun CareLipikApp(
                 onSignerNameChanged = activeConsultationExportViewModel::setSignerName,
                 onHandwrittenSignatureChanged =
                     activeConsultationExportViewModel::setHandwrittenSignature,
+                onPrescriptionImageSelected =
+                    activeConsultationExportViewModel::importPrescriptionImage,
+                onRemovePrescriptionImage =
+                    activeConsultationExportViewModel::removePrescriptionImage,
                 onGenerate = activeConsultationExportViewModel::generate,
                 onShare = {
                     consultationExportUiState.exportedFile?.let { exportedFile ->

@@ -9,11 +9,48 @@ import com.carelipik.app.domain.model.ClinicalDraft
 import com.carelipik.app.domain.repository.ConsultationReportArtifact
 import com.carelipik.app.domain.repository.ConsultationReportRepository
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ConsultationExportViewModelTest {
+    @Test
+    fun prescriptionAttachmentRequiresElectronicSignature() {
+        val unsigned = ConsultationExportUiState(
+            status = ConsultationExportStatus.ReadyToGenerate,
+            consultation = approvedConsultation(),
+            prescriptionImagePaths = listOf("/synthetic/prescription.jpg")
+        )
+        val signed = unsigned.copy(
+            electronicallySign = true,
+            signerName = "Dr Synthetic",
+            handwrittenSignature = "0.1,0.2;0.8,0.7"
+        )
+
+        assertFalse(unsigned.canGenerate)
+        assertTrue(signed.canGenerate)
+    }
+
+    @Test
+    fun generatedReportLocksExportConfiguration() {
+        val viewModel = ConsultationExportViewModel(
+            CapturingExporter(successResult()),
+            processAsynchronously = false
+        )
+        viewModel.load(approvedConsultation(), "Dr Synthetic", "0.1,0.2;0.8,0.7")
+        viewModel.generate()
+
+        viewModel.selectFormat(ConsultationExportFormat.PlainText)
+        viewModel.setSignerName("Changed")
+        viewModel.setHandwrittenSignature("")
+
+        assertFalse(viewModel.uiState.value.isConfigurationEditable)
+        assertEquals(ConsultationExportFormat.ClinicalPdf, viewModel.uiState.value.selectedFormat)
+        assertEquals("Dr Synthetic", viewModel.uiState.value.signerName)
+        assertTrue(viewModel.uiState.value.handwrittenSignature.isNotBlank())
+    }
+
     @Test
     fun exportCannotRunBeforeApprovedConsultationIsLoaded() {
         val exporter = CapturingExporter(successResult())

@@ -9,4 +9,7 @@
     <cache-path
         name="signature_capture"
         path="signature_capture/" />
+    <cache-path
+        name="prescription_capture"
+        path="prescription_capture/" />
 </paths>

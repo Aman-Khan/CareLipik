@@ -3,7 +3,10 @@ package com.carelipik.app.ui.screens.export
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.pdf.PdfRenderer
+import android.net.Uri
 import android.os.ParcelFileDescriptor
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -46,12 +49,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.carelipik.app.ui.components.ConsultationScreenHeader
 import com.carelipik.app.domain.export.ConsultationExportFormat
 import com.carelipik.app.domain.model.HandwrittenSignature
 import com.carelipik.app.domain.model.SignaturePoint
+import androidx.core.content.FileProvider
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -63,12 +68,33 @@ fun ConsultationExportScreen(
     onElectronicSignatureChanged: (Boolean) -> Unit,
     onSignerNameChanged: (String) -> Unit,
     onHandwrittenSignatureChanged: (String) -> Unit,
+    onPrescriptionImageSelected: (String) -> Unit = {},
+    onRemovePrescriptionImage: (Int) -> Unit = {},
     onGenerate: () -> Unit,
     onShare: () -> Unit,
     onBack: () -> Unit,
     onFinish: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    var pendingPrescriptionUri by remember { mutableStateOf<Uri?>(null) }
+    val galleryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> uri?.toString()?.let(onPrescriptionImageSelected) }
+    val cameraLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { captured ->
+        if (captured) pendingPrescriptionUri?.toString()?.let(onPrescriptionImageSelected)
+    }
+    val capturePrescription = {
+        val directory = File(context.cacheDir, "prescription_capture").apply { mkdirs() }
+        val file = File(directory, "prescription_${System.currentTimeMillis()}.jpg")
+        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file).also {
+            pendingPrescriptionUri = it
+            cameraLauncher.launch(it)
+        }
+        Unit
+    }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -109,13 +135,21 @@ fun ConsultationExportScreen(
         }
         ExportFormatOptions(
             selected = uiState.selectedFormat,
-            enabled = uiState.status != ConsultationExportStatus.Generating,
+            enabled = uiState.isConfigurationEditable,
             onSelected = onFormatSelected
+        )
+        PrescriptionAttachmentCard(
+            imagePaths = uiState.prescriptionImagePaths,
+            message = uiState.prescriptionMessage,
+            enabled = uiState.isConfigurationEditable,
+            onCamera = capturePrescription,
+            onGallery = { galleryLauncher.launch(arrayOf("image/*")) },
+            onRemove = onRemovePrescriptionImage
         )
         ElectronicSignatureOptions(
             enabled = uiState.electronicallySign,
             signerName = uiState.signerName,
-            isEditable = uiState.status != ConsultationExportStatus.Generating,
+            isEditable = uiState.isConfigurationEditable,
             onEnabledChanged = onElectronicSignatureChanged,
             onSignerNameChanged = onSignerNameChanged,
             signature = uiState.handwrittenSignature,
@@ -171,6 +205,88 @@ fun ConsultationExportScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Finish")
+        }
+    }
+}
+
+@Composable
+private fun PrescriptionAttachmentCard(
+    imagePaths: List<String>,
+    message: String?,
+    enabled: Boolean,
+    onCamera: () -> Unit,
+    onGallery: () -> Unit,
+    onRemove: (Int) -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("Prescription attachment", fontWeight = FontWeight.Bold)
+            Text(
+                "Photograph or upload a prescription. A doctor name and handwritten digital signature are mandatory when an image is attached.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            if (imagePaths.isEmpty()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onCamera, enabled = enabled, modifier = Modifier.weight(1f)) {
+                        Text("Use camera")
+                    }
+                    OutlinedButton(onClick = onGallery, enabled = enabled, modifier = Modifier.weight(1f)) {
+                        Text("Upload picture")
+                    }
+                }
+            } else {
+                imagePaths.forEachIndexed { index, imagePath ->
+                    Card(colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )) {
+                        Column(
+                            modifier = Modifier.padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text("Prescription ${index + 1}", fontWeight = FontWeight.Bold)
+                            val bitmap = remember(imagePath) { BitmapFactory.decodeFile(imagePath) }
+                            bitmap?.let {
+                                Image(
+                                    bitmap = it.asImageBitmap(),
+                                    contentDescription = "Attached prescription ${index + 1}",
+                                    contentScale = ContentScale.Fit,
+                                    modifier = Modifier.fillMaxWidth().heightIn(max = 260.dp)
+                                )
+                            }
+                            TextButton(onClick = { onRemove(index) }, enabled = enabled) {
+                                Text("Remove this prescription")
+                            }
+                        }
+                    }
+                }
+                Text(
+                    "${imagePaths.size} prescription image${if (imagePaths.size == 1) "" else "s"} attached • Signature required",
+                    color = MaterialTheme.colorScheme.primary
+                )
+                if (enabled) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = onCamera, modifier = Modifier.weight(1f)) {
+                            Text("Add with camera")
+                        }
+                        OutlinedButton(onClick = onGallery, modifier = Modifier.weight(1f)) {
+                            Text("Add picture")
+                        }
+                    }
+                }
+            }
+            if (!enabled && imagePaths.isNotEmpty()) {
+                Text(
+                    "This prescription set is locked because the report has been generated.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            message?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
         }
     }
 }

@@ -144,6 +144,9 @@ private class ConsultationPdfLayout(private val document: PdfDocument) {
                 consultation.draft.reviewedTranscript.ifBlank { "Not available for this older record" }
             )
         }
+        consultation.prescriptionImagePaths.forEachIndexed { index, path ->
+            drawPrescriptionAttachment(path, index + 1, consultation.prescriptionImagePaths.size)
+        }
         if (consultation.electronicSignerName.isNotBlank()) {
             section(
                 "Electronic signature",
@@ -331,6 +334,30 @@ private class ConsultationPdfLayout(private val document: PdfDocument) {
             canvas.drawPath(path, paint)
         }
         y += height + SECTION_GAP
+    }
+
+    private fun drawPrescriptionAttachment(path: String, number: Int, total: Int) {
+        if (path.isBlank()) return
+        val bitmap = BitmapFactory.decodeFile(path) ?: return
+        val titleHeight = 28f
+        val availableWidth = CONTENT_WIDTH.toFloat()
+        val imageHeight = (availableWidth * bitmap.height / bitmap.width.toFloat())
+            .coerceAtMost(430f)
+        ensureSpace(titleHeight + imageHeight + SECTION_GAP, consultation)
+        canvas.drawText(
+            if (total == 1) "Attached prescription" else "Attached prescription $number of $total",
+            LEFT_MARGIN,
+            y + 18f,
+            sectionPaint
+        )
+        y += titleHeight
+        canvas.drawBitmap(
+            bitmap,
+            null,
+            RectF(LEFT_MARGIN, y, LEFT_MARGIN + availableWidth, y + imageHeight),
+            Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        )
+        y += imageHeight + SECTION_GAP
     }
 
     private fun fittingPrefix(text: String, maxHeight: Int): Int {

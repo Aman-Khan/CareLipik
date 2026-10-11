@@ -15,7 +15,6 @@ class TranscriptionEngineOptionTest {
     fun picker_includesMaskedSarvamAndKeepsDefaultsVisible() {
         org.junit.Assert.assertEquals(
             listOf(TranscriptionEngineOption.AssemblyAiUniversal,
-                TranscriptionEngineOption.SaarasHindiHinglish,
                 TranscriptionEngineOption.NameMaskedSaaras),
             TranscriptionEngineOption.visibleOptions
         )

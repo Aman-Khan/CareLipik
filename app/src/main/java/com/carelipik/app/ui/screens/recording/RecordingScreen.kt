@@ -345,7 +345,7 @@ private fun TranscriptionSetupPanel(
             SectionLabel(number = "2", title = "Transcription engine")
             Text(
                 text = "Multilingual V3 Turbo uses enhanced online processing when connected " +
-                    "and falls back to the on-device model when offline. Saaras requires internet.",
+                    "and falls back to the on-device model when offline. Online model requires internet.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

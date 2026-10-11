@@ -23,8 +23,8 @@ enum class TranscriptionEngineOption(
         )
     ),
     NameMaskedSaaras(
-        displayName = "Sarvam English",
-        description = "English transcription",
+        displayName = "Online model",
+        description = "English transcription with the patient's name masked on device before audio upload",
         isOffline = false,
         supportedLanguages = setOf(TranscriptionLanguage.English)
     ),
@@ -59,7 +59,6 @@ enum class TranscriptionEngineOption(
         // Other engines remain available internally and to tests, but are hidden in the demo.
         val visibleOptions = listOf(
             AssemblyAiUniversal,
-            SaarasHindiHinglish,
             NameMaskedSaaras
         )
 

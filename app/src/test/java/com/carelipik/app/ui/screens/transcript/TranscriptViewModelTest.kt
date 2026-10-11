@@ -13,6 +13,9 @@ import com.carelipik.app.domain.transcription.TranscriptConcern
 import com.carelipik.app.domain.transcription.TranscriptConcernType
 import com.carelipik.app.domain.voice.DoctorVoiceRoleMatch
 import com.carelipik.app.domain.voice.DoctorVoiceRoleMatchResult
+import com.carelipik.app.domain.repository.TranscriptCorrectionRepository
+import com.carelipik.app.domain.training.TranscriptCorrectionLabel
+import com.carelipik.app.domain.transcription.TranscriptReviewAnalyzer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -480,6 +483,64 @@ class TranscriptViewModelTest {
         viewModel.assignSpeakerRole("speaker-1", SpeakerRole.Doctor)
 
         assertEquals(SpeakerRole.Other, viewModel.uiState.value.speakerRoles["speaker-2"])
+    }
+
+    @Test
+    fun doctorCorrection_withConsent_createsEncryptedTrainingLabelMetadata() {
+        val transcript = "I take net-forming 500 milligrams."
+        val start = transcript.indexOf("net-forming")
+        val concern = TranscriptConcern(
+            id = "asr:$start:net-forming",
+            text = "net-forming",
+            startIndex = start,
+            endIndexExclusive = start + "net-forming".length,
+            type = TranscriptConcernType.PossibleRecognitionError,
+            reason = "Possible medication recognition error.",
+            suggestedReplacement = "metformin"
+        )
+        val repository = CapturingCorrectionRepository()
+        val viewModel = TranscriptViewModel(
+            engineResolver = resolver(StubEngine(TranscriptionResult.Success(transcript))),
+            reviewAnalyzer = TranscriptReviewAnalyzer { text, _ ->
+                if (text.contains("net-forming")) listOf(concern) else emptyList()
+            },
+            correctionRepository = repository,
+            processAsynchronously = false
+        )
+
+        viewModel.transcribe(
+            "/private/recording.wav",
+            TranscriptionLanguage.English,
+            TranscriptionEngineOption.WhisperMultilingual
+        )
+        viewModel.setTrainingDataConsent(true)
+        viewModel.applySuggestedReplacement(concern.id)
+
+        val saved = repository.saved.single()
+        assertEquals("I take net-forming 500 milligrams.", saved.asrText)
+        assertEquals("I take metformin 500 milligrams.", saved.correctedText)
+        assertEquals("net-forming", saved.originalTerm)
+        assertEquals("metformin", saved.correctedTerm)
+        assertEquals("en-IN", saved.language)
+        assertTrue(saved.confirmedByDoctor)
+        assertEquals("/private/recording.wav", repository.audioPath)
+        assertTrue(saved.audioClipReference.startsWith("encrypted-local-reference:"))
+    }
+
+    private class CapturingCorrectionRepository : TranscriptCorrectionRepository {
+        val saved = mutableListOf<TranscriptCorrectionLabel>()
+        var audioPath: String? = null
+
+        override fun save(label: TranscriptCorrectionLabel, sourceAudioPath: String) {
+            saved += label
+            audioPath = sourceAudioPath
+        }
+
+        override suspend fun list(): List<TranscriptCorrectionLabel> = saved
+
+        override suspend fun deleteAll() {
+            saved.clear()
+        }
     }
 
     private class StubEngine(

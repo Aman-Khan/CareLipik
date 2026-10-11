@@ -12,6 +12,7 @@
     <exclude domain="file" path="doctor_profile.clp" />
     <exclude domain="file" path="api_credentials/" />
     <exclude domain="file" path="saved_recordings/" />
+    <exclude domain="file" path="transcript_training_data/" />
     <!--
    <include domain="sharedpref" path="."/>
    <exclude domain="sharedpref" path="device.xml"/>

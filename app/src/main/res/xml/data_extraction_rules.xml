@@ -11,6 +11,7 @@
         <exclude domain="file" path="doctor_profile.clp" />
         <exclude domain="file" path="api_credentials/" />
         <exclude domain="file" path="saved_recordings/" />
+        <exclude domain="file" path="transcript_training_data/" />
         <!-- TODO: Use <include> and <exclude> to control what is backed up.
         <include .../>
         <exclude .../>
@@ -23,6 +24,7 @@
         <exclude domain="file" path="doctor_profile.clp" />
         <exclude domain="file" path="api_credentials/" />
         <exclude domain="file" path="saved_recordings/" />
+        <exclude domain="file" path="transcript_training_data/" />
     </device-transfer>
     <!--
     <device-transfer>

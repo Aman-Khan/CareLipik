@@ -251,6 +251,8 @@ fun CareLipikApp(
                 onApplySuggestion = activeTranscriptViewModel::applySuggestedReplacement,
                 onSelectConcern = activeTranscriptViewModel::selectConcern,
                 onUpdateConcern = activeTranscriptViewModel::updateConcern,
+                onTrainingDataConsentChanged =
+                    activeTranscriptViewModel::setTrainingDataConsent,
                 onOnlineAnalysisConsentChanged =
                     activeTranscriptViewModel::setOnlineAnalysisConsent,
                 onAnalyzeTermsOnline = activeTranscriptViewModel::analyzeTermsOnline,

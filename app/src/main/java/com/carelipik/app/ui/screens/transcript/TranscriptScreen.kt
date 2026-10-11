@@ -63,6 +63,7 @@ fun TranscriptScreen(
     onApplySuggestion: (String) -> Unit,
     onSelectConcern: (String) -> Unit,
     onUpdateConcern: (String, String) -> Unit,
+    onTrainingDataConsentChanged: (Boolean) -> Unit,
     onOnlineAnalysisConsentChanged: (Boolean) -> Unit,
     onAnalyzeTermsOnline: () -> Unit,
     onViewModeChanged: (TranscriptViewMode) -> Unit,
@@ -122,6 +123,11 @@ fun TranscriptScreen(
                         onSelectConcern = onSelectConcern,
                         onUpdateConcern = onUpdateConcern
                     )
+                    TrainingDataConsentPanel(
+                        hasConsent = uiState.hasTrainingDataConsent,
+                        message = uiState.trainingDataMessage,
+                        onConsentChanged = onTrainingDataConsentChanged
+                    )
                 }
                 if (uiState.canShowConversation) {
                     TranscriptViewModeSelector(
@@ -171,6 +177,49 @@ fun TranscriptScreen(
                         }
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrainingDataConsentPanel(
+    hasConsent: Boolean,
+    message: String?,
+    onConsentChanged: (Boolean) -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = "Help improve future transcription",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "With permission, doctor-confirmed corrections and an encrypted source " +
+                    "audio reference are stored only on this device. Nothing is uploaded.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = hasConsent, onCheckedChange = onConsentChanged)
+                Text(
+                    text = "Save my confirmed corrections for future model training",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            message?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
         }
     }

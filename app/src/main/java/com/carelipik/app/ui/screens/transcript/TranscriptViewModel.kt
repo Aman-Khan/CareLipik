@@ -14,7 +14,10 @@ import com.carelipik.app.data.transcription.HttpOnlineTranscriptReviewAnalyzer
 import com.carelipik.app.data.transcription.DirectGeminiTranscriptReviewAnalyzer
 import com.carelipik.app.data.transcription.PreferDeviceKeyTranscriptReviewAnalyzer
 import com.carelipik.app.data.local.DeviceApiKeyProvider
+import com.carelipik.app.data.local.EncryptedTranscriptCorrectionRepository
 import com.carelipik.app.domain.repository.ApiProvider
+import com.carelipik.app.domain.repository.TranscriptCorrectionRepository
+import com.carelipik.app.domain.training.TranscriptCorrectionLabel
 import com.carelipik.app.domain.transcription.SpeakerRole
 import com.carelipik.app.domain.transcription.OnlineTranscriptReviewAnalyzer
 import com.carelipik.app.domain.transcription.OnlineTranscriptReviewResult
@@ -34,6 +37,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.UUID
 
 class TranscriptViewModel(
     private val engineResolver: TranscriptionEngineResolver = TranscriptionEngineResolver {
@@ -42,11 +46,13 @@ class TranscriptViewModel(
     private val reviewAnalyzer: TranscriptReviewAnalyzer = RuleBasedTranscriptReviewAnalyzer(),
     private val onlineReviewAnalyzer: OnlineTranscriptReviewAnalyzer? = null,
     private val segmentParser: TranscriptSegmentParser = LabelledTranscriptSegmentParser(),
+    private val correctionRepository: TranscriptCorrectionRepository? = null,
     private val processAsynchronously: Boolean = true
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(TranscriptUiState())
     val uiState: StateFlow<TranscriptUiState> = _uiState.asStateFlow()
     private var sourceAudioPath: String? = null
+    private var sourceAudioReferenceId: String? = null
     private var sourceLanguage: TranscriptionLanguage = TranscriptionLanguage.English
     private var sourceEngine: TranscriptionEngineOption = TranscriptionEngineOption.AssemblyAiUniversal
 
@@ -57,6 +63,9 @@ class TranscriptViewModel(
     ) {
         require(engineOption.supports(language)) {
             "${engineOption.displayName} does not support ${language.displayName}."
+        }
+        if (sourceAudioPath != audioPath) {
+            sourceAudioReferenceId = UUID.randomUUID().toString()
         }
         sourceAudioPath = audioPath
         sourceLanguage = language
@@ -160,6 +169,19 @@ class TranscriptViewModel(
         }
     }
 
+    fun setTrainingDataConsent(hasConsent: Boolean) {
+        _uiState.update {
+            it.copy(
+                hasTrainingDataConsent = hasConsent,
+                trainingDataMessage = if (hasConsent) {
+                    "Confirmed corrections will be encrypted and kept only on this device."
+                } else {
+                    null
+                }
+            )
+        }
+    }
+
     fun setViewMode(viewMode: TranscriptViewMode) {
         _uiState.update { state ->
             if (viewMode == TranscriptViewMode.Conversation && !state.canShowConversation) {
@@ -222,6 +244,8 @@ class TranscriptViewModel(
 
     private fun replaceConcern(concernId: String, replacement: String) {
         if (replacement.isBlank()) return
+        var correctionToSave: TranscriptCorrectionLabel? = null
+        var correctionAudioPath: String? = null
         _uiState.update { state ->
             val concern = state.concerns.firstOrNull { it.id == concernId } ?: return@update state
             if (
@@ -236,6 +260,32 @@ class TranscriptViewModel(
                 concern.endIndexExclusive,
                 replacement
             )
+            if (
+                state.hasTrainingDataConsent &&
+                !concern.text.equals(replacement, ignoreCase = false)
+            ) {
+                val contextRange = correctionContextRange(state.transcript, concern)
+                val asrContext = state.transcript.substring(contextRange).trim()
+                val relativeStart = concern.startIndex - contextRange.first
+                val relativeEnd = relativeStart + (concern.endIndexExclusive - concern.startIndex)
+                val correctedContext = state.transcript.substring(contextRange)
+                    .replaceRange(relativeStart, relativeEnd, replacement)
+                    .trim()
+                val id = UUID.randomUUID().toString()
+                val audioReferenceId = sourceAudioReferenceId ?: UUID.randomUUID().toString()
+                correctionToSave = TranscriptCorrectionLabel(
+                    id = id,
+                    createdAtMillis = System.currentTimeMillis(),
+                    audioClipReference = "encrypted-local-reference:$audioReferenceId",
+                    asrText = asrContext,
+                    correctedText = correctedContext,
+                    originalTerm = concern.text,
+                    correctedTerm = replacement,
+                    language = state.language.trainingLanguageTag(),
+                    transcriptionEngine = state.engine.name
+                )
+                correctionAudioPath = sourceAudioPath
+            }
             val updatedConcerns = reviewAnalyzer.analyze(updatedTranscript, state.language)
             val updatedSegments = segmentParser.parse(updatedTranscript)
             val replacementEnd = concern.startIndex + replacement.length
@@ -279,6 +329,43 @@ class TranscriptViewModel(
                 }
             )
         }
+        correctionToSave?.let { label ->
+            val audioPath = correctionAudioPath
+            val repository = correctionRepository
+            if (audioPath == null || repository == null) {
+                _uiState.update {
+                    it.copy(
+                        trainingDataMessage =
+                            "Correction applied, but training data could not be saved."
+                    )
+                }
+            } else {
+                val saveCorrection = {
+                    runCatching { repository.save(label, audioPath) }
+                        .onSuccess {
+                            _uiState.update { state ->
+                                state.copy(
+                                    trainingDataMessage =
+                                        "Doctor-confirmed correction saved securely on this device."
+                                )
+                            }
+                        }
+                        .onFailure {
+                            _uiState.update { state ->
+                                state.copy(
+                                    trainingDataMessage =
+                                        "Correction applied, but training data could not be saved."
+                                )
+                            }
+                        }
+                }
+                if (processAsynchronously) {
+                    viewModelScope.launch(Dispatchers.IO) { saveCorrection() }
+                } else {
+                    saveCorrection()
+                }
+            }
+        }
     }
 
     fun validateForContinue(): Boolean {
@@ -301,6 +388,7 @@ class TranscriptViewModel(
 
     fun resetForNewConsultation() {
         sourceAudioPath = null
+        sourceAudioReferenceId = null
         sourceLanguage = TranscriptionLanguage.English
         sourceEngine = TranscriptionEngineOption.AssemblyAiUniversal
         _uiState.value = TranscriptUiState()
@@ -327,7 +415,8 @@ class TranscriptViewModel(
                         backendBaseUrl = com.carelipik.app.BuildConfig.TRANSCRIPTION_BACKEND_URL,
                         allowInsecureLocalhost = com.carelipik.app.BuildConfig.DEBUG
                     )
-                )
+                ),
+                correctionRepository = EncryptedTranscriptCorrectionRepository(applicationContext)
             ) as T
         }
     }
@@ -452,4 +541,28 @@ class TranscriptViewModel(
 
     private fun List<TranscriptSegment>.hasMultipleSpeakers(): Boolean =
         map { it.speakerId }.distinct().size >= 2
+
+    private fun correctionContextRange(
+        transcript: String,
+        concern: TranscriptConcern
+    ): IntRange {
+        val start = (concern.startIndex - 1 downTo 0).firstOrNull {
+            transcript[it] in CONTEXT_BOUNDARIES
+        }?.plus(1) ?: 0
+        val endExclusive = (concern.endIndexExclusive until transcript.length).firstOrNull {
+            transcript[it] in CONTEXT_BOUNDARIES
+        }?.plus(1) ?: transcript.length
+        return start until endExclusive
+    }
+
+    private fun TranscriptionLanguage.trainingLanguageTag(): String = when (this) {
+        TranscriptionLanguage.Auto -> "und-IN"
+        TranscriptionLanguage.English -> "en-IN"
+        TranscriptionLanguage.Hindi -> "hi-IN"
+        TranscriptionLanguage.Hinglish -> "hi-Latn-IN"
+    }
+
+    private companion object {
+        val CONTEXT_BOUNDARIES = setOf('.', '?', '!', '\n')
+    }
 }

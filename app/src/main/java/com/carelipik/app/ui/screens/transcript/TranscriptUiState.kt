@@ -45,6 +45,8 @@ data class TranscriptUiState(
     val hybridReview: HybridTranscriptionReview? = null,
     val transcriptionStage: TranscriptionStage? = null,
     val sourceAudioPath: String? = null,
+    val hasTrainingDataConsent: Boolean = false,
+    val trainingDataMessage: String? = null,
     val viewMode: TranscriptViewMode = TranscriptViewMode.FullTranscript
 ) {
     val pendingHybridCorrections: Boolean
